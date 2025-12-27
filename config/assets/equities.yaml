@@ -1,0 +1,388 @@
+# Equity (Stock) Asset Configurations
+# ==============================================================================
+# US equity definitions and trading parameters
+
+# SPY (S&P 500 ETF)
+SPY:
+  symbol: SPY
+  name: SPDR S&P 500 ETF Trust
+  exchange: NYSE Arca
+  asset_class: equity
+  type: etf
+  
+  trading:
+    calendar: NYSE            # Standard US equity hours
+    min_trade_size: 1         # Shares
+    tick_size: 0.01           # Penny increments
+    
+  costs:
+    commission_per_share: 0.005
+    min_commission: 1.0
+    typical_spread: 0.01      # Usually at bid/ask
+  
+  data_sources:
+    primary: yahoo
+    alternatives:
+      - quandl
+      - alphavantage
+      - iex
+  
+  risk:
+    typical_volatility: 0.18  # ~18% annualized
+    beta: 1.0                 # Market by definition
+    max_position_size: 1.0    # Can hold 100% in diversified ETF
+  
+  characteristics:
+    liquid: true
+    dividend_paying: true
+    options_available: true
+  
+  notes: |
+    Most liquid US equity ETF. Tracks S&P 500 index.
+    Excellent for long-only strategies and as benchmark.
+    Low expense ratio (0.09%). Deep options market.
+
+# QQQ (Nasdaq-100 ETF)
+QQQ:
+  symbol: QQQ
+  name: Invesco QQQ Trust
+  exchange: NASDAQ
+  asset_class: equity
+  type: etf
+  
+  trading:
+    calendar: NYSE
+    min_trade_size: 1
+    tick_size: 0.01
+  
+  costs:
+    commission_per_share: 0.005
+    min_commission: 1.0
+    typical_spread: 0.01
+  
+  data_sources:
+    primary: yahoo
+    alternatives:
+      - alphavantage
+      - iex
+  
+  risk:
+    typical_volatility: 0.25  # Higher than SPY
+    beta: 1.15                # More volatile than market
+    max_position_size: 0.80
+  
+  characteristics:
+    liquid: true
+    dividend_paying: true
+    options_available: true
+    tech_heavy: true
+  
+  notes: |
+    Tech-heavy Nasdaq-100 tracker. Higher volatility than SPY.
+    Good for tech exposure without single-stock risk.
+
+# IWM (Russell 2000 ETF)
+IWM:
+  symbol: IWM
+  name: iShares Russell 2000 ETF
+  exchange: NYSE Arca
+  asset_class: equity
+  type: etf
+  
+  trading:
+    calendar: NYSE
+    min_trade_size: 1
+    tick_size: 0.01
+  
+  costs:
+    commission_per_share: 0.005
+    min_commission: 1.0
+    typical_spread: 0.02      # Slightly wider
+  
+  data_sources:
+    primary: yahoo
+    alternatives:
+      - alphavantage
+  
+  risk:
+    typical_volatility: 0.28  # Small cap volatility
+    beta: 1.20
+    max_position_size: 0.60
+  
+  characteristics:
+    liquid: true
+    dividend_paying: true
+    options_available: true
+    small_cap: true
+  
+  notes: |
+    Small-cap exposure. Higher volatility and spreads.
+    Less correlated with large caps during certain regimes.
+
+# DIA (Dow Jones ETF)
+DIA:
+  symbol: DIA
+  name: SPDR Dow Jones Industrial Average ETF
+  exchange: NYSE Arca
+  asset_class: equity
+  type: etf
+  
+  trading:
+    calendar: NYSE
+    min_trade_size: 1
+    tick_size: 0.01
+  
+  costs:
+    commission_per_share: 0.005
+    min_commission: 1.0
+    typical_spread: 0.01
+  
+  data_sources:
+    primary: yahoo
+    alternatives:
+      - alphavantage
+  
+  risk:
+    typical_volatility: 0.17
+    beta: 0.95
+    max_position_size: 0.80
+  
+  characteristics:
+    liquid: true
+    dividend_paying: true
+    options_available: true
+    blue_chip: true
+  
+  notes: |
+    Tracks 30 large blue-chip stocks. Price-weighted index.
+    Lower volatility, more stable than SPY or QQQ.
+
+# VXX (Volatility ETF)
+VXX:
+  symbol: VXX
+  name: iPath Series B S&P 500 VIX Short-Term Futures ETN
+  exchange: BATS
+  asset_class: equity
+  type: etn
+  
+  trading:
+    calendar: NYSE
+    min_trade_size: 1
+    tick_size: 0.01
+  
+  costs:
+    commission_per_share: 0.005
+    min_commission: 1.0
+    typical_spread: 0.05      # Wider spread
+  
+  data_sources:
+    primary: yahoo
+  
+  risk:
+    typical_volatility: 0.90  # Extremely volatile
+    beta: -1.50               # Negative correlation with market
+    max_position_size: 0.10   # Small allocation only
+  
+  characteristics:
+    liquid: true
+    dividend_paying: false
+    options_available: true
+    volatility_product: true
+  
+  notes: |
+    Volatility trading product. Not for buy-and-hold.
+    Contango decay makes long-term holding unprofitable.
+    Use for tactical hedging only.
+
+# TLT (20+ Year Treasury ETF)
+TLT:
+  symbol: TLT
+  name: iShares 20+ Year Treasury Bond ETF
+  exchange: NASDAQ
+  asset_class: equity
+  type: etf
+  subtype: fixed_income
+  
+  trading:
+    calendar: NYSE
+    min_trade_size: 1
+    tick_size: 0.01
+  
+  costs:
+    commission_per_share: 0.005
+    min_commission: 1.0
+    typical_spread: 0.01
+  
+  data_sources:
+    primary: yahoo
+  
+  risk:
+    typical_volatility: 0.15
+    beta: -0.30               # Negative correlation during risk-off
+    max_position_size: 0.40
+  
+  characteristics:
+    liquid: true
+    dividend_paying: true
+    options_available: true
+    safe_haven: true
+  
+  notes: |
+    Long-duration treasuries. Interest rate sensitive.
+    Flight-to-safety asset during market stress.
+    Good for diversification and hedging.
+
+# GLD (Gold ETF)
+GLD:
+  symbol: GLD
+  name: SPDR Gold Shares
+  exchange: NYSE Arca
+  asset_class: equity
+  type: etf
+  subtype: commodity
+  
+  trading:
+    calendar: NYSE
+    min_trade_size: 1
+    tick_size: 0.01
+  
+  costs:
+    commission_per_share: 0.005
+    min_commission: 1.0
+    typical_spread: 0.01
+  
+  data_sources:
+    primary: yahoo
+  
+  risk:
+    typical_volatility: 0.16
+    beta: 0.05                # Low correlation with stocks
+    max_position_size: 0.30
+  
+  characteristics:
+    liquid: true
+    dividend_paying: false
+    options_available: true
+    inflation_hedge: true
+  
+  notes: |
+    Gold exposure without physical storage.
+    Inflation hedge and currency hedge.
+    Low correlation with equities.
+
+# Individual Stock Examples
+
+AAPL:
+  symbol: AAPL
+  name: Apple Inc.
+  exchange: NASDAQ
+  asset_class: equity
+  type: stock
+  sector: Technology
+  
+  trading:
+    calendar: NYSE
+    min_trade_size: 1
+    tick_size: 0.01
+  
+  costs:
+    commission_per_share: 0.005
+    min_commission: 1.0
+    typical_spread: 0.01
+  
+  data_sources:
+    primary: yahoo
+    alternatives:
+      - alphavantage
+      - iex
+  
+  risk:
+    typical_volatility: 0.30
+    beta: 1.20
+    max_position_size: 0.15   # Single stock limit
+  
+  characteristics:
+    liquid: true
+    dividend_paying: true
+    options_available: true
+    mega_cap: true
+  
+  notes: |
+    Largest company by market cap. Highly liquid.
+    Single stock risk despite size.
+
+TSLA:
+  symbol: TSLA
+  name: Tesla Inc.
+  exchange: NASDAQ
+  asset_class: equity
+  type: stock
+  sector: Automotive/Technology
+  
+  trading:
+    calendar: NYSE
+    min_trade_size: 1
+    tick_size: 0.01
+  
+  costs:
+    commission_per_share: 0.005
+    min_commission: 1.0
+    typical_spread: 0.02
+  
+  data_sources:
+    primary: yahoo
+    alternatives:
+      - alphavantage
+  
+  risk:
+    typical_volatility: 0.65  # Very high for individual stock
+    beta: 2.0
+    max_position_size: 0.10   # Limit due to volatility
+  
+  characteristics:
+    liquid: true
+    dividend_paying: false
+    options_available: true
+    growth_stock: true
+  
+  notes: |
+    Extremely volatile. Cult following and short interest.
+    High beta and unpredictable price action.
+    Careful position sizing required.
+
+# General Equity Trading Parameters
+defaults:
+  calendar: NYSE
+  min_trade_size: 1           # Shares
+  tick_size: 0.01             # Pennies
+  
+  # Costs
+  commission_per_share: 0.005
+  min_commission: 1.0
+  typical_spread: 0.01
+  
+  # Risk
+  max_position_size_etf: 0.80
+  max_position_size_stock: 0.15
+  stop_loss_default: 0.07     # 7%
+  
+  # Trading Hours (US Eastern)
+  market_hours:
+    pre_market: "04:00-09:30"
+    regular: "09:30-16:00"
+    after_hours: "16:00-20:00"
+  
+  # Data
+  default_source: yahoo
+  default_timeframe: daily
+  
+  # Backtesting notes
+  notes: |
+    - US equities trade 9:30am-4:00pm EST
+    - Extended hours available but less liquid
+    - Pattern Day Trader rule: <$25k requires overnight holds
+    - Market closes on US federal holidays
+    - Dividends and splits affect backtests
+    - ETFs generally safer than individual stocks
+    - Consider sector concentration in portfolios
+

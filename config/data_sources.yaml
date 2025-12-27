@@ -1,0 +1,189 @@
+# Data Sources Configuration
+# ==============================================================================
+# API endpoints, authentication, and rate limits for data providers.
+# Store sensitive API keys in .env file, not here!
+
+# Yahoo Finance
+yahoo:
+  name: Yahoo Finance
+  type: free
+  enabled: true
+  base_url: https://query1.finance.yahoo.com
+  
+  features:
+    - daily_prices
+    - historical_data
+    - crypto
+    - forex
+    - equities
+  
+  rate_limits:
+    requests_per_hour: 2000
+    requests_per_day: 48000
+  
+  notes: |
+    Yahoo Finance is free but unofficial. Rate limits are approximate.
+    Use yfinance library for easier access.
+
+# Binance (Crypto)
+binance:
+  name: Binance
+  type: api_key_required
+  enabled: false  # Enable when you have API credentials
+  base_url: https://api.binance.com
+  
+  features:
+    - crypto_spot
+    - real_time
+    - minute_data
+    - daily_data
+  
+  authentication:
+    api_key_env: BINANCE_API_KEY        # Set in .env
+    api_secret_env: BINANCE_API_SECRET  # Set in .env
+  
+  rate_limits:
+    requests_per_minute: 1200
+    weight_per_minute: 6000
+  
+  notes: |
+    Requires free account at binance.com
+    API key from account settings -> API Management
+
+# OANDA (Forex)
+oanda:
+  name: OANDA
+  type: api_key_required
+  enabled: false  # Enable when you have API credentials
+  base_url: https://api-fxtrade.oanda.com  # Live
+  practice_url: https://api-fxpractice.oanda.com  # Practice
+  
+  features:
+    - forex_pairs
+    - minute_data
+    - daily_data
+    - real_time
+  
+  authentication:
+    api_key_env: OANDA_API_KEY        # Set in .env
+    account_id_env: OANDA_ACCOUNT_ID  # Set in .env
+  
+  rate_limits:
+    requests_per_second: 20
+  
+  notes: |
+    Practice account is free at oanda.com
+    Use practice_url for testing, base_url for live data
+
+# Alpha Vantage
+alphavantage:
+  name: Alpha Vantage
+  type: api_key_required
+  enabled: false
+  base_url: https://www.alphavantage.co
+  
+  features:
+    - equities
+    - forex
+    - crypto
+    - technical_indicators
+  
+  authentication:
+    api_key_env: ALPHAVANTAGE_API_KEY
+  
+  rate_limits:
+    requests_per_minute: 5   # Free tier
+    requests_per_day: 500    # Free tier
+  
+  notes: |
+    Free tier is very limited (5 calls/min, 500/day)
+    Get free key at alphavantage.co/support/#api-key
+
+# Quandl (DEPRECATED but some bundles use it)
+quandl:
+  name: Quandl
+  type: api_key_optional
+  enabled: false
+  base_url: https://data.nasdaq.com
+  
+  features:
+    - equities
+    - historical_data
+  
+  authentication:
+    api_key_env: QUANDL_API_KEY  # Optional but increases rate limits
+  
+  rate_limits:
+    anonymous_per_day: 50
+    authenticated_per_day: 50000
+  
+  notes: |
+    Quandl is now Nasdaq Data Link
+    Many datasets require paid subscription
+    Free WIKI prices dataset was discontinued
+
+# IEX Cloud
+iex:
+  name: IEX Cloud
+  type: api_key_required
+  enabled: false
+  base_url: https://cloud.iexapis.com
+  sandbox_url: https://sandbox.iexapis.com
+  
+  features:
+    - equities
+    - real_time
+    - fundamentals
+  
+  authentication:
+    api_key_env: IEX_API_KEY
+  
+  rate_limits:
+    depends_on_plan: true
+  
+  notes: |
+    Paid service with free tier
+    Sandbox for testing
+
+# Polygon.io
+polygon:
+  name: Polygon.io
+  type: api_key_required
+  enabled: false
+  base_url: https://api.polygon.io
+  
+  features:
+    - equities
+    - crypto
+    - forex
+    - minute_data
+    - real_time
+  
+  authentication:
+    api_key_env: POLYGON_API_KEY
+  
+  rate_limits:
+    free_per_minute: 5
+  
+  notes: |
+    Free tier available at polygon.io
+    Great for minute-level data
+
+# CSV Files (Custom Data)
+csv:
+  name: Custom CSV Files
+  type: local
+  enabled: true
+  
+  features:
+    - any_asset_class
+    - custom_data
+  
+  locations:
+    - data/cache/
+    - data/exports/
+  
+  notes: |
+    For loading your own data files
+    Use lib/data_loader.py to ingest
+

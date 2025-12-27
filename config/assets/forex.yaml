@@ -1,0 +1,256 @@
+# Forex (Foreign Exchange) Asset Configurations
+# ==============================================================================
+# Currency pair definitions and trading parameters
+
+# EUR/USD (Euro / US Dollar)
+EUR/USD:
+  symbol: EURUSD=X
+  name: Euro US Dollar
+  pair: EUR/USD
+  exchange: FX
+  asset_class: forex
+  
+  trading:
+    calendar: FOREX             # 24/5 trading
+    pip_size: 0.0001            # Standard pip
+    min_trade_size: 1000        # Micro lot
+    standard_lot: 100000
+    
+  sessions:
+    sydney_open: "22:00"        # UTC
+    tokyo_open: "00:00"
+    london_open: "08:00"        # Most liquid
+    new_york_open: "13:00"
+    
+  costs:
+    spread_pips: 1.0            # Typical spread
+    commission_per_lot: 0.0     # Usually built into spread
+  
+  data_sources:
+    primary: yahoo
+    alternatives:
+      - oanda
+      - alphavantage
+  
+  risk:
+    typical_volatility: 0.10    # ~10% annualized
+    max_position_size: 0.30     # 30% max allocation
+    max_leverage: 10.0          # Typical retail limit
+  
+  notes: |
+    Most liquid forex pair. Tightest spreads. Best for beginners.
+    High volume during London/NY overlap (13:00-17:00 UTC).
+
+# GBP/JPY (British Pound / Japanese Yen)
+GBP/JPY:
+  symbol: GBPJPY=X
+  name: British Pound Japanese Yen
+  pair: GBP/JPY
+  exchange: FX
+  asset_class: forex
+  
+  trading:
+    calendar: FOREX
+    pip_size: 0.01              # Yen pairs have 2 decimal places
+    min_trade_size: 1000
+    standard_lot: 100000
+  
+  sessions:
+    most_volatile: ["08:00", "09:00"]  # London open
+    
+  costs:
+    spread_pips: 2.5            # Wider spread than EUR/USD
+    commission_per_lot: 0.0
+  
+  data_sources:
+    primary: yahoo
+    alternatives:
+      - oanda
+  
+  risk:
+    typical_volatility: 0.15    # Higher volatility
+    max_position_size: 0.20
+    max_leverage: 10.0
+  
+  notes: |
+    Known as "The Dragon" or "The Beast" - high volatility.
+    Large intraday swings. Good for breakout strategies.
+    Higher spreads due to volatility.
+
+# USD/JPY (US Dollar / Japanese Yen)
+USD/JPY:
+  symbol: USDJPY=X
+  name: US Dollar Japanese Yen
+  pair: USD/JPY
+  exchange: FX
+  asset_class: forex
+  
+  trading:
+    calendar: FOREX
+    pip_size: 0.01
+    min_trade_size: 1000
+    standard_lot: 100000
+  
+  sessions:
+    most_active: ["00:00", "09:00"]  # Tokyo and London opens
+    
+  costs:
+    spread_pips: 1.2
+    commission_per_lot: 0.0
+  
+  data_sources:
+    primary: yahoo
+    alternatives:
+      - oanda
+  
+  risk:
+    typical_volatility: 0.11
+    max_position_size: 0.25
+    max_leverage: 10.0
+  
+  notes: |
+    Major safe-haven currency. Inversely correlated with risk assets.
+    Heavily influenced by Bank of Japan policy.
+
+# GBP/USD (British Pound / US Dollar)
+GBP/USD:
+  symbol: GBPUSD=X
+  name: British Pound US Dollar
+  pair: GBP/USD
+  exchange: FX
+  asset_class: forex
+  
+  trading:
+    calendar: FOREX
+    pip_size: 0.0001
+    min_trade_size: 1000
+    standard_lot: 100000
+  
+  sessions:
+    most_active: ["08:00", "13:00"]  # London and NY opens
+    
+  costs:
+    spread_pips: 1.5
+    commission_per_lot: 0.0
+  
+  data_sources:
+    primary: yahoo
+    alternatives:
+      - oanda
+  
+  risk:
+    typical_volatility: 0.12
+    max_position_size: 0.25
+    max_leverage: 10.0
+  
+  notes: |
+    Known as "Cable". Highly liquid major pair.
+    Sensitive to UK economic data and Brexit developments.
+
+# AUD/USD (Australian Dollar / US Dollar)
+AUD/USD:
+  symbol: AUDUSD=X
+  name: Australian Dollar US Dollar
+  pair: AUD/USD
+  exchange: FX
+  asset_class: forex
+  
+  trading:
+    calendar: FOREX
+    pip_size: 0.0001
+    min_trade_size: 1000
+    standard_lot: 100000
+  
+  sessions:
+    most_active: ["22:00", "00:00"]  # Sydney/Tokyo overlap
+    
+  costs:
+    spread_pips: 1.8
+    commission_per_lot: 0.0
+  
+  data_sources:
+    primary: yahoo
+    alternatives:
+      - oanda
+  
+  risk:
+    typical_volatility: 0.13
+    max_position_size: 0.20
+    max_leverage: 10.0
+  
+  notes: |
+    Commodity currency, correlated with gold and iron ore.
+    Good for carry trades when RBA rates are high.
+
+# USD/CAD (US Dollar / Canadian Dollar)
+USD/CAD:
+  symbol: USDCAD=X
+  name: US Dollar Canadian Dollar
+  pair: USD/CAD
+  exchange: FX
+  asset_class: forex
+  
+  trading:
+    calendar: FOREX
+    pip_size: 0.0001
+    min_trade_size: 1000
+    standard_lot: 100000
+  
+  sessions:
+    most_active: ["13:00", "15:00"]  # NY session
+    
+  costs:
+    spread_pips: 1.6
+    commission_per_lot: 0.0
+  
+  data_sources:
+    primary: yahoo
+    alternatives:
+      - oanda
+  
+  risk:
+    typical_volatility: 0.10
+    max_position_size: 0.25
+    max_leverage: 10.0
+  
+  notes: |
+    Known as "The Loonie". Highly correlated with oil prices.
+    Less volatile than other majors.
+
+# General Forex Trading Parameters
+defaults:
+  calendar: FOREX
+  pip_size: 0.0001              # Standard for most pairs
+  min_trade_size: 1000          # Micro lot
+  standard_lot: 100000
+  
+  # Costs
+  spread_pips: 2.0              # Conservative estimate
+  commission_per_lot: 0.0       # Usually spread-based
+  
+  # Risk
+  max_position_size: 0.25       # Default max allocation
+  max_leverage: 10.0            # Conservative retail limit
+  stop_loss_default: 0.02       # 2% (200 pips for EUR/USD)
+  
+  # Sessions (UTC)
+  session_times:
+    sydney: "22:00-07:00"
+    tokyo: "00:00-09:00"
+    london: "08:00-17:00"
+    new_york: "13:00-22:00"
+  
+  # Data
+  default_source: yahoo
+  default_timeframe: daily
+  
+  # Backtesting notes
+  notes: |
+    - Forex trades 24/5 (closes Friday 17:00 EST, opens Sunday 17:00 EST)
+    - Use appropriate calendar (FOREX) not equity calendar
+    - Spreads widen during low liquidity (Asian session, news events)
+    - Major pairs have tighter spreads than exotic pairs
+    - Leverage magnifies both gains and losses
+    - Consider rollover/swap rates for overnight positions
+    - Session overlaps (London/NY) have highest liquidity
+

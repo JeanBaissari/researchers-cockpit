@@ -1,0 +1,90 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+venv/
+ENV/
+env/
+.venv
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# Environment Variables
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Data Files (except .gitkeep)
+data/bundles/*
+!data/bundles/.gitkeep
+data/cache/*
+!data/cache/.gitkeep
+data/exports/*
+!data/exports/.gitkeep
+
+# Results (keep structure, not content)
+results/*
+!results/.gitkeep
+
+# Reports (generated)
+reports/*
+!reports/.gitkeep
+
+# Logs
+logs/*
+!logs/.gitkeep
+*.log
+
+# Notebook Sandbox
+notebooks/_sandbox/*
+!notebooks/_sandbox/.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Zipline
+.zipline/data/
+.zipline/*.db
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+

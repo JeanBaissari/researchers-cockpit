@@ -1,0 +1,1 @@
+Tests Zipline-Reloaded compatibility and pipeline functionality.

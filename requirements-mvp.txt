@@ -1,0 +1,23 @@
+# MVP Requirements for Stage 2
+# Core dependencies needed for basic backtesting
+
+# Core
+zipline-reloaded>=3.0.0
+pandas>=2.0.0
+numpy>=1.24.0
+pyarrow>=14.0.0
+exchange-calendars>=4.5.0
+
+# Data Sources
+yfinance>=0.2.30
+
+# Utilities (required for lib modules)
+pyyaml>=6.0.1
+click>=8.1.0
+
+# Visualization (for equity curve plots)
+matplotlib>=3.7.0
+
+# Note: empyrical, scipy, seaborn, plotly, etc. are for Stage 3
+# Install full requirements.txt later when needed
+

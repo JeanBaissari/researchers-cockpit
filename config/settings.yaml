@@ -1,0 +1,91 @@
+# Global Settings for The Researcher's Cockpit
+# ==============================================================================
+# This file contains all global configuration for the trading research environment.
+# Modify these values to change system-wide behavior.
+
+# Capital Configuration
+capital:
+  default_initial: 100000  # Starting capital for backtests
+  currency: USD            # Base currency
+
+# Date Range Defaults
+dates:
+  default_start: "2020-01-01"  # Default backtest start date (YYYY-MM-DD)
+  default_end: null             # null = use today's date
+
+# Backtesting Configuration
+backtesting:
+  data_frequency: daily         # 'daily' or 'minute'
+  benchmark: SPY                # Default benchmark symbol
+  
+  # Commission Defaults (override in strategy if needed)
+  commission:
+    equities_per_share: 0.005   # Per share commission
+    equities_min_cost: 1.0      # Minimum commission per trade
+    crypto_percent: 0.001       # Crypto exchange fee (0.1%)
+    forex_per_trade: 0.0        # Forex brokers often have spread instead
+  
+  # Slippage Defaults
+  slippage:
+    volume_limit: 0.025         # Max % of bar volume (2.5%)
+    price_impact: 0.1           # Price impact coefficient
+
+# Metrics Configuration
+metrics:
+  risk_free_rate: 0.04          # Annual risk-free rate for Sharpe/Sortino
+  trading_days_per_year: 252    # Used for annualization
+
+# Results Configuration
+results:
+  auto_symlink: true            # Automatically create 'latest' symlink
+  save_plots: true              # Save equity curve plots
+  plot_format: png              # 'png', 'svg', or 'pdf'
+
+# Optimization Configuration
+optimization:
+  default_objective: sharpe     # 'sharpe', 'sortino', 'calmar', 'return'
+  default_train_pct: 0.7        # In-sample percentage (70%)
+  max_parallel_jobs: 4          # CPU cores for parallel optimization
+
+# Validation Configuration
+validation:
+  walkforward:
+    default_train_period: 252   # Trading days for training
+    default_test_period: 63     # Trading days for testing
+    min_train_observations: 100 # Minimum data points required
+  
+  montecarlo:
+    default_simulations: 1000   # Number of simulation paths
+    confidence_levels: [0.05, 0.50, 0.95]  # Percentiles to report
+
+# Logging Configuration
+logging:
+  level: INFO                   # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  date_format: "%Y-%m-%d %H:%M:%S"
+  
+  # File Logging
+  file_logging:
+    enabled: true
+    directory: logs
+    max_bytes: 10485760         # 10MB per log file
+    backup_count: 5             # Keep 5 backup files
+
+# Report Configuration
+reports:
+  auto_generate: false          # Auto-generate after backtest/optimization
+  format: markdown              # 'markdown' or 'html'
+  include_charts: true          # Embed charts in reports
+
+# Data Configuration
+data:
+  cache:
+    enabled: true
+    ttl_hours: 24               # Time to live for cached data
+    auto_clean: true            # Clean expired cache automatically
+  
+  bundles:
+    default_equity: quandl      # Default equity bundle name
+    default_crypto: yahoo_crypto
+    default_forex: oanda_forex
+

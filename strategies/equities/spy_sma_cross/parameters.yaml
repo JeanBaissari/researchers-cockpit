@@ -1,0 +1,52 @@
+# Strategy Parameters
+# ==============================================================================
+# All tunable parameters for this strategy.
+# NO hardcoded parameters in strategy.py - everything comes from here.
+
+# Strategy Configuration
+strategy:
+  asset_symbol: SPY              # Asset to trade
+  rebalance_frequency: daily     # 'daily', 'weekly', 'monthly'
+  minutes_after_open: 30         # Minutes after market open to trade (0-60)
+  
+  # SMA Crossover Parameters
+  fast_period: 10                # Fast SMA period
+  slow_period: 30                # Slow SMA period
+  trend_filter_period: 0         # Trend filter (0 = disabled)
+
+# Position Sizing
+position_sizing:
+  max_position_pct: 0.95         # Maximum portfolio allocation (0.0-1.0)
+  method: fixed                   # 'fixed', 'volatility_scaled', 'kelly'
+  
+  # Volatility scaling (if method = volatility_scaled)
+  volatility_lookback: 20         # Days for volatility calculation
+  volatility_target: 0.15        # Target annualized volatility
+
+# Risk Management
+risk:
+  use_stop_loss: true             # Enable stop loss
+  stop_loss_pct: 0.05             # Stop loss percentage (0.01-0.10)
+  
+  use_trailing_stop: false        # Use trailing stop instead of fixed
+  trailing_stop_pct: 0.08        # Trailing stop percentage
+  
+  use_take_profit: false          # Enable take profit
+  take_profit_pct: 0.10           # Take profit percentage
+
+# Costs (override defaults from config/settings.yaml if needed)
+costs:
+  commission:
+    per_share: 0.005              # Commission per share
+    min_cost: 1.0                 # Minimum commission per trade
+  
+  slippage:
+    volume_limit: 0.025          # Max % of bar volume (2.5%)
+    price_impact: 0.1             # Price impact coefficient
+
+# Notes
+notes: |
+  SMA Crossover Strategy for SPY
+  - Buy when fast SMA crosses above slow SMA (golden cross)
+  - Sell when fast SMA crosses below slow SMA (death cross)
+  - Simple trend-following strategy for testing MVP

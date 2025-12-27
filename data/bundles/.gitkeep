@@ -1,0 +1,3 @@
+# This directory stores Zipline-ingested data bundles
+# Bundles are created via: python scripts/ingest_data.py
+

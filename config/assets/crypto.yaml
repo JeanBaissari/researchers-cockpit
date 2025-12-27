@@ -1,0 +1,171 @@
+# Cryptocurrency Asset Configurations
+# ==============================================================================
+# Definitions and parameters for crypto trading pairs
+
+# Bitcoin
+BTC-USD:
+  symbol: BTC-USD
+  name: Bitcoin
+  exchange: Composite
+  asset_class: crypto
+  
+  trading:
+    calendar: CRYPTO            # 24/7 trading
+    min_trade_size: 0.0001      # Minimum order size
+    tick_size: 0.01             # Price increment
+    
+  costs:
+    commission_pct: 0.001       # 0.1% typical exchange fee
+    slippage_pct: 0.0005        # 0.05% typical slippage
+  
+  data_sources:
+    primary: yahoo
+    alternatives:
+      - binance
+      - coinbase
+  
+  risk:
+    typical_volatility: 0.60    # ~60% annualized
+    max_position_size: 0.20     # 20% max portfolio allocation
+  
+  notes: |
+    Most liquid crypto asset. Deep orderbooks on major exchanges.
+    High volatility requires careful position sizing.
+
+# Ethereum
+ETH-USD:
+  symbol: ETH-USD
+  name: Ethereum
+  exchange: Composite
+  asset_class: crypto
+  
+  trading:
+    calendar: CRYPTO
+    min_trade_size: 0.001
+    tick_size: 0.01
+  
+  costs:
+    commission_pct: 0.001
+    slippage_pct: 0.0007        # Slightly higher than BTC
+  
+  data_sources:
+    primary: yahoo
+    alternatives:
+      - binance
+      - coinbase
+  
+  risk:
+    typical_volatility: 0.70    # Higher vol than BTC
+    max_position_size: 0.15
+  
+  notes: |
+    Second largest crypto by market cap. Higher volatility than BTC.
+
+# Solana
+SOL-USD:
+  symbol: SOL-USD
+  name: Solana
+  exchange: Composite
+  asset_class: crypto
+  
+  trading:
+    calendar: CRYPTO
+    min_trade_size: 0.01
+    tick_size: 0.01
+  
+  costs:
+    commission_pct: 0.001
+    slippage_pct: 0.0015        # Less liquid than BTC/ETH
+  
+  data_sources:
+    primary: yahoo
+    alternatives:
+      - binance
+  
+  risk:
+    typical_volatility: 0.90    # Very high volatility
+    max_position_size: 0.10     # Limit exposure
+  
+  notes: |
+    Smaller market cap, higher volatility, less liquid.
+    Consider reduced position sizes.
+
+# Cardano
+ADA-USD:
+  symbol: ADA-USD
+  name: Cardano
+  exchange: Composite
+  asset_class: crypto
+  
+  trading:
+    calendar: CRYPTO
+    min_trade_size: 1.0
+    tick_size: 0.0001
+  
+  costs:
+    commission_pct: 0.001
+    slippage_pct: 0.0012
+  
+  data_sources:
+    primary: yahoo
+    alternatives:
+      - binance
+  
+  risk:
+    typical_volatility: 0.85
+    max_position_size: 0.10
+  
+  notes: |
+    Lower price per unit, require larger quantities for meaningful positions.
+
+# XRP
+XRP-USD:
+  symbol: XRP-USD
+  name: Ripple
+  exchange: Composite
+  asset_class: crypto
+  
+  trading:
+    calendar: CRYPTO
+    min_trade_size: 1.0
+    tick_size: 0.0001
+  
+  costs:
+    commission_pct: 0.001
+    slippage_pct: 0.0010
+  
+  data_sources:
+    primary: yahoo
+    alternatives:
+      - binance
+  
+  risk:
+    typical_volatility: 0.75
+    max_position_size: 0.10
+  
+  notes: |
+    Subject to regulatory uncertainty. Monitor legal developments.
+
+# General Crypto Trading Parameters
+defaults:
+  calendar: CRYPTO
+  commission_pct: 0.001         # Standard exchange fee
+  slippage_pct: 0.001           # Default slippage assumption
+  max_position_size: 0.15       # Default max allocation
+  
+  # Risk parameters
+  stop_loss_default: 0.15       # 15% stop loss
+  take_profit_default: 0.30     # 30% take profit
+  
+  # Data
+  default_source: yahoo
+  default_timeframe: daily
+  
+  # Backtesting notes
+  notes: |
+    - Crypto markets are highly volatile
+    - Use wider stops than traditional assets
+    - Consider transaction costs carefully
+    - Liquidity varies significantly between assets
+    - Weekend trading means different dynamics than equities
+
