@@ -29,7 +29,7 @@ The current implementation has several issues with calendar registration:
 - [ ] Add `start` and `end` bounds to calendar instantiation
 
 ### backtest.py Fixes
-- [ ] Fix import path: `from .extension import ...` (not v1_researchers_cockpit)
+- [ ] Fix import path: `from .extension import ...` (not v1_researchers_cockpit, but from: /home/jeanbaissari/Documents/Programming/python-projects/algorithmic_trading/v1_researchers_cockpit/.zipline/extension.py to be precise)
 - [ ] Fix registration call: use calendar name, not asset class
 - [ ] Move calendar registration to earlier in execution (before bundle loading)
 - [ ] Add fallback if custom calendar fails
