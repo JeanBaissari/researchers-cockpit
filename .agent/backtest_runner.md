@@ -80,6 +80,44 @@ print('Dates valid')
 "
 ```
 
+### 6. Warmup Period Validation
+
+**CRITICAL:** Ensure the backtest period is long enough for indicator initialization.
+
+```python
+from lib.config import load_strategy_params, get_warmup_days
+from datetime import datetime
+
+# Load strategy parameters
+params = load_strategy_params("${STRATEGY_NAME}", "${ASSET_CLASS}")
+
+# Get required warmup days
+warmup_days = get_warmup_days(params)
+
+# Calculate available days
+start = datetime.strptime("${START_DATE}", '%Y-%m-%d')
+end = datetime.strptime("${END_DATE}", '%Y-%m-%d')
+available_days = (end - start).days
+
+if available_days <= warmup_days:
+    print(f"ERROR: Insufficient data for warmup")
+    print(f"  Required warmup: {warmup_days} days")
+    print(f"  Available: {available_days} days")
+    print(f"  Solution: Extend date range or reduce indicator periods")
+else:
+    print(f"Warmup validation passed: {warmup_days} days required, {available_days} days available")
+```
+
+**Why this matters:**
+- Strategies with long indicator periods (e.g., 200-day SMA) need 200+ days of data before generating signals
+- Without sufficient warmup, the backtest runs but produces 0% returns (no trades executed)
+- The pre-flight validation catches this early with a clear error message
+
+**Configuration:**
+- Set `warmup_days` in `parameters.yaml` → `backtest.warmup_days`
+- If not set, calculated dynamically from max of all `*_period` parameters
+- Disable validation with `backtest.validate_warmup: false` (not recommended)
+
 ---
 
 ## Execution Steps
@@ -356,6 +394,33 @@ params = yaml.safe_load(open('strategies/${ASSET_CLASS}/${STRATEGY_NAME}/paramet
 **Solution:**
 - Increase capital_base in backtest call
 - Or reduce max_position_pct in parameters.yaml
+
+### Error: "Insufficient data for strategy warmup"
+
+**Cause:** Backtest period is shorter than required warmup days for indicator initialization.
+
+**Solution:**
+```bash
+# Option 1: Extend the backtest date range
+python scripts/run_backtest.py --strategy ${STRATEGY_NAME} \
+    --start 2019-01-01 --end 2024-01-01
+
+# Option 2: Reduce indicator periods in parameters.yaml
+# Change slow_period from 200 to 50, for example
+
+# Option 3: Increase warmup_days if auto-calculation is wrong
+# Edit parameters.yaml:
+#   backtest:
+#     warmup_days: 200
+
+# Option 4: Skip validation (not recommended)
+python scripts/run_backtest.py --strategy ${STRATEGY_NAME} --skip-warmup-check
+```
+
+**Prevention:**
+- Always calculate warmup_days as max(all indicator periods)
+- For 50/200 SMA crossover, use warmup_days: 200
+- Ensure bundle contains data from (start_date - warmup_days)
 
 ---
 
