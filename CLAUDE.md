@@ -54,29 +54,28 @@ Comprehensive fixes for multi-asset class data ingestion and backtesting:
 
 See `tasks/v1.0.5/` for detailed implementation notes.
 
-### 🔶 v1.0.6 Multi-Timeframe Data Ingestion (2025-12-28)
-Infrastructure for ingesting multiple timeframes (1m, 5m, 15m, 30m, 1h, daily, weekly, monthly):
-- **Timeframe Configuration**: `TIMEFRAME_TO_YF_INTERVAL`, `TIMEFRAME_DATA_LIMITS` in `lib/data_loader.py`
+### ✅ v1.0.6 Multi-Timeframe Data Ingestion Complete (2025-12-28)
+Full multi-timeframe data ingestion for Zipline-Reloaded:
+- **Supported Timeframes**: 1m, 5m, 15m, 30m, 1h, daily (all asset classes)
+- **Timeframe Configuration**: `TIMEFRAME_TO_YF_INTERVAL`, `TIMEFRAME_DATA_LIMITS`, `CALENDAR_MINUTES_PER_DAY` in `lib/data_loader.py`
 - **CLI Enhancement**: `--timeframe` and `--list-timeframes` options in `scripts/ingest_data.py`
-- **Bundle Naming**: Convention updated to `{source}_{asset}_{timeframe}`
+- **Bundle Naming**: Convention `{source}_{asset}_{timeframe}`
 - **Date Validation**: Auto-adjustment for limited timeframes (e.g., 5m = 55 days max)
 - **Data Aggregation**: `aggregate_ohlcv()`, `resample_to_timeframe()` utilities in `lib/utils.py`
+- **24/7 Market Support**: `minutes_per_day=1440` for CRYPTO/FOREX calendars
+
+**Key Fix**: Added `minutes_per_day` parameter to bundle registration for correct minute bar indexing.
 
 **Verified Working:**
-- Daily data: All asset classes (equities, crypto, forex)
-- Hourly/5-minute: Equities only (SPY 1h, AAPL 5m)
+- Equities: 5m, 15m, 30m, 1h, daily
+- Crypto: 5m, 1h, daily
+- Forex: 1h, daily
 
-**Known Issues (Require Architecture Fixes):**
-- Crypto minute data ingestion fails (needs investigation - NOT a Zipline limitation)
-- Using session-level calendar APIs for minute data (should use minute-level APIs)
-- Temporary workarounds applied: skip calendar filtering & gap-filling for intraday
+**Limitations:**
+- Weekly/monthly NOT compatible with Zipline bundles (use aggregation from daily)
+- 4h requires aggregation from 1h (yfinance doesn't support 4h natively)
 
-**Architecture Fixes Needed:**
-- Replace `sessions_in_range()` with `minutes_for_sessions_in_range()` for minute data
-- Verify `exchange_calendars` CRYPTO calendar configuration
-- Study Zipline's `bcolz_minute_bars.py` for proper minute bar writer usage
-
-See `tasks/v1.0.6/` for detailed status, corrections, and remaining work.
+See `tasks/v1.0.6/` for detailed documentation.
 
 ### 🚧 Implementation Needed
 Everything described in `README.md` and `project.structure.md` needs to be created.

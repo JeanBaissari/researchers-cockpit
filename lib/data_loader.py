@@ -70,24 +70,48 @@ TIMEFRAME_DATA_LIMITS: Dict[str, Optional[int]] = {
 }
 
 # Zipline data frequency classification
+# NOTE: weekly/monthly are NOT compatible with Zipline bundles.
+# Zipline's daily bar writer expects data for EVERY trading session.
+# Weekly/monthly data should be aggregated from daily data using lib/utils.py
 TIMEFRAME_TO_DATA_FREQUENCY: Dict[str, str] = {
     '1m': 'minute',
-    '2m': 'minute',
     '5m': 'minute',
     '15m': 'minute',
     '30m': 'minute',
     '1h': 'minute',   # Zipline treats all sub-daily as 'minute'
-    '4h': 'minute',
+    '4h': 'minute',   # Requires aggregation from 1h (yfinance doesn't support 4h)
     'daily': 'daily',
     '1d': 'daily',
-    'weekly': 'daily',  # Zipline only supports daily/minute
-    '1wk': 'daily',
-    'monthly': 'daily',
-    '1mo': 'daily',
+    # weekly/monthly removed - use aggregation from daily data instead
 }
 
 # Valid timeframes for CLI
 VALID_TIMEFRAMES = list(TIMEFRAME_TO_YF_INTERVAL.keys())
+
+# Minutes per day for different calendar types
+# This is critical for minute bar writers to correctly index data
+CALENDAR_MINUTES_PER_DAY: Dict[str, int] = {
+    'XNYS': 390,      # NYSE: 9:30 AM - 4:00 PM = 6.5 hours = 390 minutes
+    'XNAS': 390,      # NASDAQ: Same as NYSE
+    'CRYPTO': 1440,   # Crypto: 24/7 = 24 * 60 = 1440 minutes
+    'FOREX': 1440,    # Forex: 24/5 (but each day is 24 hours)
+}
+
+def get_minutes_per_day(calendar_name: str) -> int:
+    """
+    Get the number of trading minutes per day for a calendar.
+
+    This is required for proper minute bar writer configuration.
+    24/7 markets (CRYPTO) and 24/5 markets (FOREX) have 1440 minutes per day.
+    Standard equity markets have ~390 minutes (6.5 hours).
+
+    Args:
+        calendar_name: Trading calendar name (e.g., 'XNYS', 'CRYPTO', 'FOREX')
+
+    Returns:
+        Number of trading minutes per day
+    """
+    return CALENDAR_MINUTES_PER_DAY.get(calendar_name.upper(), 390)
 
 
 def get_timeframe_info(timeframe: str) -> Dict[str, Any]:
@@ -299,7 +323,12 @@ def _register_yahoo_bundle(
         # Use the first session of the calendar as start_session
         first_session = calendar_obj.first_session
 
-        @register(bundle_name, calendar_name=calendar_name)
+        # Get minutes_per_day for the calendar type
+        # CRITICAL: This must be set correctly for minute bar writers
+        # 24/7 markets (CRYPTO) need 1440, standard markets use 390
+        mpd = get_minutes_per_day(calendar_name)
+
+        @register(bundle_name, calendar_name=calendar_name, minutes_per_day=mpd)
         def yahoo_ingest(environ, asset_db_writer, minute_bar_writer,
                          daily_bar_writer, adjustment_writer, calendar,
                          start_session, end_session, cache, show_progress, timestamp):
@@ -597,6 +626,16 @@ def ingest_bundle(
         tf_info = get_timeframe_info(timeframe)
     except ValueError as e:
         raise ValueError(str(e))
+
+    # Reject weekly/monthly - they're not compatible with Zipline bundles
+    # Zipline's daily bar writer expects data for EVERY trading session
+    if timeframe in ('weekly', '1wk', 'monthly', '1mo'):
+        raise ValueError(
+            f"Timeframe '{timeframe}' is not compatible with Zipline bundles. "
+            f"Zipline's daily bar writer expects data for every trading session. "
+            f"For weekly/monthly data, ingest daily data and use lib/utils.py "
+            f"aggregation functions (aggregate_ohlcv, resample_to_timeframe)."
+        )
 
     # Get source config
     try:
