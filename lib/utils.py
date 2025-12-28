@@ -13,9 +13,18 @@ import pandas as pd # Added pandas import
 
 
 def get_project_root() -> Path:
-    """Get the project root directory."""
-    # Assuming this file is in lib/, go up one level
-    return Path(__file__).parent.parent
+    """
+    Get the project root directory.
+
+    Uses marker-based discovery for robust root resolution.
+    Delegates to lib.paths for the actual implementation.
+
+    Returns:
+        Path: Absolute path to project root
+    """
+    # Import here to avoid circular imports during module loading
+    from .paths import get_project_root as _get_project_root
+    return _get_project_root()
 
 
 def ensure_dir(path: Path) -> Path:
@@ -273,6 +282,101 @@ def normalize_to_calendar_timezone(
     import warnings
     warnings.warn("normalize_to_calendar_timezone is deprecated, use normalize_to_utc", DeprecationWarning)
     return normalize_to_utc(dt)
+
+
+def fill_data_gaps(
+    df: pd.DataFrame,
+    calendar: 'TradingCalendar',
+    method: str = 'ffill',
+    max_gap_days: int = 5
+) -> pd.DataFrame:
+    """
+    Fill gaps in OHLCV data to match trading calendar sessions.
+
+    This function is primarily used for FOREX data where Yahoo Finance
+    may have inconsistent data coverage that doesn't align with the
+    FOREX trading calendar (Mon-Fri 24h).
+
+    Args:
+        df: DataFrame with DatetimeIndex and OHLCV columns
+        calendar: Trading calendar object (e.g., from get_calendar('FOREX'))
+        method: Gap-filling method ('ffill' or 'bfill')
+        max_gap_days: Maximum consecutive days to fill (gaps larger than this are logged)
+
+    Returns:
+        DataFrame with gaps filled according to calendar sessions
+
+    Notes:
+        - Forward-fill preserves last known price (standard forex practice)
+        - Volume is set to 0 for synthetic bars (signals no real trades)
+        - Gaps exceeding max_gap_days are logged as warnings but still filled
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    if df.empty:
+        return df
+
+    # Ensure index is DatetimeIndex
+    if not isinstance(df.index, pd.DatetimeIndex):
+        df.index = pd.DatetimeIndex(df.index)
+
+    # Get calendar sessions within our data range
+    start_date = df.index.min()
+    end_date = df.index.max()
+
+    try:
+        # Get all sessions from the trading calendar
+        sessions = calendar.sessions_in_range(start_date, end_date)
+
+        if len(sessions) == 0:
+            logger.warning(f"No calendar sessions found between {start_date} and {end_date}")
+            return df
+
+        # Normalize both to timezone-naive for comparison
+        sessions_naive = sessions.tz_localize(None) if sessions.tz is not None else sessions
+        df_index_naive = df.index.tz_localize(None) if df.index.tz is not None else df.index
+
+        # Find missing dates
+        missing_dates = sessions_naive.difference(df_index_naive.normalize())
+
+        if len(missing_dates) > 0:
+            logger.info(f"Found {len(missing_dates)} missing dates, filling gaps...")
+
+            # Check for large gaps
+            if len(missing_dates) > 1:
+                sorted_missing = missing_dates.sort_values()
+                gap_sizes = (sorted_missing[1:] - sorted_missing[:-1]).days
+                if hasattr(gap_sizes, 'max') and len(gap_sizes) > 0:
+                    max_gap = int(gap_sizes.max()) if hasattr(gap_sizes, 'max') else max_gap_days
+                    if max_gap > max_gap_days:
+                        logger.warning(
+                            f"Large gap detected: {max_gap} consecutive days. "
+                            f"This may indicate data source issues."
+                        )
+
+        # Reindex to include all calendar sessions
+        df_reindexed = df.reindex(sessions_naive)
+
+        # Forward-fill prices
+        if method == 'ffill':
+            df_reindexed[['open', 'high', 'low', 'close']] = df_reindexed[['open', 'high', 'low', 'close']].ffill()
+        elif method == 'bfill':
+            df_reindexed[['open', 'high', 'low', 'close']] = df_reindexed[['open', 'high', 'low', 'close']].bfill()
+
+        # Set volume to 0 for filled rows (synthetic bars have no volume)
+        if 'volume' in df_reindexed.columns:
+            df_reindexed['volume'] = df_reindexed['volume'].fillna(0).astype(int)
+
+        # Restore timezone if original had one
+        if df.index.tz is not None:
+            df_reindexed.index = df_reindexed.index.tz_localize(df.index.tz)
+
+        return df_reindexed
+
+    except Exception as e:
+        logger.error(f"Failed to fill data gaps: {e}")
+        return df
 
 
 def check_and_fix_symlinks(
