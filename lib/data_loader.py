@@ -2,15 +2,20 @@
 Data loading and bundle management for The Researcher's Cockpit.
 
 Provides functions to ingest data from various sources into Zipline bundles
-and manage cached API responses.
+and manage cached API responses. Supports multiple timeframes including:
+- daily (1d): Full historical data
+- 1h: Up to 730 days (yfinance limit)
+- 30m, 15m, 5m: Up to 60 days (yfinance limit)
+- 1m: Up to 7 days (yfinance limit)
 """
 
 # Standard library imports
 import json
+import logging
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List, Optional, Union, Any
+from typing import List, Optional, Union, Any, Dict
 
 # Third-party imports
 import numpy as np
@@ -21,6 +26,141 @@ from zipline.utils.calendar_utils import get_calendar
 # Local imports
 from .config import get_data_source, load_settings
 from .utils import get_project_root, ensure_dir, fill_data_gaps, normalize_to_utc
+
+logger = logging.getLogger(__name__)
+
+# =============================================================================
+# TIMEFRAME CONFIGURATION
+# =============================================================================
+
+# Supported timeframes with their yfinance interval codes
+TIMEFRAME_TO_YF_INTERVAL: Dict[str, str] = {
+    '1m': '1m',
+    '2m': '2m',
+    '5m': '5m',
+    '15m': '15m',
+    '30m': '30m',
+    '1h': '1h',
+    '4h': '4h',      # Note: yfinance doesn't support 4h natively, requires aggregation
+    'daily': '1d',
+    '1d': '1d',
+    'weekly': '1wk',
+    '1wk': '1wk',
+    'monthly': '1mo',
+    '1mo': '1mo',
+}
+
+# Data retention limits for yfinance (in days)
+# These are CONSERVATIVE limits - slightly less than Yahoo Finance maximums
+# to avoid edge-case rejections from the API
+TIMEFRAME_DATA_LIMITS: Dict[str, Optional[int]] = {
+    '1m': 6,         # 7 days max, use 6 for safety
+    '2m': 55,        # 60 days max, use 55 for safety
+    '5m': 55,        # 60 days max, use 55 for safety
+    '15m': 55,       # 60 days max, use 55 for safety
+    '30m': 55,       # 60 days max, use 55 for safety
+    '1h': 720,       # 730 days max, use 720 for safety
+    '4h': 55,        # 60 days max (via 1h aggregation)
+    'daily': None,   # Unlimited
+    '1d': None,      # Unlimited
+    'weekly': None,  # Unlimited
+    '1wk': None,     # Unlimited
+    'monthly': None, # Unlimited
+    '1mo': None,     # Unlimited
+}
+
+# Zipline data frequency classification
+TIMEFRAME_TO_DATA_FREQUENCY: Dict[str, str] = {
+    '1m': 'minute',
+    '2m': 'minute',
+    '5m': 'minute',
+    '15m': 'minute',
+    '30m': 'minute',
+    '1h': 'minute',   # Zipline treats all sub-daily as 'minute'
+    '4h': 'minute',
+    'daily': 'daily',
+    '1d': 'daily',
+    'weekly': 'daily',  # Zipline only supports daily/minute
+    '1wk': 'daily',
+    'monthly': 'daily',
+    '1mo': 'daily',
+}
+
+# Valid timeframes for CLI
+VALID_TIMEFRAMES = list(TIMEFRAME_TO_YF_INTERVAL.keys())
+
+
+def get_timeframe_info(timeframe: str) -> Dict[str, Any]:
+    """
+    Get comprehensive information about a timeframe.
+
+    Args:
+        timeframe: Timeframe string (e.g., '1h', 'daily', '5m')
+
+    Returns:
+        Dictionary with yf_interval, data_limit_days, data_frequency, is_intraday
+
+    Raises:
+        ValueError: If timeframe is not supported
+    """
+    timeframe = timeframe.lower()
+    if timeframe not in TIMEFRAME_TO_YF_INTERVAL:
+        raise ValueError(
+            f"Unsupported timeframe: {timeframe}. "
+            f"Valid options: {VALID_TIMEFRAMES}"
+        )
+
+    return {
+        'timeframe': timeframe,
+        'yf_interval': TIMEFRAME_TO_YF_INTERVAL[timeframe],
+        'data_limit_days': TIMEFRAME_DATA_LIMITS.get(timeframe),
+        'data_frequency': TIMEFRAME_TO_DATA_FREQUENCY.get(timeframe, 'daily'),
+        'is_intraday': timeframe not in ('daily', '1d', 'weekly', '1wk', 'monthly', '1mo'),
+    }
+
+
+def validate_timeframe_date_range(
+    timeframe: str,
+    start_date: Optional[str],
+    end_date: Optional[str]
+) -> tuple:
+    """
+    Validate and adjust date range based on timeframe data limits.
+
+    Args:
+        timeframe: Timeframe string
+        start_date: Requested start date (YYYY-MM-DD)
+        end_date: Requested end date (YYYY-MM-DD)
+
+    Returns:
+        Tuple of (adjusted_start_date, adjusted_end_date, warning_message)
+    """
+    info = get_timeframe_info(timeframe)
+    limit_days = info['data_limit_days']
+    warning = None
+
+    if limit_days is None:
+        # No limit, return as-is
+        return start_date, end_date, None
+
+    # Calculate the earliest available date
+    today = datetime.now().date()
+    earliest_available = today - timedelta(days=limit_days)
+
+    # Parse start_date if provided
+    if start_date:
+        requested_start = datetime.strptime(start_date, '%Y-%m-%d').date()
+        if requested_start < earliest_available:
+            warning = (
+                f"Warning: {timeframe} data only available for last {limit_days} days. "
+                f"Adjusting start_date from {start_date} to {earliest_available.isoformat()}"
+            )
+            start_date = earliest_available.isoformat()
+    else:
+        # Default to earliest available for limited timeframes
+        start_date = earliest_available.isoformat()
+
+    return start_date, end_date, warning
 
 
 def _get_bundle_registry_path() -> Path:
@@ -54,7 +194,8 @@ def _register_bundle_metadata(
     calendar_name: str,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    data_frequency: str = 'daily'
+    data_frequency: str = 'daily',
+    timeframe: str = 'daily'
 ) -> None:
     """
     Persist bundle metadata to registry file.
@@ -64,8 +205,9 @@ def _register_bundle_metadata(
         symbols: List of symbols in the bundle
         calendar_name: Trading calendar name
         start_date: Start date for data
-        end_date: End date for data
-        data_frequency: Data frequency ('daily' or 'minute')
+        end_date: End date for data (actual date string, not the timeframe)
+        data_frequency: Zipline data frequency ('daily' or 'minute')
+        timeframe: Actual data timeframe ('1m', '5m', '1h', 'daily', etc.)
     """
     registry = _load_bundle_registry()
     registry[bundle_name] = {
@@ -74,6 +216,7 @@ def _register_bundle_metadata(
         'start_date': start_date,
         'end_date': end_date,
         'data_frequency': data_frequency,
+        'timeframe': timeframe,
         'registered_at': datetime.now().isoformat()
     }
     _save_bundle_registry(registry)
@@ -117,10 +260,11 @@ def _register_yahoo_bundle(
     calendar_name: str = 'XNYS',
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    data_frequency: str = 'daily'
+    data_frequency: str = 'daily',
+    timeframe: str = 'daily'
 ):
     """
-    Register a Yahoo Finance bundle.
+    Register a Yahoo Finance bundle with multi-timeframe support.
 
     Args:
         bundle_name: Name for the bundle
@@ -128,14 +272,18 @@ def _register_yahoo_bundle(
         calendar_name: Trading calendar name
         start_date: Start date for data (YYYY-MM-DD)
         end_date: End date for data (YYYY-MM-DD)
-        data_frequency: Data frequency ('daily' or 'minute')
+        data_frequency: Zipline data frequency ('daily' or 'minute')
+        timeframe: Actual timeframe for yfinance ('1m', '5m', '15m', '1h', 'daily', etc.)
     """
     from zipline.data.bundles import register, bundles
-    
+
     # Check if already registered
     if bundle_name in bundles:
         return
-    
+
+    # Get yfinance interval from timeframe
+    yf_interval = TIMEFRAME_TO_YF_INTERVAL.get(timeframe.lower(), '1d')
+
     # Store symbols for this bundle (needed for the ingest function)
     # Use closure to capture symbols
     def make_yahoo_ingest(symbols_list):
@@ -200,15 +348,17 @@ def _register_yahoo_bundle(
             }
             equities_df = pd.DataFrame(equities_data, index=pd.Index(range(n_symbols), name='sid'))
             asset_db_writer.write(equities=equities_df)
-            
+
             # Fetch data from Yahoo Finance
             if show_progress:
-                print(f"Fetching {data_frequency} data for {len(symbols_list)} symbols from Yahoo Finance...")
-            
+                print(f"Fetching {timeframe} data for {len(symbols_list)} symbols from Yahoo Finance...")
+                if data_frequency == 'minute':
+                    print(f"  Using minute bar writer (yfinance interval: {yf_interval})")
+
             # Download data and prepare for writing
             def data_gen():
-                # Map data_frequency to yfinance interval
-                yf_interval = {'daily': '1d', 'minute': '1m'}.get(data_frequency, '1d')
+                # Use the yf_interval from closure (set based on timeframe)
+                nonlocal yf_interval
 
                 # Track successful fetches for validation
                 successful_fetches = 0
@@ -216,24 +366,40 @@ def _register_yahoo_bundle(
                 for sid, symbol in enumerate(symbols_list):
                     try:
                         ticker = yf.Ticker(symbol)
-                        # Use UTC dates for yfinance (convert to naive for API)
-                        yf_start = start_date_utc.tz_localize(None).to_pydatetime() if start_date_utc else None
-                        yf_end = end_date_utc.tz_localize(None).to_pydatetime() if end_date_utc else None
+                        # CRITICAL: Use user-specified dates from closure, not Zipline's session dates
+                        # For intraday data (1h, 5m, etc.), yfinance has strict date limits
+                        # The start_date/end_date from closure are the user's intended range
+                        if start_date:
+                            yf_start = pd.Timestamp(start_date).to_pydatetime()
+                        else:
+                            yf_start = start_date_utc.tz_localize(None).to_pydatetime() if start_date_utc else None
+
+                        if end_date:
+                            yf_end = pd.Timestamp(end_date).to_pydatetime()
+                        else:
+                            yf_end = None  # Let yfinance use today
+
                         hist = ticker.history(start=yf_start, end=yf_end, interval=yf_interval)
 
                         if hist.empty:
-                            print(f"Warning: No data for {symbol} at {data_frequency} frequency.")
+                            print(f"Warning: No data for {symbol} at {timeframe} timeframe.")
                             continue
 
-                        # Per Zipline patterns: bar data must be at midnight UTC
-                        # Yahoo Finance returns dates at midnight EST/EDT which becomes 05:00/04:00 UTC
-                        # We need to normalize to midnight UTC by extracting just the date
-                        if hist.index.tz is not None:
-                            # Convert to UTC first, then normalize to midnight
-                            hist.index = hist.index.tz_convert('UTC').normalize()
+                        # Timestamp handling depends on data frequency:
+                        # - Daily data: Normalize to midnight UTC (Zipline expectation)
+                        # - Intraday data (minute, hourly): Keep time-of-day, just ensure UTC
+                        if data_frequency == 'daily':
+                            # Per Zipline patterns: daily bar data must be at midnight UTC
+                            if hist.index.tz is not None:
+                                hist.index = hist.index.tz_convert('UTC').normalize()
+                            else:
+                                hist.index = pd.to_datetime(hist.index).normalize().tz_localize('UTC')
                         else:
-                            # Assume dates are meant to be UTC midnight
-                            hist.index = pd.to_datetime(hist.index).normalize().tz_localize('UTC')
+                            # Intraday data: Keep time-of-day information, ensure UTC
+                            if hist.index.tz is not None:
+                                hist.index = hist.index.tz_convert('UTC')
+                            else:
+                                hist.index = pd.to_datetime(hist.index).tz_localize('UTC')
 
                         # Prepare DataFrame with required columns
                         # Use float64 for volume to handle large crypto volumes
@@ -278,8 +444,8 @@ def _register_yahoo_bundle(
                         bars_df = bars_df[bars_df.index >= first_calendar_session]
 
                         # === CALENDAR SESSION FILTERING (for FOREX Sunday issue) ===
-                        # Filter to only include dates that are valid calendar sessions
-                        if len(bars_df) > 0:
+                        # Only apply for daily data - intraday data has different session semantics
+                        if data_frequency == 'daily' and len(bars_df) > 0:
                             try:
                                 # Convert index bounds to naive timestamps for calendar API
                                 idx_min = bars_df.index.min()
@@ -317,27 +483,29 @@ def _register_yahoo_bundle(
                             print(f"Warning: No data for {symbol} after date/calendar filtering.")
                             continue
 
-                        # === GAP-FILLING FOR FOREX AND CRYPTO ===
-                        if 'FOREX' in calendar_name.upper() or 'CRYPTO' in calendar_name.upper():
-                            try:
-                                # Crypto: stricter gap tolerance (3 days), Forex: 5 days
-                                max_gap = 5 if 'FOREX' in calendar_name.upper() else 3
-                                bars_df = fill_data_gaps(
-                                    bars_df,
-                                    calendar_obj,
-                                    method='ffill',
-                                    max_gap_days=max_gap
-                                )
-                                if show_progress:
-                                    print(f"  Gap-filled {calendar_name} data for {symbol}")
-                            except Exception as gap_err:
-                                print(f"Warning: Gap-filling failed for {symbol}: {gap_err}")
+                        # === GAP-FILLING FOR FOREX AND CRYPTO (daily data only) ===
+                        # Gap-filling is designed for daily data - skip for intraday
+                        if data_frequency == 'daily':
+                            if 'FOREX' in calendar_name.upper() or 'CRYPTO' in calendar_name.upper():
+                                try:
+                                    # Crypto: stricter gap tolerance (3 days), Forex: 5 days
+                                    max_gap = 5 if 'FOREX' in calendar_name.upper() else 3
+                                    bars_df = fill_data_gaps(
+                                        bars_df,
+                                        calendar_obj,
+                                        method='ffill',
+                                        max_gap_days=max_gap
+                                    )
+                                    if show_progress:
+                                        print(f"  Gap-filled {calendar_name} data for {symbol}")
+                                except Exception as gap_err:
+                                    print(f"Warning: Gap-filling failed for {symbol}: {gap_err}")
 
                         successful_fetches += 1
                         yield sid, bars_df
 
                     except Exception as e:
-                        print(f"Error fetching {data_frequency} data for {symbol}: {e}")
+                        print(f"Error fetching {timeframe} data for {symbol}: {e}")
                         continue
 
                 # Validate that at least some data was fetched
@@ -362,14 +530,15 @@ def _register_yahoo_bundle(
     make_yahoo_ingest(symbols)
     _registered_bundles.add(bundle_name)
 
-    # Persist bundle metadata to registry file
+    # Persist bundle metadata to registry file (include timeframe for reconstruction)
     _register_bundle_metadata(
         bundle_name=bundle_name,
         symbols=symbols,
         calendar_name=calendar_name,
         start_date=start_date,
         end_date=end_date,
-        data_frequency=data_frequency
+        data_frequency=data_frequency,
+        timeframe=timeframe
     )
 
 
@@ -381,7 +550,7 @@ def ingest_bundle(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     calendar_name: Optional[str] = None,
-    timeframe: str = 'daily', # New parameter
+    timeframe: str = 'daily',
     **kwargs
 ) -> str:
     """
@@ -389,17 +558,46 @@ def ingest_bundle(
 
     This function creates or updates Zipline data bundles that serve as the
     primary data source for both `handle_data` and the Zipline Pipeline API.
-    Ensure that ingested bundles contain all necessary data (e.g., pricing,
-    dividends, splits) for factors defined in zipline.pipeline.
+    Supports multiple timeframes with automatic data limit validation.
 
-    The ingested data is directly compatible with the Zipline Pipeline API.
-    When a pipeline is attached and run in a strategy, it will automatically
-    access the data from the appropriate bundle based on the `data_frequency`
-    and `bundle` parameters used during ingestion and backtesting.
+    Args:
+        source: Data source name ('yahoo', 'binance', 'oanda')
+        assets: List of asset classes (['crypto'], ['forex'], ['equities'])
+        bundle_name: Custom bundle name. Auto-generated as {source}_{asset}_{timeframe} if not provided
+        symbols: List of symbols to ingest (required)
+        start_date: Start date (YYYY-MM-DD). Adjusted automatically for limited timeframes
+        end_date: End date (YYYY-MM-DD). Defaults to today
+        calendar_name: Trading calendar ('XNYS', 'CRYPTO', 'FOREX'). Auto-detected from asset class
+        timeframe: Data timeframe. Options:
+            - '1m': 1-minute (7 days max)
+            - '5m': 5-minute (60 days max)
+            - '15m': 15-minute (60 days max)
+            - '30m': 30-minute (60 days max)
+            - '1h': 1-hour (730 days max)
+            - 'daily' or '1d': Daily (unlimited)
+            - 'weekly' or '1wk': Weekly (unlimited)
+
+    Returns:
+        Bundle name string
+
+    Raises:
+        ValueError: If symbols empty, source not supported, or timeframe invalid
+        RuntimeError: If ingestion fails
+
+    Example:
+        >>> ingest_bundle('yahoo', ['equities'], symbols=['SPY'], timeframe='1h')
+        'yahoo_equities_1h'
     """
     if symbols is None or len(symbols) == 0:
         raise ValueError("symbols parameter is required and cannot be empty")
-    
+
+    # Validate timeframe
+    timeframe = timeframe.lower()
+    try:
+        tf_info = get_timeframe_info(timeframe)
+    except ValueError as e:
+        raise ValueError(str(e))
+
     # Get source config
     try:
         source_config = get_data_source(source)
@@ -408,15 +606,27 @@ def ingest_bundle(
             f"Unsupported data source: {source}. "
             f"Supported sources: yahoo, binance, oanda"
         )
-    
+
     if not source_config.get('enabled', False):
         raise ValueError(f"Data source '{source}' is not enabled in config/data_sources.yaml")
-    
-    # Auto-generate bundle name if not provided
+
+    # Validate and adjust date range based on timeframe limits
+    start_date, end_date, warning = validate_timeframe_date_range(
+        timeframe, start_date, end_date
+    )
+    if warning:
+        logger.warning(warning)
+        print(warning)
+
+    # Auto-generate bundle name with timeframe suffix
     if bundle_name is None:
         asset_class = assets[0] if assets else 'equities'
-        bundle_name = f"{source}_{asset_class}_daily"
-    
+        # Normalize timeframe for bundle name (daily -> daily, 1d -> daily, etc.)
+        tf_normalized = {
+            '1d': 'daily', '1wk': 'weekly', '1mo': 'monthly'
+        }.get(timeframe, timeframe)
+        bundle_name = f"{source}_{asset_class}_{tf_normalized}"
+
     # Auto-detect calendar using canonical names
     if calendar_name is None:
         if 'crypto' in assets:
@@ -430,11 +640,25 @@ def ingest_bundle(
     if calendar_name in ['CRYPTO', 'FOREX']:
         from .extension import register_custom_calendars
         register_custom_calendars(calendars=[calendar_name])
-    
-    # Set default start date if not provided
+
+    # Set default start date based on timeframe if not already set
     if start_date is None:
-        start_date = '2020-01-01'
-    
+        if tf_info['data_limit_days']:
+            # For limited timeframes, use max available range
+            earliest = datetime.now().date() - timedelta(days=tf_info['data_limit_days'])
+            start_date = earliest.isoformat()
+        else:
+            start_date = '2020-01-01'
+
+    # Get the Zipline data frequency (daily or minute)
+    data_frequency = tf_info['data_frequency']
+
+    # Log ingestion details
+    logger.info(
+        f"Ingesting {source}/{asset_class} bundle: {bundle_name} "
+        f"(timeframe={timeframe}, frequency={data_frequency})"
+    )
+
     # Register and ingest Yahoo Finance bundle
     if source == 'yahoo':
         try:
@@ -445,24 +669,25 @@ def ingest_bundle(
                 calendar_name=calendar_name,
                 start_date=start_date,
                 end_date=end_date,
-                data_frequency=timeframe  # Use the timeframe parameter
+                data_frequency=data_frequency,
+                timeframe=timeframe  # Pass actual timeframe for yfinance interval
             )
 
             # Ingest the bundle
             from zipline.data.bundles import ingest
             ingest(bundle_name, show_progress=True)
-            
+
             return bundle_name
-            
+
         except Exception as e:
             raise RuntimeError(f"Failed to ingest Yahoo Finance bundle: {e}") from e
-    
+
     elif source == 'binance':
         raise NotImplementedError("Binance bundle ingestion not yet implemented")
-    
+
     elif source == 'oanda':
         raise NotImplementedError("OANDA bundle ingestion not yet implemented")
-    
+
     else:
         raise ValueError(f"Unsupported source: {source}")
 

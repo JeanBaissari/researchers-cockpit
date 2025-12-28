@@ -31,22 +31,34 @@ _registered_calendars: List[str] = []
 class CryptoCalendar(ExchangeCalendar):
     """
     24/7 Trading Calendar for Cryptocurrency Markets
-    
+
     Crypto markets trade continuously without holidays or market closures.
     This calendar reflects that reality with no off days.
+
+    For minute data: 24 hours * 60 minutes = 1440 minutes per day.
     """
-    
+
     name = "CRYPTO"
     tz = UTC
     open_times = ((None, time(0, 0)),)
     close_times = ((None, time(23, 59, 59)),)  # Fixed: use 23:59:59 for proper 24h coverage
     weekmask = "Mon Tue Wed Thu Fri Sat Sun"
-    
+
+    @classmethod
+    def open_time_default(cls):
+        """Default market open time."""
+        return time(0, 0)
+
+    @classmethod
+    def close_time_default(cls):
+        """Default market close time."""
+        return time(23, 59, 59)
+
     @property
     def regular_holidays(self) -> pd.DatetimeIndex:
         """Crypto markets don't observe holidays."""
         return pd.DatetimeIndex([])
-    
+
     @property
     def special_closes(self) -> list:
         """No special closing times."""
@@ -56,21 +68,33 @@ class CryptoCalendar(ExchangeCalendar):
 class ForexCalendar(ExchangeCalendar):
     """
     Forex Trading Calendar (24/5 - Weekdays Only)
-    
+
     Forex markets trade 24 hours on weekdays but close on weekends.
     Trading opens Sunday 5pm EST and closes Friday 5pm EST.
-    
+
     Note: We use Mon-Fri weekmask because exchange_calendars handles
     sessions on a daily basis. The Sunday open is effectively the start
     of the Monday session in trading terms.
+
+    For minute data: 24 hours * 60 minutes = 1440 minutes per day.
     """
-    
+
     name = "FOREX"
     tz = "America/New_York"
     open_times = ((None, time(0, 0)),)  # Session starts at midnight (continuous trading)
     close_times = ((None, time(23, 59, 59)),)  # Session ends at 23:59:59
     weekmask = "Mon Tue Wed Thu Fri"  # Fixed: Standard weekday trading
-    
+
+    @classmethod
+    def open_time_default(cls):
+        """Default market open time."""
+        return time(0, 0)
+
+    @classmethod
+    def close_time_default(cls):
+        """Default market close time."""
+        return time(23, 59, 59)
+
     @property
     def regular_holidays(self) -> pd.DatetimeIndex:
         """
@@ -81,7 +105,7 @@ class ForexCalendar(ExchangeCalendar):
         # Forex typically observes: New Year's Day, Christmas, and major US holidays
         # To add holidays, use: pd.DatetimeIndex([...]) with specific dates
         return pd.DatetimeIndex([])
-    
+
     @property
     def special_closes(self) -> list:
         """No special closing times."""
