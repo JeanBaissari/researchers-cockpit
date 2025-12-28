@@ -10,8 +10,8 @@ capital:
 
 # Date Range Defaults
 dates:
-  default_start: "2020-01-01"  # Default backtest start date (YYYY-MM-DD)
-  default_end: null             # null = use today's date
+  default_start: "2023-01-01"  # Default backtest start date (YYYY-MM-DD)
+  default_end: "2024-06-01"    # Default backtest end date (YYYY-MM-DD)
 
 # Backtesting Configuration
 backtesting:
@@ -85,9 +85,9 @@ data:
     auto_clean: true            # Clean expired cache automatically
 
   bundles:
-    default_equity: quandl      # Default equity bundle name
-    default_crypto: yahoo_crypto
-    default_forex: oanda_forex
+    default_equity: yahoo_equities_daily  # Yahoo Finance daily equities bundle
+    default_crypto: yahoo_crypto_daily    # Yahoo Finance daily crypto bundle
+    default_forex: yahoo_forex_daily      # Yahoo Finance daily forex bundle
 
 # Data Validation Configuration
 data_validation:
