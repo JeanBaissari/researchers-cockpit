@@ -20,7 +20,7 @@ from zipline.utils.calendar_utils import get_calendar
 
 # Local imports
 from .config import get_data_source, load_settings
-from .utils import get_project_root, ensure_dir, normalize_to_calendar_timezone, fill_data_gaps
+from .utils import get_project_root, ensure_dir, fill_data_gaps, normalize_to_utc
 
 
 def _get_bundle_registry_path() -> Path:
@@ -53,16 +53,18 @@ def _register_bundle_metadata(
     symbols: List[str],
     calendar_name: str,
     start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
     data_frequency: str = 'daily'
 ) -> None:
     """
     Persist bundle metadata to registry file.
-    
+
     Args:
         bundle_name: Name of the bundle
         symbols: List of symbols in the bundle
         calendar_name: Trading calendar name
         start_date: Start date for data
+        end_date: End date for data
         data_frequency: Data frequency ('daily' or 'minute')
     """
     registry = _load_bundle_registry()
@@ -70,6 +72,7 @@ def _register_bundle_metadata(
         'symbols': symbols,
         'calendar_name': calendar_name,
         'start_date': start_date,
+        'end_date': end_date,
         'data_frequency': data_frequency,
         'registered_at': datetime.now().isoformat()
     }
@@ -113,16 +116,18 @@ def _register_yahoo_bundle(
     symbols: List[str],
     calendar_name: str = 'XNYS',
     start_date: Optional[str] = None,
-    data_frequency: str = 'daily' # New parameter
+    end_date: Optional[str] = None,
+    data_frequency: str = 'daily'
 ):
     """
     Register a Yahoo Finance bundle.
-    
+
     Args:
         bundle_name: Name for the bundle
         symbols: List of symbols to ingest
         calendar_name: Trading calendar name
         start_date: Start date for data (YYYY-MM-DD)
+        end_date: End date for data (YYYY-MM-DD)
         data_frequency: Data frequency ('daily' or 'minute')
     """
     from zipline.data.bundles import register, bundles
@@ -201,9 +206,12 @@ def _register_yahoo_bundle(
                 print(f"Fetching {data_frequency} data for {len(symbols_list)} symbols from Yahoo Finance...")
             
             # Download data and prepare for writing
-            def data_gen(): # Renamed to data_gen to be used for both daily and minute
+            def data_gen():
                 # Map data_frequency to yfinance interval
                 yf_interval = {'daily': '1d', 'minute': '1m'}.get(data_frequency, '1d')
+
+                # Track successful fetches for validation
+                successful_fetches = 0
 
                 for sid, symbol in enumerate(symbols_list):
                     try:
@@ -253,25 +261,92 @@ def _register_yahoo_bundle(
                             'volume': volume_data,
                         }, index=hist.index)
 
-                        # Apply gap-filling for FOREX data
-                        if 'FOREX' in calendar_name.upper():
+                        # === USER-SPECIFIED DATE FILTERING ===
+                        # Filter to user-specified date range (from closure)
+                        if start_date:
+                            user_start = pd.Timestamp(start_date, tz='UTC')
+                            bars_df = bars_df[bars_df.index >= user_start]
+                        if end_date:
+                            user_end = pd.Timestamp(end_date, tz='UTC')
+                            bars_df = bars_df[bars_df.index <= user_end]
+
+                        # === CALENDAR BOUNDS FILTERING ===
+                        # Align data to calendar first session
+                        first_calendar_session = calendar_obj.first_session
+                        if first_calendar_session.tz is None:
+                            first_calendar_session = first_calendar_session.tz_localize('UTC')
+                        bars_df = bars_df[bars_df.index >= first_calendar_session]
+
+                        # === CALENDAR SESSION FILTERING (for FOREX Sunday issue) ===
+                        # Filter to only include dates that are valid calendar sessions
+                        if len(bars_df) > 0:
                             try:
+                                # Convert index bounds to naive timestamps for calendar API
+                                idx_min = bars_df.index.min()
+                                idx_max = bars_df.index.max()
+                                if idx_min.tz is not None:
+                                    idx_min = idx_min.tz_convert(None)
+                                if idx_max.tz is not None:
+                                    idx_max = idx_max.tz_convert(None)
+
+                                calendar_sessions = calendar_obj.sessions_in_range(idx_min, idx_max)
+
+                                # Normalize both to naive for comparison
+                                if hasattr(calendar_sessions, 'tz') and calendar_sessions.tz is not None:
+                                    calendar_sessions_naive = calendar_sessions.tz_convert(None)
+                                else:
+                                    calendar_sessions_naive = calendar_sessions
+
+                                if bars_df.index.tz is not None:
+                                    bars_index_naive = bars_df.index.tz_convert(None)
+                                else:
+                                    bars_index_naive = bars_df.index
+
+                                # Filter bars to only calendar sessions
+                                valid_mask = bars_index_naive.normalize().isin(calendar_sessions_naive)
+                                bars_df = bars_df[valid_mask]
+
+                                if show_progress and (~valid_mask).any():
+                                    excluded = (~valid_mask).sum()
+                                    print(f"  {symbol}: Filtered {excluded} non-calendar sessions")
+                            except Exception as cal_err:
+                                print(f"Warning: Calendar session filtering failed for {symbol}: {cal_err}")
+
+                        # Check if we have any data left after filtering
+                        if bars_df.empty:
+                            print(f"Warning: No data for {symbol} after date/calendar filtering.")
+                            continue
+
+                        # === GAP-FILLING FOR FOREX AND CRYPTO ===
+                        if 'FOREX' in calendar_name.upper() or 'CRYPTO' in calendar_name.upper():
+                            try:
+                                # Crypto: stricter gap tolerance (3 days), Forex: 5 days
+                                max_gap = 5 if 'FOREX' in calendar_name.upper() else 3
                                 bars_df = fill_data_gaps(
                                     bars_df,
                                     calendar_obj,
                                     method='ffill',
-                                    max_gap_days=5
+                                    max_gap_days=max_gap
                                 )
                                 if show_progress:
-                                    print(f"  Gap-filled FOREX data for {symbol}")
+                                    print(f"  Gap-filled {calendar_name} data for {symbol}")
                             except Exception as gap_err:
                                 print(f"Warning: Gap-filling failed for {symbol}: {gap_err}")
 
+                        successful_fetches += 1
                         yield sid, bars_df
 
                     except Exception as e:
                         print(f"Error fetching {data_frequency} data for {symbol}: {e}")
                         continue
+
+                # Validate that at least some data was fetched
+                if successful_fetches == 0:
+                    raise RuntimeError(
+                        f"No data was successfully fetched for any symbol. "
+                        f"Symbols attempted: {symbols_list}. "
+                        f"Check that symbols are valid and date range has data."
+                    )
             
             if data_frequency == 'minute':
                 minute_bar_writer.write(data_gen(), show_progress=show_progress)
@@ -286,13 +361,14 @@ def _register_yahoo_bundle(
     
     make_yahoo_ingest(symbols)
     _registered_bundles.add(bundle_name)
-    
+
     # Persist bundle metadata to registry file
     _register_bundle_metadata(
         bundle_name=bundle_name,
         symbols=symbols,
         calendar_name=calendar_name,
         start_date=start_date,
+        end_date=end_date,
         data_frequency=data_frequency
     )
 
@@ -367,7 +443,9 @@ def ingest_bundle(
                 bundle_name=bundle_name,
                 symbols=symbols,
                 calendar_name=calendar_name,
-                start_date=start_date
+                start_date=start_date,
+                end_date=end_date,
+                data_frequency=timeframe  # Use the timeframe parameter
             )
 
             # Ingest the bundle
