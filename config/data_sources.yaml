@@ -9,21 +9,38 @@ yahoo:
   type: free
   enabled: true
   base_url: https://query1.finance.yahoo.com
-  
+
   features:
     - daily_prices
     - historical_data
     - crypto
     - forex
     - equities
-  
+
   rate_limits:
     requests_per_hour: 2000
     requests_per_day: 48000
-  
+
+  # Gap-filling configuration for FOREX data
+  # Yahoo Finance has inconsistent FOREX data that may not align with trading calendars
+  gap_fill:
+    forex:
+      enabled: true
+      method: ffill              # 'ffill' (forward-fill) or 'bfill' (backward-fill)
+      max_gap_days: 5            # Warn if gaps exceed this many days
+    crypto:
+      enabled: false             # Crypto trades 24/7, gaps indicate real missing data
+    equities:
+      enabled: false             # Equities have defined trading days, gaps are intentional
+
+  # Volume dtype configuration
+  # Use float64 for crypto to handle volumes exceeding uint32 max (~4.29B)
+  volume_dtype: float64          # 'float64' for large volumes, 'int' for traditional equities
+
   notes: |
     Yahoo Finance is free but unofficial. Rate limits are approximate.
     Use yfinance library for easier access.
+    FOREX data may have gaps that are filled during ingestion.
 
 # Binance (Crypto)
 binance:
