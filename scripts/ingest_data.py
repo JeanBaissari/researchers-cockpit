@@ -25,7 +25,9 @@ from lib.data_loader import ingest_bundle
 @click.option('--bundle-name', default=None, help='Bundle name (auto-generated if not provided)')
 @click.option('--start-date', default=None, help='Start date (YYYY-MM-DD)')
 @click.option('--end-date', default=None, help='End date (YYYY-MM-DD)')
-def main(source, assets, symbols, bundle_name, start_date, end_date):
+@click.option('--calendar', default=None,
+              help='Trading calendar name (e.g., XNYS, CRYPTO, FOREX). Auto-detected from asset class if not provided.')
+def main(source, assets, symbols, bundle_name, start_date, end_date, calendar):
     """
     Ingest market data into a Zipline bundle.
     
@@ -46,6 +48,7 @@ def main(source, assets, symbols, bundle_name, start_date, end_date):
             symbols=symbol_list,
             start_date=start_date,
             end_date=end_date,
+            calendar_name=calendar,
         )
         
         click.echo(f"✓ Successfully ingested bundle: {bundle}")
