@@ -83,9 +83,32 @@ data:
     enabled: true
     ttl_hours: 24               # Time to live for cached data
     auto_clean: true            # Clean expired cache automatically
-  
+
   bundles:
     default_equity: quandl      # Default equity bundle name
     default_crypto: yahoo_crypto
     default_forex: oanda_forex
+
+# Data Validation Configuration
+data_validation:
+  enabled: true                 # Master switch for validation
+  strict_mode: false            # If true, warnings become errors
+
+  checks:
+    verify_integrity: true      # Zipline's built-in integrity check
+    check_gaps: true            # Check for missing dates
+    gap_tolerance_days: 3       # Allow up to 3 consecutive missing days
+    check_outliers: true        # Check for price outliers
+    outlier_threshold_sigma: 5  # Standard deviations for outlier detection
+    check_future_dates: true    # Check for dates in the future
+    check_negative_values: true # Check for negative prices/volumes
+
+  # Asset class specific overrides
+  per_asset_class:
+    crypto:
+      gap_tolerance_days: 0     # Crypto trades 24/7, no gaps expected
+    forex:
+      gap_tolerance_days: 2     # Weekends expected for forex
+    equities:
+      gap_tolerance_days: 4     # Holidays expected for equities
 
