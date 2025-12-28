@@ -233,6 +233,43 @@ def _validate_warmup_period(
     )
 
 
+def _validate_calendar_consistency(bundle: str, trading_calendar: Any) -> None:
+    """
+    Validate that the trading calendar used for backtest matches the calendar
+    the bundle was ingested with.
+
+    Args:
+        bundle: Bundle name
+        trading_calendar: Trading calendar object for backtest
+
+    Logs:
+        Warning if calendars don't match
+    """
+    from .data_loader import _load_bundle_registry
+
+    registry = _load_bundle_registry()
+    if bundle not in registry:
+        # Bundle not in our registry - might be a built-in bundle
+        return
+
+    bundle_calendar_name = registry[bundle].get('calendar_name')
+    if not bundle_calendar_name:
+        return
+
+    # Get backtest calendar name
+    backtest_calendar_name = getattr(trading_calendar, 'name', None)
+    if not backtest_calendar_name:
+        return
+
+    # Compare calendars (case-insensitive)
+    if bundle_calendar_name.upper() != backtest_calendar_name.upper():
+        logger.warning(
+            f"Calendar mismatch: Bundle '{bundle}' was ingested with calendar "
+            f"'{bundle_calendar_name}' but backtest is using '{backtest_calendar_name}'. "
+            f"This may cause session misalignment errors."
+        )
+
+
 def _validate_bundle_date_range(
     bundle: str,
     start_date: str,
@@ -420,6 +457,9 @@ def run_backtest(
     
     # Get trading calendar
     trading_calendar = _get_trading_calendar(config.bundle, config.asset_class)
+
+    # Validate calendar consistency between bundle and backtest
+    _validate_calendar_consistency(config.bundle, trading_calendar)
 
     # Validate bundle and get timestamps
     start_ts, end_ts = _validate_bundle_date_range(
