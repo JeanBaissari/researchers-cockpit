@@ -171,6 +171,61 @@ def clear_config_cache():
     _config_cache.clear()
 
 
+def get_warmup_days(params: Dict[str, Any]) -> int:
+    """
+    Get required warmup days for a strategy.
+
+    The warmup period is the number of trading days required before the strategy
+    can generate valid signals. This is typically determined by the longest
+    indicator period used in the strategy.
+
+    Resolution order:
+    1. Explicit 'warmup_days' in backtest section
+    2. Dynamic calculation from strategy parameters (max of all *_period params)
+    3. Default fallback of 30 days
+
+    Args:
+        params: Strategy parameters dictionary
+
+    Returns:
+        int: Required warmup days
+    """
+    # Check for explicit warmup_days in backtest section
+    backtest_config = params.get('backtest', {})
+    explicit_warmup = backtest_config.get('warmup_days')
+
+    if explicit_warmup is not None:
+        return int(explicit_warmup)
+
+    # Dynamic calculation: find max of all *_period parameters
+    strategy_config = params.get('strategy', {})
+    period_values = []
+
+    # Common period parameter patterns
+    period_keys = [
+        'lookback_period', 'fast_period', 'slow_period', 'trend_filter_period',
+        'sma_period', 'ema_period', 'rsi_period', 'atr_period', 'macd_slow_period',
+        'bollinger_period', 'momentum_period', 'volatility_period'
+    ]
+
+    for key in period_keys:
+        if key in strategy_config:
+            value = strategy_config[key]
+            if isinstance(value, (int, float)) and value > 0:
+                period_values.append(int(value))
+
+    # Also check for any key ending with '_period'
+    for key, value in strategy_config.items():
+        if key.endswith('_period') and isinstance(value, (int, float)) and value > 0:
+            period_values.append(int(value))
+
+    if period_values:
+        return max(period_values)
+
+    # Default fallback
+    return 30
+
+
 def validate_strategy_params(params: dict, strategy_name: str) -> Tuple[bool, List[str]]:
     """
     Validate strategy parameters.

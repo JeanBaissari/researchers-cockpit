@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 
 # Local imports
-from .config import load_settings, load_strategy_params, get_default_bundle, validate_strategy_params
+from .config import load_settings, load_strategy_params, get_default_bundle, validate_strategy_params, get_warmup_days
 from .utils import (
     get_project_root,
     get_strategy_path,
@@ -183,6 +183,56 @@ def _prepare_backtest_config(
     return config_return
 
 
+def _validate_warmup_period(
+    start_date: str,
+    end_date: str,
+    params: Dict[str, Any],
+    strategy_name: str
+) -> None:
+    """
+    Pre-flight validation to ensure sufficient data for strategy warmup.
+
+    Validates that the backtest period is longer than the required warmup period.
+    This prevents backtests that would silently produce no trades due to
+    insufficient data for indicator initialization.
+
+    Args:
+        start_date: Start date string (YYYY-MM-DD)
+        end_date: End date string (YYYY-MM-DD)
+        params: Strategy parameters dictionary
+        strategy_name: Name of strategy (for error messages)
+
+    Raises:
+        ValueError: If backtest period is shorter than required warmup
+    """
+    # Check if warmup validation is enabled
+    backtest_config = params.get('backtest', {})
+    if not backtest_config.get('validate_warmup', True):
+        logger.debug(f"Warmup validation disabled for strategy '{strategy_name}'")
+        return
+
+    # Get required warmup days
+    warmup_days = get_warmup_days(params)
+
+    # Calculate available days
+    start_ts = pd.Timestamp(start_date)
+    end_ts = pd.Timestamp(end_date)
+    available_days = (end_ts - start_ts).days
+
+    if available_days <= warmup_days:
+        raise ValueError(
+            f"Insufficient data for strategy '{strategy_name}': "
+            f"strategy requires {warmup_days} days warmup, but only {available_days} days provided "
+            f"({start_date} to {end_date}). "
+            f"Either extend the backtest date range or reduce indicator periods in parameters.yaml."
+        )
+
+    logger.info(
+        f"Warmup validation passed: {available_days} days available, "
+        f"{warmup_days} days required for warmup"
+    )
+
+
 def _validate_bundle_date_range(
     bundle: str,
     start_date: str,
@@ -305,10 +355,10 @@ def run_backtest(
     bundle: Optional[str] = None,
     data_frequency: str = 'daily',
     asset_class: Optional[str] = None
-) -> pd.DataFrame:
+) -> Tuple[pd.DataFrame, Any]:
     """
     Run a backtest for a strategy.
-    
+
     Args:
         strategy_name: Name of strategy (e.g., 'spy_sma_cross')
         start_date: Start date string (YYYY-MM-DD) or None for default
@@ -317,10 +367,10 @@ def run_backtest(
         bundle: Bundle name or None for auto-detect
         data_frequency: 'daily' or 'minute'
         asset_class: Optional asset class hint for strategy location
-        
+
     Returns:
-        pd.DataFrame: Performance DataFrame from Zipline
-        
+        Tuple[pd.DataFrame, Any]: Performance DataFrame and trading calendar
+
     Raises:
         FileNotFoundError: If strategy not found
         ImportError: If strategy module can't be loaded
@@ -342,16 +392,25 @@ def run_backtest(
         params = load_strategy_params(strategy_name, asset_class)
         is_valid, errors = validate_strategy_params(params, strategy_name)
         if not is_valid:
-            error_msg = f"Invalid parameters for strategy '{strategy_name}':n" + "n".join(f"  - {e}" for e in errors)
+            error_msg = f"Invalid parameters for strategy '{strategy_name}':\n" + "\n".join(f"  - {e}" for e in errors)
             raise ValueError(error_msg)
     except FileNotFoundError:
         # Parameters file doesn't exist - this is OK, strategy might load params differently
         params = {}
-    
-    # Prepare configuration
+
+    # Prepare configuration first to resolve default dates
     config = _prepare_backtest_config(
         strategy_name, start_date, end_date, capital_base, bundle, data_frequency, asset_class
     )
+
+    # Pre-flight warmup validation (after config to get resolved dates)
+    if params:
+        _validate_warmup_period(
+            config.start_date,
+            config.end_date,
+            params,
+            strategy_name
+        )
 
     # Register custom calendars before getting trading calendar
     if config.asset_class:
@@ -391,8 +450,8 @@ def run_backtest(
             benchmark_returns=empty_benchmark,
         )
 
-        return perf
-        
+        return perf, trading_calendar
+
     except Exception as e:
         raise RuntimeError(f"Backtest execution failed: {e}") from e
 

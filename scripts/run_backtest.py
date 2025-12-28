@@ -14,7 +14,7 @@ sys.path.insert(0, str(project_root))
 
 import click
 from v1_researchers_cockpit.lib.backtest import run_backtest, save_results
-from v1_researchers_cockpit.lib.config import load_strategy_params, validate_strategy_params
+from v1_researchers_cockpit.lib.config import load_strategy_params, validate_strategy_params, get_warmup_days
 from v1_researchers_cockpit.lib.utils import get_strategy_path
 
 
@@ -26,7 +26,9 @@ from v1_researchers_cockpit.lib.utils import get_strategy_path
 @click.option('--bundle', default=None, help='Data bundle name (auto-detected if not provided)')
 @click.option('--asset-class', default=None, type=click.Choice(['crypto', 'forex', 'equities']),
               help='Asset class hint for strategy location')
-def main(strategy, start, end, capital, bundle, asset_class):
+@click.option('--skip-warmup-check', is_flag=True, default=False,
+              help='Skip warmup period validation (use with caution)')
+def main(strategy, start, end, capital, bundle, asset_class, skip_warmup_check):
     """
     Run a backtest for a strategy.
     
@@ -34,7 +36,7 @@ def main(strategy, start, end, capital, bundle, asset_class):
         python scripts/run_backtest.py --strategy spy_sma_cross
     """
     click.echo(f"Running backtest for strategy: {strategy}")
-    
+
     try:
         # Load and validate strategy parameters
         try:
@@ -51,10 +53,19 @@ def main(strategy, start, end, capital, bundle, asset_class):
         except ValueError as e:
             click.echo(f"✗ Error: {e}", err=True)
             sys.exit(1)
-        
+
+        # Display warmup information
+        warmup_days = get_warmup_days(params)
+        click.echo(f"Warmup period: {warmup_days} days required for indicator initialization")
+
+        # Temporarily disable warmup validation if requested
+        if skip_warmup_check:
+            click.echo("⚠ Warmup validation disabled (--skip-warmup-check)")
+            params.setdefault('backtest', {})['validate_warmup'] = False
+
         # Run backtest
         click.echo("Executing backtest...")
-        perf = run_backtest(
+        perf, trading_calendar = run_backtest(
             strategy_name=strategy,
             start_date=start,
             end_date=end,
@@ -62,13 +73,14 @@ def main(strategy, start, end, capital, bundle, asset_class):
             bundle=bundle,
             asset_class=asset_class
         )
-        
+
         # Save results
         click.echo("Saving results...")
         result_dir = save_results(
             strategy_name=strategy,
             perf=perf,
             params=params,
+            trading_calendar=trading_calendar,
             result_type='backtest'
         )
         
