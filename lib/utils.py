@@ -326,8 +326,12 @@ def fill_data_gaps(
     end_date = df.index.max()
 
     try:
+        # Convert to naive timestamps for calendar API (avoids timezone.key error)
+        start_naive = start_date.tz_convert(None) if start_date.tz is not None else start_date
+        end_naive = end_date.tz_convert(None) if end_date.tz is not None else end_date
+
         # Get all sessions from the trading calendar
-        sessions = calendar.sessions_in_range(start_date, end_date)
+        sessions = calendar.sessions_in_range(start_naive, end_naive)
 
         if len(sessions) == 0:
             logger.warning(f"No calendar sessions found between {start_date} and {end_date}")
@@ -370,7 +374,21 @@ def fill_data_gaps(
 
         # Restore timezone if original had one
         if df.index.tz is not None:
-            df_reindexed.index = df_reindexed.index.tz_localize(df.index.tz)
+            # df_reindexed is naive at this point, need to properly restore timezone
+            try:
+                # First localize to UTC (data is in UTC internally)
+                df_reindexed.index = df_reindexed.index.tz_localize('UTC')
+                # Then convert to original timezone if different
+                original_tz = str(df.index.tz)
+                if original_tz != 'UTC':
+                    df_reindexed.index = df_reindexed.index.tz_convert(df.index.tz)
+            except Exception:
+                # Fallback: just localize to original timezone
+                try:
+                    df_reindexed.index = df_reindexed.index.tz_localize(df.index.tz)
+                except Exception:
+                    # If all else fails, leave as naive
+                    logger.warning("Could not restore timezone, leaving index as naive")
 
         return df_reindexed
 
