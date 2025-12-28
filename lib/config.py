@@ -156,13 +156,13 @@ def get_default_bundle(asset_class: str) -> str:
     try:
         return settings['data']['bundles'][bundle_key]
     except KeyError:
-        # Fallback to common names
+        # Fallback to common names (must match settings.yaml convention)
         defaults = {
             'equities': 'yahoo_equities_daily',
-            'crypto': 'yahoo_crypto',
-            'forex': 'oanda_forex',
+            'crypto': 'yahoo_crypto_daily',
+            'forex': 'yahoo_forex_daily',
         }
-        return defaults.get(asset_class, 'quandl')
+        return defaults.get(asset_class, 'yahoo_equities_daily')
 
 
 def clear_config_cache():
