@@ -22,8 +22,21 @@ import pandas as pd
 from pathlib import Path
 import sys
 
+
+def _find_project_root() -> Path:
+    """Find project root by searching for marker files."""
+    markers = ['pyproject.toml', '.git', 'config/settings.yaml', 'CLAUDE.md']
+    current = Path(__file__).resolve().parent
+    while current != current.parent:
+        for marker in markers:
+            if (current / marker).exists():
+                return current
+        current = current.parent
+    raise RuntimeError("Could not find project root. Missing marker files.")
+
+
 # Add project root to path for lib imports
-_project_root = Path(__file__).parent.parent.parent.parent
+_project_root = _find_project_root()
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
@@ -167,17 +180,27 @@ def analyze(context, perf):
     print(f"STRATEGY RESULTS: {asset_symbol}")
     print("=" * 60)
 
-    returns = perf['returns']
-    total_return = returns.sum()
+    returns = perf['returns'].dropna()
+    total_return = (1 + returns).prod() - 1
     final_value = perf['portfolio_value'].iloc[-1]
 
-    if len(returns) > 0 and returns.std() > 0:
-        sharpe = np.sqrt(260) * returns.mean() / returns.std()  # 260 for forex
-    else:
-        sharpe = 0.0
-
-    cumulative = (1 + returns).cumprod()
-    max_dd = ((cumulative.cummax() - cumulative) / cumulative.cummax()).max()
+    # Use empyrical for consistent Sharpe calculation (matches lib/metrics.py)
+    try:
+        import empyrical as ep
+        # Forex uses 260 trading days per year (5 days/week * 52 weeks)
+        sharpe = float(ep.sharpe_ratio(returns, risk_free=0.04, period='daily', annualization=260))
+        max_dd = float(ep.max_drawdown(returns))
+        # Validate Sharpe ratio
+        if not np.isfinite(sharpe):
+            sharpe = 0.0
+    except ImportError:
+        # Fallback if empyrical not available
+        if len(returns) > 0 and returns.std() > 0:
+            sharpe = np.sqrt(260) * returns.mean() / returns.std()
+        else:
+            sharpe = 0.0
+        cumulative = (1 + returns).cumprod()
+        max_dd = ((cumulative.cummax() - cumulative) / cumulative.cummax()).max()
 
     print(f"Total Return: {total_return:.2%}")
     print(f"Final Portfolio Value: ${final_value:,.2f}")
