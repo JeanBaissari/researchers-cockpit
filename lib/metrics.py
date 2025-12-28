@@ -1,7 +1,7 @@
 """
 Enhanced metrics calculation module for The Researcher's Cockpit.
 
-Provides comprehensive performance metrics using Empyrical library and custom
+Provides comprehensive performance metrics using empyrical-reloaded library and custom
 trade-level analysis.
 """
 
@@ -23,18 +23,20 @@ except ImportError:
 def calculate_metrics(
     returns: pd.Series,
     transactions: Optional[pd.DataFrame] = None,
+    benchmark_returns: Optional[pd.Series] = None,
     risk_free_rate: float = 0.04,
     trading_days_per_year: int = 252
 ) -> Dict[str, float]:
     """
     Calculate comprehensive performance metrics from returns.
     
-    Uses Empyrical library for financial metrics when available, falls back
+    Uses empyrical-reloaded library for financial metrics when available, falls back
     to manual calculations otherwise.
     
     Args:
         returns: Series of daily returns (timezone-naive index)
         transactions: Optional DataFrame of transactions for trade-level metrics
+        benchmark_returns: Optional Series of benchmark daily returns for alpha/beta
         risk_free_rate: Annual risk-free rate (default: 0.04)
         trading_days_per_year: Trading days per year (default: 252)
         
@@ -47,6 +49,9 @@ def calculate_metrics(
         return _empty_metrics()
     
     metrics = {}
+    
+    # Convert annual risk-free rate to daily
+    daily_risk_free_rate = risk_free_rate / trading_days_per_year
     
     # Basic return metrics
     total_return = float((1 + returns).prod() - 1)
@@ -61,32 +66,64 @@ def calculate_metrics(
         metrics['annual_return'] = 0.0
     
     # Volatility (annualized)
-    volatility = float(returns.std() * np.sqrt(trading_days_per_year))
+    daily_volatility = float(returns.std())
+    volatility = daily_volatility * np.sqrt(trading_days_per_year)
     metrics['annual_volatility'] = volatility
     
-    # Sharpe ratio
+    # Sharpe ratio with robust error handling
+    sharpe = 0.0
     if EMPYRICAL_AVAILABLE:
-        sharpe = float(ep.sharpe_ratio(returns, risk_free=risk_free_rate, period='daily'))
+        try:
+            # empyrical-reloaded expects annualized risk-free rate and handles conversion internally
+            sharpe = float(ep.sharpe_ratio(returns, risk_free=risk_free_rate, period='daily', annualization=trading_days_per_year))
+        except Exception:
+            sharpe = 0.0
     else:
+        # Manual calculation: (annualized_return - risk_free_rate) / annualized_volatility
         if volatility > 0:
-            sharpe = float(np.sqrt(trading_days_per_year) * (returns.mean() - risk_free_rate / trading_days_per_year) / volatility)
+            excess_return = annual_return - risk_free_rate
+            sharpe = float(excess_return / volatility)
         else:
             sharpe = 0.0
+
+    # Validate Sharpe ratio: must be finite and within reasonable bounds
+    if not np.isfinite(sharpe):
+        sharpe = 0.0
+    elif sharpe > 10.0:
+        sharpe = 10.0  # Cap at reasonable upper bound
+    elif sharpe < -10.0:
+        sharpe = -10.0  # Cap at reasonable lower bound
     metrics['sharpe'] = sharpe
     
-    # Sortino ratio
+    # Sortino ratio with robust error handling
+    sortino = 0.0
     if EMPYRICAL_AVAILABLE:
-        sortino = float(ep.sortino_ratio(returns, required_return=risk_free_rate, period='daily'))
+        try:
+            # empyrical-reloaded expects annualized required return
+            sortino = float(ep.sortino_ratio(returns, required_return=risk_free_rate, period='daily', annualization=trading_days_per_year))
+        except Exception:
+            sortino = 0.0
     else:
-        downside_returns = returns[returns < 0]
+        # Manual calculation using downside deviation
+        downside_returns = returns[returns < daily_risk_free_rate]
         if len(downside_returns) > 0:
-            downside_std = downside_returns.std() * np.sqrt(trading_days_per_year)
-            if downside_std > 0:
-                sortino = float(np.sqrt(trading_days_per_year) * (returns.mean() - risk_free_rate / trading_days_per_year) / downside_std)
+            downside_std = float(np.sqrt(np.mean((downside_returns - daily_risk_free_rate) ** 2)))
+            annualized_downside_std = downside_std * np.sqrt(trading_days_per_year)
+            if annualized_downside_std > 0:
+                excess_return = annual_return - risk_free_rate
+                sortino = float(excess_return / annualized_downside_std)
             else:
                 sortino = 0.0
         else:
             sortino = 0.0
+
+    # Validate Sortino ratio: must be finite and within reasonable bounds
+    if not np.isfinite(sortino):
+        sortino = 0.0
+    elif sortino > 10.0:
+        sortino = 10.0  # Cap at reasonable upper bound
+    elif sortino < -10.0:
+        sortino = -10.0  # Cap at reasonable lower bound
     metrics['sortino'] = sortino
     
     # Maximum drawdown
@@ -99,41 +136,79 @@ def calculate_metrics(
         max_dd = float(drawdown.min())
     metrics['max_drawdown'] = max_dd
     
-    # Calmar ratio (annual return / max drawdown)
+    # Calmar ratio (annual return / max drawdown) with validation
     if abs(max_dd) > 1e-10:
         calmar = float(annual_return / abs(max_dd))
     else:
         calmar = 0.0
+
+    # Validate Calmar ratio: must be finite and within reasonable bounds
+    if not np.isfinite(calmar):
+        calmar = 0.0
+    elif calmar > 20.0:
+        calmar = 20.0  # Cap at reasonable upper bound
+    elif calmar < -20.0:
+        calmar = -20.0  # Cap at reasonable lower bound
     metrics['calmar'] = calmar
     
-    # Additional metrics from Empyrical if available
+    # Additional metrics from empyrical-reloaded if available
     if EMPYRICAL_AVAILABLE:
-        try:
-            metrics['alpha'] = float(ep.alpha(returns, returns, risk_free=risk_free_rate, period='daily'))
-            metrics['beta'] = float(ep.beta(returns, returns, risk_free=risk_free_rate))
-        except:
+        # Alpha and Beta require benchmark returns
+        if benchmark_returns is not None and len(benchmark_returns) > 0:
+            try:
+                # Align returns and benchmark
+                aligned_returns, aligned_benchmark = returns.align(benchmark_returns, join='inner')
+                aligned_returns = aligned_returns.dropna()
+                aligned_benchmark = aligned_benchmark.dropna()
+                
+                if len(aligned_returns) > 0 and len(aligned_benchmark) > 0:
+                    metrics['alpha'] = float(ep.alpha(aligned_returns, aligned_benchmark, risk_free=risk_free_rate, period='daily', annualization=trading_days_per_year))
+                    metrics['beta'] = float(ep.beta(aligned_returns, aligned_benchmark))
+                else:
+                    metrics['alpha'] = 0.0
+                    metrics['beta'] = 1.0
+            except Exception:
+                metrics['alpha'] = 0.0
+                metrics['beta'] = 1.0
+        else:
+            # Without benchmark, alpha is 0 and beta is undefined (set to 1)
             metrics['alpha'] = 0.0
             metrics['beta'] = 1.0
         
         try:
-            metrics['omega'] = float(ep.omega_ratio(returns, risk_free=risk_free_rate, required_return=risk_free_rate))
-        except:
+            metrics['omega'] = float(ep.omega_ratio(returns, risk_free=risk_free_rate, required_return=0.0, annualization=trading_days_per_year))
+        except Exception:
             metrics['omega'] = 0.0
         
         try:
             metrics['tail_ratio'] = float(ep.tail_ratio(returns))
-        except:
+        except Exception:
             metrics['tail_ratio'] = 0.0
         
         try:
-            metrics['max_drawdown_duration'] = float(ep.max_drawdown_duration(returns).total_seconds() / (60 * 60 * 24)) # Convert to days
-        except:
+            max_dd_duration = ep.max_drawdown_duration(returns)
+            if max_dd_duration is not None:
+                metrics['max_drawdown_duration'] = float(max_dd_duration.total_seconds() / (60 * 60 * 24))  # Convert to days
+            else:
+                metrics['max_drawdown_duration'] = 0.0
+        except Exception:
             metrics['max_drawdown_duration'] = 0.0
 
         try:
-            metrics['recovery_time'] = float(_calculate_recovery_time(returns).total_seconds() / (60 * 60 * 24))
-        except:
+            recovery_time = _calculate_recovery_time(returns)
+            if recovery_time is not None:
+                metrics['recovery_time'] = float(recovery_time.total_seconds() / (60 * 60 * 24))
+            else:
+                metrics['recovery_time'] = 0.0
+        except Exception:
             metrics['recovery_time'] = 0.0
+    else:
+        metrics['alpha'] = 0.0
+        metrics['beta'] = 1.0
+        metrics['omega'] = 0.0
+        metrics['tail_ratio'] = 0.0
+        metrics['max_drawdown_duration'] = 0.0
+        metrics['recovery_time'] = 0.0
     
     # Trade-level metrics if transactions provided
     if transactions is not None and len(transactions) > 0:
@@ -505,4 +580,3 @@ def _empty_metrics() -> Dict[str, float]:
         'avg_trade_duration': 0.0,
         'trades_per_month': 0.0,
     }
-
