@@ -17,9 +17,9 @@ zipline-algo/
 │
 ├── data/
 │   ├── bundles/
-│   │   ├── crypto_daily/                      # Ingested bundle
-│   │   ├── forex_1h/                          # Hourly forex data
-│   │   └── us_equities_daily/                 # Standard equity bundle
+│   │   ├── yahoo_crypto_daily/                # Yahoo Finance crypto bundle
+│   │   ├── yahoo_forex_daily/                 # Yahoo Finance forex bundle
+│   │   └── yahoo_equities_daily/              # Yahoo Finance equities bundle
 │   ├── cache/
 │   │   └── yahoo_2024_12_18.parquet          # Cached API responses
 │   └── exports/
@@ -137,20 +137,21 @@ zipline-algo/
 │
 ├── lib/
 │   ├── __init__.py
-│   ├── backtest.py                            # Thin Zipline wrapper
+│   ├── backtest.py                            # Zipline wrapper with calendar validation
 │   ├── config.py                              # Configuration loading
-│   ├── data_loader.py                         # Bundle ingestion, API fetching
+│   ├── data_loader.py                         # Bundle ingestion with gap-filling
 │   ├── extension.py                           # Wrapper for .zipline/extension.py
 │   ├── logging_config.py                      # Centralized logging configuration
 │   ├── metrics.py                             # Empyrical + custom metrics
 │   ├── optimize.py                            # Grid search, random search
+│   ├── paths.py                               # Marker-based project root discovery
 │   ├── plots.py                               # Standard visualizations
 │   ├── report.py                              # Report generation
-│   ├── utils.py                               # Utility functions
+│   ├── utils.py                               # Utility functions, timezone handling
 │   └── validate.py                            # Walk-forward, Monte Carlo, overfit detection
 │
 ├── scripts/
-│   ├── ingest_data.py                         # python scripts/ingest_data.py --source yahoo --assets crypto
+│   ├── ingest_data.py                         # python scripts/ingest_data.py --source yahoo --assets crypto [--calendar CRYPTO]
 │   ├── run_backtest.py                        # python scripts/run_backtest.py --strategy btc_sma_cross
 │   ├── run_optimization.py                    # python scripts/run_optimization.py --strategy btc_sma_cross --method grid
 │   └── generate_report.py                     # python scripts/generate_report.py --strategy btc_sma_cross

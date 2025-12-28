@@ -40,6 +40,20 @@ The codebase has been realigned with Zipline-Reloaded 3.1.0 standards:
 
 See `tasks/v1.0.3/AGENT_TASKS.md` for detailed completion notes.
 
+### ✅ v1.0.5 Data Pipeline Fixes Complete (2025-12-28)
+Comprehensive fixes for multi-asset class data ingestion and backtesting:
+- **Path Resolution**: Marker-based `_find_project_root()` across all scripts/strategies
+- **Timezone Handling**: `tz_convert(None)` pattern for calendar API calls
+- **Bundle Registry**: `end_date` tracking in metadata persistence
+- **Calendar Filtering**: FOREX Sunday sessions properly filtered to Mon-Fri
+- **Gap-Filling**: Automatic fill for FOREX (5 days) and CRYPTO (3 days)
+- **Calendar Validation**: Mismatch warning between bundle and backtest calendars
+- **Ingestion CLI**: `--calendar` option for explicit calendar override
+- **Metrics Consistency**: Empyrical-based Sharpe calculation in all strategies
+- **Bundle Defaults**: Updated to `yahoo_*_daily` naming convention
+
+See `tasks/v1.0.5/` for detailed implementation notes.
+
 ### 🚧 Implementation Needed
 Everything described in `README.md` and `project.structure.md` needs to be created.
 

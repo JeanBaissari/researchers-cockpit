@@ -1,6 +1,6 @@
 # The Researcher's Cockpit
 
-[![Version](https://img.shields.io/badge/version-1.0.3-blue.svg)](https://github.com/JeanBaissari/researchers-cockpit)
+[![Version](https://img.shields.io/badge/version-1.0.5-blue.svg)](https://github.com/JeanBaissari/researchers-cockpit)
 [![Powered by](https://img.shields.io/badge/powered%20by-Zipline--Reloaded%203.1.0-green.svg)](https://github.com/stefan-jansen/zipline-reloaded)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](LICENSE)
 
@@ -13,7 +13,7 @@
 ## Project Identity
 
 **Name:** researchers-cockpit
-**Version:** 1.0.3
+**Version:** 1.0.5
 **Type:** Research-First Minimalist + AI-Agent Optimized
 **Target User:** Algo trader focused on daily research cycles
 **Core Principle:** Every folder is a clear "handoff zone" between human and AI agents
