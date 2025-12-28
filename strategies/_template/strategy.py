@@ -52,8 +52,7 @@ def _find_project_root() -> Path:
             if (current / marker).exists():
                 return current
         current = current.parent
-    # Fallback to relative path (legacy behavior)
-    return Path(__file__).parent.parent.parent
+    raise RuntimeError("Could not find project root. Missing marker files.")
 
 _project_root = _find_project_root()
 if str(_project_root) not in sys.path:
@@ -381,44 +380,50 @@ def handle_data(context, data):
 def analyze(context, perf):
     """
     Post-backtest analysis.
-    
+
     This function is called after the backtest completes.
     Use it to print summary statistics or perform final calculations.
-    
+
     Args:
         context: Zipline context object
         perf: Performance DataFrame with returns, positions, etc.
     """
     params = load_params()
     asset_symbol = params['strategy']['asset_symbol']
-    
+
     print("\n" + "=" * 60)
     print(f"STRATEGY RESULTS: {asset_symbol}")
     print("=" * 60)
-    
+
     # Calculate basic metrics
-    returns = perf['returns']
-    total_return = perf['returns'].sum()
+    returns = perf['returns'].dropna()
+    total_return = (1 + returns).prod() - 1
     final_value = perf['portfolio_value'].iloc[-1]
-    
-    if len(returns) > 0 and returns.std() > 0:
-        sharpe = np.sqrt(252) * returns.mean() / returns.std()
-    else:
-        sharpe = 0.0
-    
-    cumulative = (1 + returns).cumprod()
-    max_dd = ((cumulative.cummax() - cumulative) / cumulative.cummax()).max()
-    
+
+    # Use empyrical for consistent Sharpe calculation (matches lib/metrics.py)
+    # NOTE: Adjust annualization factor based on asset class:
+    #   - Equities: 252
+    #   - Forex: 260
+    #   - Crypto: 365
+    try:
+        import empyrical as ep
+        sharpe = float(ep.sharpe_ratio(returns, risk_free=0.04, period='daily', annualization=252))
+        max_dd = float(ep.max_drawdown(returns))
+        # Validate Sharpe ratio
+        if not np.isfinite(sharpe):
+            sharpe = 0.0
+    except ImportError:
+        # Fallback if empyrical not available
+        if len(returns) > 0 and returns.std() > 0:
+            sharpe = np.sqrt(252) * returns.mean() / returns.std()
+        else:
+            sharpe = 0.0
+        cumulative = (1 + returns).cumprod()
+        max_dd = ((cumulative.cummax() - cumulative) / cumulative.cummax()).max()
+
     print(f"Total Return: {total_return:.2%}")
     print(f"Final Portfolio Value: ${final_value:,.2f}")
     print(f"Sharpe Ratio: {sharpe:.2f}")
     print(f"Max Drawdown: {max_dd:.2%}")
     print("=" * 60)
-    
-    # TODO: Add more detailed analysis here
-    # - Trade statistics
-    # - Win rate
-    # - Average trade duration
-    # - Regime breakdown
-    # etc.
 
