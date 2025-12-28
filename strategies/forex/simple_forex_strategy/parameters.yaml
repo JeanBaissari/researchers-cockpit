@@ -1,5 +1,22 @@
-start_date: 2023-01-01
-end_date: 2023-01-10
-capital_base: 10000
-data_frequency: daily
+strategy:
+  asset_symbol: EURUSD=X
+  asset_class: forex
+  short_period: 10
+  long_period: 30
+  rebalance_frequency: daily
+  minutes_after_open: 30
+  use_pipeline: false  # Forex does not support Pipeline API
 
+backtest:
+  start_date: 2023-01-01
+  end_date: 2024-12-01
+  capital_base: 100000
+  data_frequency: daily
+
+  # Warmup Period Configuration
+  # Must be >= max(short_period, long_period) = 30
+  warmup_days: 30
+  validate_warmup: true
+
+position_sizing:
+  max_position_pct: 0.95

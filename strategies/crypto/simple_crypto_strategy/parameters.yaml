@@ -1,5 +1,22 @@
-start_date: 2023-01-01
-end_date: 2023-01-10
-capital_base: 10000
-data_frequency: daily
+strategy:
+  asset_symbol: BTC-USD
+  asset_class: crypto
+  short_period: 50
+  long_period: 200
+  rebalance_frequency: daily
+  minutes_after_open: 30
+  use_pipeline: false  # Crypto does not support Pipeline API
 
+backtest:
+  start_date: 2023-01-01
+  end_date: 2024-12-01
+  capital_base: 100000
+  data_frequency: daily
+
+  # Warmup Period Configuration
+  # Must be >= max(short_period, long_period) = 200
+  warmup_days: 200
+  validate_warmup: true
+
+position_sizing:
+  max_position_pct: 0.95
