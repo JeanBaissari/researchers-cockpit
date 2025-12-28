@@ -139,18 +139,22 @@ def register_calendar_type(
     force: bool = True
 ) -> bool:
     """
-    Register a custom calendar with Zipline.
-    
+    Register a custom calendar TYPE (factory) with Zipline.
+
+    This registers the calendar class, not an instance, allowing Zipline
+    to lazily instantiate it with appropriate date bounds during bundle
+    ingestion and backtest execution.
+
     Args:
         name: Calendar name (e.g., 'CRYPTO', 'FOREX')
         calendar_class: Calendar class (subclass of ExchangeCalendar)
-        start: Optional start date string (YYYY-MM-DD). Defaults to None for max flexibility.
-        end: Optional end date string (YYYY-MM-DD). Defaults to None for max flexibility.
+        start: Deprecated, not used (kept for API compatibility)
+        end: Deprecated, not used (kept for API compatibility)
         force: If True, overwrite existing calendar registration. Default True.
-    
+
     Returns:
         True if registration successful, False otherwise.
-    
+
     Raises:
         ValueError: If calendar_class is not a valid ExchangeCalendar subclass.
     """
@@ -160,41 +164,31 @@ def register_calendar_type(
             f"calendar_class must be a subclass of ExchangeCalendar, "
             f"got {type(calendar_class).__name__}"
         )
-    
-    # Import here to avoid circular imports and ensure Zipline is only accessed when needed
+
+    # Import here to avoid circular imports
     try:
-        from zipline.utils.calendar_utils import register_calendar
+        from exchange_calendars.calendar_utils import global_calendar_dispatcher
     except ImportError as e:
-        logger.error(f"Failed to import Zipline calendar utilities: {e}")
+        logger.error(f"Failed to import exchange_calendars: {e}")
         return False
-    
+
     try:
-        # Parse dates if provided
-        start_pd = pd.Timestamp(start) if start else None
-        end_pd = pd.Timestamp(end) if end else None
-        
-        # Create calendar instance
-        calendar_instance = calendar_class(start=start_pd, end=end_pd)
-        
-        # Validate the calendar instance
-        if not hasattr(calendar_instance, 'name') or not calendar_instance.name:
-            raise ValueError("Calendar instance missing 'name' attribute")
-        
-        # Register with Zipline
-        register_calendar(
+        # Register the calendar TYPE (factory) instead of an instance
+        # This allows Zipline to instantiate the calendar with appropriate date bounds
+        global_calendar_dispatcher.register_calendar_type(
             name=name,
-            calendar=calendar_instance,
+            calendar_type=calendar_class,
             force=force
         )
-        
+
         # Track registration
         if name not in _registered_calendars:
             _registered_calendars.append(name)
-        
-        logger.info(f"Successfully registered calendar: {name}")
+
+        logger.info(f"Successfully registered calendar type: {name}")
         return True
     except Exception as e:
-        logger.error(f"Failed to register calendar '{name}': {e}")
+        logger.error(f"Failed to register calendar type '{name}': {e}")
         return False
 
 

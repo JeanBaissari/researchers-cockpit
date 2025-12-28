@@ -86,7 +86,7 @@ def grid_search(
         
         # Run backtest on training data
         try:
-            train_perf = run_backtest(
+            train_perf, _ = run_backtest(
                 strategy_name=strategy_name,
                 start_date=train_start,
                 end_date=train_end,
@@ -94,12 +94,12 @@ def grid_search(
                 bundle=bundle,
                 asset_class=asset_class
             )
-            
+
             train_returns = train_perf['returns'].dropna()
             train_metrics = calculate_metrics(train_returns)
-            
+
             # Run backtest on test data
-            test_perf = run_backtest(
+            test_perf, _ = run_backtest(
                 strategy_name=strategy_name,
                 start_date=test_start,
                 end_date=test_end,
@@ -107,7 +107,7 @@ def grid_search(
                 bundle=bundle,
                 asset_class=asset_class
             )
-            
+
             test_returns = test_perf['returns'].dropna()
             test_metrics = calculate_metrics(test_returns)
             
@@ -252,7 +252,7 @@ def random_search(
         
         # Run backtest on training data
         try:
-            train_perf = run_backtest(
+            train_perf, _ = run_backtest(
                 strategy_name=strategy_name,
                 start_date=train_start,
                 end_date=train_end,
@@ -260,12 +260,12 @@ def random_search(
                 bundle=bundle,
                 asset_class=asset_class
             )
-            
+
             train_returns = train_perf['returns'].dropna()
             train_metrics = calculate_metrics(train_returns)
-            
+
             # Run backtest on test data
-            test_perf = run_backtest(
+            test_perf, _ = run_backtest(
                 strategy_name=strategy_name,
                 start_date=test_start,
                 end_date=test_end,
@@ -273,7 +273,7 @@ def random_search(
                 bundle=bundle,
                 asset_class=asset_class
             )
-            
+
             test_returns = test_perf['returns'].dropna()
             test_metrics = calculate_metrics(test_returns)
             

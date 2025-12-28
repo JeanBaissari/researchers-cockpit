@@ -99,7 +99,7 @@ def walk_forward(
         
         # Run backtest on training period
         try:
-            train_perf = run_backtest(
+            train_perf, _ = run_backtest(
                 strategy_name=strategy_name,
                 start_date=period['train_start'],
                 end_date=period['train_end'],
@@ -107,16 +107,16 @@ def walk_forward(
                 bundle=bundle,
                 asset_class=asset_class
             )
-            
+
             train_returns = train_perf['returns'].dropna()
             train_metrics = calculate_metrics(train_returns)
             train_metrics['period'] = i + 1
             train_metrics['start_date'] = period['train_start']
             train_metrics['end_date'] = period['train_end']
             in_sample_results.append(train_metrics)
-            
+
             # Run backtest on test period
-            test_perf = run_backtest(
+            test_perf, _ = run_backtest(
                 strategy_name=strategy_name,
                 start_date=period['test_start'],
                 end_date=period['test_end'],
@@ -124,7 +124,7 @@ def walk_forward(
                 bundle=bundle,
                 asset_class=asset_class
             )
-            
+
             test_returns = test_perf['returns'].dropna()
             test_metrics = calculate_metrics(test_returns)
             test_metrics['period'] = i + 1
