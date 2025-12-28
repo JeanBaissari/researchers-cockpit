@@ -42,7 +42,20 @@ import sys
 
 # Add project root to path for lib imports
 # This allows strategies to import lib modules
-_project_root = Path(__file__).parent.parent.parent
+# Uses marker-based root discovery for robust path resolution
+def _find_project_root() -> Path:
+    """Find project root by searching for marker files."""
+    markers = ['pyproject.toml', '.git', 'config/settings.yaml', 'CLAUDE.md']
+    current = Path(__file__).resolve().parent
+    while current != current.parent:
+        for marker in markers:
+            if (current / marker).exists():
+                return current
+        current = current.parent
+    # Fallback to relative path (legacy behavior)
+    return Path(__file__).parent.parent.parent
+
+_project_root = _find_project_root()
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
@@ -94,19 +107,63 @@ def load_params():
         return yaml.safe_load(f)
 
 
+def _calculate_required_warmup(params: dict) -> int:
+    """
+    Dynamically calculate required warmup days from strategy parameters.
+
+    Finds the maximum of all indicator period parameters to ensure
+    sufficient data for indicator initialization.
+
+    Args:
+        params: Strategy parameters dictionary
+
+    Returns:
+        int: Required warmup days
+    """
+    strategy_config = params.get('strategy', {})
+    period_values = []
+
+    # Collect all *_period parameters
+    for key, value in strategy_config.items():
+        if key.endswith('_period') and isinstance(value, (int, float)) and value > 0:
+            period_values.append(int(value))
+
+    # Also check common non-suffixed period params
+    for key in ['lookback', 'window', 'span']:
+        if key in strategy_config:
+            value = strategy_config[key]
+            if isinstance(value, (int, float)) and value > 0:
+                period_values.append(int(value))
+
+    return max(period_values) if period_values else 30
+
+
 def initialize(context):
     """
     Set up the strategy.
-    
+
     This function is called once at the start of the backtest.
     Load parameters, set up assets, configure costs, and schedule functions.
     """
     # Load parameters from YAML
     params = load_params()
-    
+
     # Store parameters in context for easy access
     context.params = params
-    
+
+    # Calculate and store required warmup days
+    context.required_warmup_days = _calculate_required_warmup(params)
+
+    # Validate warmup configuration
+    configured_warmup = params.get('backtest', {}).get('warmup_days')
+    if configured_warmup is not None and configured_warmup < context.required_warmup_days:
+        import warnings
+        warnings.warn(
+            f"Configured warmup_days ({configured_warmup}) is less than calculated "
+            f"required warmup ({context.required_warmup_days}) based on indicator periods. "
+            f"Consider increasing warmup_days in parameters.yaml to avoid insufficient data."
+        )
+
     # Get data frequency from parameters, default to 'daily'
     context.data_frequency = params.get('backtest', {}).get('data_frequency', 'daily')
 
@@ -121,10 +178,11 @@ def initialize(context):
     # Set benchmark
     set_benchmark(context.asset)
 
-    # Attach Pipeline (if available)
+    # Attach Pipeline only if use_pipeline is enabled (and Pipeline is available)
     context.pipeline_data = None
     context.pipeline_universe = []
-    if _PIPELINE_AVAILABLE:
+    context.use_pipeline = params['strategy'].get('use_pipeline', False)
+    if context.use_pipeline and _PIPELINE_AVAILABLE:
         pipeline = make_pipeline()
         if pipeline is not None:
             attach_pipeline(pipeline, 'my_pipeline')
@@ -191,7 +249,7 @@ def before_trading_start(context, data):
 
     Use this to fetch pipeline output and update context.
     """
-    if _PIPELINE_AVAILABLE:
+    if context.use_pipeline and _PIPELINE_AVAILABLE:
         try:
             context.pipeline_data = pipeline_output('my_pipeline')
             # Example: Store the list of assets in our universe

@@ -9,8 +9,16 @@ strategy:
   asset_class: equities          # 'equities', 'crypto', 'forex'
   rebalance_frequency: daily    # 'daily', 'weekly', 'monthly'
   minutes_after_open: 30         # Minutes after market open to trade (0-60)
-  use_pipeline: false            # Enable Pipeline API (default: false)
   lookback_period: 30            # Default lookback period for indicators
+
+  # Pipeline Configuration
+  # NOTE: Pipeline API is primarily designed for US equities with proper metadata.
+  # Only set use_pipeline: true when:
+  #   1. Asset class is 'equities' (US stocks)
+  #   2. Bundle was ingested with 'country_code' column in asset metadata
+  #   3. Strategy needs factor-based screening across multiple assets
+  # For crypto/forex strategies, keep use_pipeline: false
+  use_pipeline: false
 
   # Strategy-specific parameters
   # TODO: Add your strategy parameters here
@@ -49,9 +57,17 @@ costs:
     volume_limit: 0.025          # Max % of bar volume (2.5%)
     price_impact: 0.1             # Price impact coefficient
 
-# Backtest Configuration (new section)
+# Backtest Configuration
 backtest:
-  data_frequency: daily         # Data frequency for backtest: 'daily' or 'minute' (options: 'daily', 'minute')
+  data_frequency: daily         # Data frequency for backtest: 'daily' or 'minute'
+
+  # Warmup Period Configuration
+  # The warmup period is the number of days needed before the strategy can generate signals.
+  # This should be >= max(all indicator periods used in the strategy).
+  # Example: For a 50/200 SMA crossover, warmup_days should be at least 200.
+  # If not specified, calculated dynamically from strategy parameters.
+  warmup_days: 30               # Minimum days of data before first signal (auto-calculated if null)
+  validate_warmup: true         # Enable pre-flight warmup validation
 
 # Notes
 notes: |
