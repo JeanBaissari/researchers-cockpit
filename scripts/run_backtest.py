@@ -8,14 +8,27 @@ Runs a backtest for a strategy and saves results.
 import sys
 from pathlib import Path
 
+
+def _find_project_root() -> Path:
+    """Find project root by searching for marker files."""
+    markers = ['pyproject.toml', '.git', 'config/settings.yaml', 'CLAUDE.md']
+    current = Path(__file__).resolve().parent
+    while current != current.parent:
+        for marker in markers:
+            if (current / marker).exists():
+                return current
+        current = current.parent
+    raise RuntimeError("Could not find project root. Missing marker files.")
+
+
 # Add project root to path
-project_root = Path(__file__).parent.parent.parent
+project_root = _find_project_root()
 sys.path.insert(0, str(project_root))
 
 import click
-from v1_researchers_cockpit.lib.backtest import run_backtest, save_results
-from v1_researchers_cockpit.lib.config import load_strategy_params, validate_strategy_params, get_warmup_days
-from v1_researchers_cockpit.lib.utils import get_strategy_path
+from lib.backtest import run_backtest, save_results
+from lib.config import load_strategy_params, validate_strategy_params, get_warmup_days
+from lib.utils import get_strategy_path
 
 
 @click.command()
