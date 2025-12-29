@@ -39,8 +39,8 @@ from lib.utils import get_strategy_path
 @click.option('--bundle', default=None, help='Data bundle name (auto-detected if not provided)')
 @click.option('--asset-class', default=None, type=click.Choice(['crypto', 'forex', 'equities']),
               help='Asset class hint for strategy location')
-@click.option('--data-frequency', default='daily', type=click.Choice(['daily', 'minute']),
-              help='Data frequency: daily or minute')
+@click.option('--data-frequency', default=None, type=click.Choice(['daily', 'minute']),
+              help='Data frequency (auto-detected from bundle if not specified)')
 @click.option('--skip-warmup-check', is_flag=True, default=False,
               help='Skip warmup period validation (use with caution)')
 def main(strategy, start, end, capital, bundle, asset_class, data_frequency, skip_warmup_check):
@@ -77,6 +77,26 @@ def main(strategy, start, end, capital, bundle, asset_class, data_frequency, ski
         if skip_warmup_check:
             click.echo("⚠ Warmup validation disabled (--skip-warmup-check)")
             params.setdefault('backtest', {})['validate_warmup'] = False
+
+        # Auto-detect data frequency from bundle registry if not specified
+        if data_frequency is None:
+            from lib.data_loader import _load_bundle_registry
+            registry = _load_bundle_registry()
+
+            # Determine which bundle to check
+            bundle_to_check = bundle
+            if bundle_to_check is None:
+                # Try to infer bundle from strategy params
+                bundle_to_check = params.get('backtest', {}).get('bundle')
+
+            if bundle_to_check and bundle_to_check in registry:
+                detected_freq = registry[bundle_to_check].get('data_frequency', 'daily')
+                detected_tf = registry[bundle_to_check].get('timeframe', 'daily')
+                click.echo(f"Auto-detected data frequency: {detected_freq} (from bundle {bundle_to_check}, timeframe: {detected_tf})")
+                data_frequency = detected_freq
+            else:
+                click.echo("Data frequency not specified, defaulting to: daily")
+                data_frequency = 'daily'
 
         # Run backtest
         click.echo("Executing backtest...")

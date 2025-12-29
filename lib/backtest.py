@@ -472,7 +472,8 @@ def run_backtest(
     
     # Run backtest with bundle's calendar
     # Create empty benchmark returns Series to avoid Zipline trying to fetch benchmark data
-    benchmark_freq = 'T' if config.data_frequency == 'minute' else 'D'
+    # Note: 'T' is deprecated in pandas 2.x, use 'min' for minute frequency
+    benchmark_freq = 'min' if config.data_frequency == 'minute' else 'D'
     empty_benchmark = pd.Series(dtype=float, index=pd.DatetimeIndex([], freq=benchmark_freq))
     
     try:

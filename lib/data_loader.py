@@ -507,6 +507,51 @@ def _register_yahoo_bundle(
                             except Exception as cal_err:
                                 print(f"Warning: Calendar session filtering failed for {symbol}: {cal_err}")
 
+                        # === INTRADAY SESSION FILTERING (for FOREX) ===
+                        # For FOREX intraday data, bars at 00:00-04:00 UTC on a given date
+                        # actually belong to the PREVIOUS day's session (which ends at ~04:58 UTC).
+                        # The minute bar writer creates indices starting at session open (05:00 UTC),
+                        # so pre-session bars cause KeyError. Filter them out.
+                        if data_frequency == 'minute' and 'FOREX' in calendar_name.upper():
+                            try:
+                                # Get unique dates in the data
+                                unique_dates = bars_df.index.normalize().unique()
+                                valid_mask = pd.Series(True, index=bars_df.index)
+
+                                for date_ts in unique_dates:
+                                    try:
+                                        # Get session open for this date
+                                        date_naive = date_ts.tz_convert(None) if date_ts.tz else date_ts
+                                        if date_naive not in calendar_obj.sessions:
+                                            # Not a trading day, mark all bars for this date as invalid
+                                            date_bars = bars_df.index.normalize() == date_ts
+                                            valid_mask[date_bars] = False
+                                            continue
+
+                                        session_open = calendar_obj.session_open(date_naive)
+                                        # Ensure session_open is UTC for comparison
+                                        if session_open.tz is None:
+                                            session_open = session_open.tz_localize('UTC')
+                                        elif str(session_open.tz) != 'UTC':
+                                            session_open = session_open.tz_convert('UTC')
+
+                                        # Find bars on this date that are before session open
+                                        date_bars = bars_df.index.normalize() == date_ts
+                                        pre_session = bars_df.index < session_open
+                                        invalid = date_bars & pre_session
+                                        valid_mask[invalid] = False
+                                    except Exception:
+                                        # If we can't get session info, keep the bars
+                                        continue
+
+                                excluded = (~valid_mask).sum()
+                                if excluded > 0:
+                                    if show_progress:
+                                        print(f"  {symbol}: Filtered {excluded} pre-session bars (FOREX 00:00-04:59 UTC)")
+                                    bars_df = bars_df[valid_mask]
+                            except Exception as forex_err:
+                                print(f"Warning: FOREX intraday session filtering failed for {symbol}: {forex_err}")
+
                         # Check if we have any data left after filtering
                         if bars_df.empty:
                             print(f"Warning: No data for {symbol} after date/calendar filtering.")
@@ -692,6 +737,19 @@ def ingest_bundle(
     # Get the Zipline data frequency (daily or minute)
     data_frequency = tf_info['data_frequency']
 
+    # === AUTO-EXCLUDE CURRENT DAY FOR FOREX INTRADAY ===
+    # FOREX sessions span midnight UTC (05:00 UTC to 04:58 UTC next day).
+    # Current-day data from yfinance includes incomplete session data that
+    # can cause indexing errors. Auto-exclude current day for safety.
+    if calendar_name == 'FOREX' and data_frequency == 'minute' and end_date is None:
+        yesterday = (datetime.now().date() - timedelta(days=1)).isoformat()
+        logger.info(
+            f"FOREX intraday: Auto-excluding current day. "
+            f"Setting end_date to {yesterday} to avoid incomplete session data."
+        )
+        print(f"Note: FOREX intraday data excludes current day (end_date set to {yesterday})")
+        end_date = yesterday
+
     # Log ingestion details
     logger.info(
         f"Ingesting {source}/{asset_class} bundle: {bundle_name} "
@@ -767,20 +825,24 @@ def load_bundle(bundle_name: str) -> Any:
             calendar_name = bundle_meta.get('calendar_name', 'XNYS')
             symbols = bundle_meta.get('symbols', [])
             start_date = bundle_meta.get('start_date')
+            end_date = bundle_meta.get('end_date')
             data_frequency = bundle_meta.get('data_frequency', 'daily')
-            
+            timeframe = bundle_meta.get('timeframe', 'daily')
+
             # Register custom calendars if needed
             if calendar_name in ['CRYPTO', 'FOREX']:
                 from .extension import register_custom_calendars
                 register_custom_calendars(calendars=[calendar_name])
-            
-            # Re-register the bundle with full metadata
+
+            # Re-register the bundle with full metadata (preserves timeframe)
             _register_yahoo_bundle(
                 bundle_name=bundle_name,
                 symbols=symbols,
                 calendar_name=calendar_name,
                 start_date=start_date,
-                data_frequency=data_frequency
+                end_date=end_date,
+                data_frequency=data_frequency,
+                timeframe=timeframe
             )
         elif bundle_name.startswith('yahoo_'):
             # Fallback: Check if bundle data exists on disk

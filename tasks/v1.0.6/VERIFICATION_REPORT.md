@@ -103,6 +103,37 @@ end_date: "daily" (instead of null or date string)
 **Fix Applied:**
 - Added `--data-frequency [daily|minute]` option to `scripts/run_backtest.py`
 - Usage: `python scripts/run_backtest.py --strategy <name> --bundle yahoo_equities_1h --data-frequency minute`
+- **Enhancement (2025-12-29):** Added auto-detection from bundle registry when `--data-frequency` not specified
+
+### Issue #4: Minute Backtest NaT Error (NEEDS INVESTIGATION)
+
+**Symptom:**
+```
+✗ Error: Backtest execution failed: 'NaTType' object has no attribute 'normalize'
+```
+
+**Context:**
+- Occurs when running backtests with `data_frequency='minute'` on intraday bundles
+- Error originates in Zipline's `AssetDispatchSessionBarReader`
+- Daily backtests work correctly; only minute frequency affected
+
+**Stack Trace (partial):**
+```python
+File ".../zipline/utils/memoize.py", line 57, in __get__
+    return self._cache[instance]
+KeyError: <weakref at ...; to 'AssetDispatchSessionBarReader' at ...>
+```
+
+**Possible Root Causes:**
+1. Bundle metadata (start/end dates) may have NaT values
+2. Calendar session alignment issue with minute bar reader
+3. Mismatch between bundle's session dates and backtest date range
+
+**Workaround:**
+- Use daily bundles for backtesting until issue is resolved
+- For intraday analysis, consider post-processing daily results
+
+**Status:** Deferred to future investigation - does not block daily workflows
 
 ---
 

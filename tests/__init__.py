@@ -1,1 +1,1 @@
-Tests Zipline-Reloaded compatibility and pipeline functionality.
+"""Tests for Zipline-Reloaded compatibility and pipeline functionality."""
