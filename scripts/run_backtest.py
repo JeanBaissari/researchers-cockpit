@@ -39,9 +39,11 @@ from lib.utils import get_strategy_path
 @click.option('--bundle', default=None, help='Data bundle name (auto-detected if not provided)')
 @click.option('--asset-class', default=None, type=click.Choice(['crypto', 'forex', 'equities']),
               help='Asset class hint for strategy location')
+@click.option('--data-frequency', default='daily', type=click.Choice(['daily', 'minute']),
+              help='Data frequency: daily or minute')
 @click.option('--skip-warmup-check', is_flag=True, default=False,
               help='Skip warmup period validation (use with caution)')
-def main(strategy, start, end, capital, bundle, asset_class, skip_warmup_check):
+def main(strategy, start, end, capital, bundle, asset_class, data_frequency, skip_warmup_check):
     """
     Run a backtest for a strategy.
     
@@ -84,6 +86,7 @@ def main(strategy, start, end, capital, bundle, asset_class, skip_warmup_check):
             end_date=end,
             capital_base=capital,
             bundle=bundle,
+            data_frequency=data_frequency,
             asset_class=asset_class
         )
 
