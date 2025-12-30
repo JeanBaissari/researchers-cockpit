@@ -25,7 +25,7 @@ from zipline.utils.calendar_utils import get_calendar
 
 # Local imports
 from .config import get_data_source, load_settings
-from .utils import get_project_root, ensure_dir, fill_data_gaps, normalize_to_utc
+from .utils import get_project_root, ensure_dir, fill_data_gaps, normalize_to_utc, aggregate_ohlcv
 
 logger = logging.getLogger(__name__)
 
@@ -591,10 +591,63 @@ def _register_yahoo_bundle(
                     )
             
             if data_frequency == 'minute':
-                minute_bar_writer.write(data_gen(), show_progress=show_progress)
+                # For intraday bundles, we need to write BOTH minute and daily bars.
+                # Zipline's internal operations (benchmark, history window, Pipeline API)
+                # require valid daily bar data even when running minute-frequency backtests.
+                # Without daily bars, the daily_bar_reader has NaT for first_trading_day,
+                # causing: AttributeError: 'NaTType' object has no attribute 'normalize'
+
+                # Step 1: Collect all minute data (generator can only be consumed once)
+                if show_progress:
+                    print("  Collecting minute data for aggregation...")
+                all_minute_data = list(data_gen())
+
+                if not all_minute_data:
+                    raise RuntimeError("No minute data was collected. Check symbol validity and date range.")
+
+                # Step 2: Write minute bars
+                if show_progress:
+                    print(f"  Writing {len(all_minute_data)} symbol(s) to minute bar writer...")
+                minute_bar_writer.write(iter(all_minute_data), show_progress=show_progress)
+
+                # Step 3: Aggregate minute data to daily and write to daily bar writer
+                # This ensures the daily bar reader has valid data for Zipline's internal operations
+                if show_progress:
+                    print("  Aggregating minute data to daily bars...")
+
+                def daily_data_gen():
+                    """Generator that yields aggregated daily data from minute data."""
+                    for sid, minute_df in all_minute_data:
+                        try:
+                            # Aggregate minute bars to daily
+                            daily_df = aggregate_ohlcv(minute_df, 'daily')
+
+                            if daily_df.empty:
+                                print(f"  Warning: No daily data after aggregating minute data for SID {sid}")
+                                continue
+
+                            # Normalize timestamps to midnight UTC for daily bar writer
+                            # Daily bars must be at midnight UTC (Zipline expectation)
+                            daily_df.index = daily_df.index.normalize()
+
+                            # Ensure UTC timezone
+                            if daily_df.index.tz is None:
+                                daily_df.index = daily_df.index.tz_localize('UTC')
+                            elif str(daily_df.index.tz) != 'UTC':
+                                daily_df.index = daily_df.index.tz_convert('UTC')
+
+                            yield sid, daily_df
+                        except Exception as agg_err:
+                            print(f"  Warning: Failed to aggregate daily data for SID {sid}: {agg_err}")
+                            continue
+
+                daily_bar_writer.write(daily_data_gen(), show_progress=show_progress)
+
+                if show_progress:
+                    print("  ✓ Both minute and daily bars written successfully")
             else:
                 daily_bar_writer.write(data_gen(), show_progress=show_progress)
-            
+
             # Write empty adjustments (no splits/dividends for now)
             # Pass None instead of empty DataFrames to avoid column validation issues
             adjustment_writer.write(splits=None, dividends=None, mergers=None)

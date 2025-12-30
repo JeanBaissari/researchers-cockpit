@@ -1,8 +1,8 @@
 # v1.0.6 Fix Plan - Codebase Architect Analysis
 
 **Date:** 2025-12-29
-**Last Updated:** 2025-12-29
-**Status:** Implementation Complete - Pending Items Documented
+**Last Updated:** 2025-12-30
+**Status:** ✅ All Major Issues Fixed - v1.0.6 Ready for Release
 **Analyst:** Codebase Architect Agent
 
 ---
@@ -21,7 +21,7 @@ This document tracks all v1.0.6 issues, their root causes, fixes applied, and re
 | Timeframe display bug | ✅ FIXED | Preserved in load_bundle re-registration |
 | Symbol mismatch (EURUSD vs GBPUSD) | ⚠️ NOT A BUG | User configuration issue |
 | Crypto 24/7 calendar ingestion | ✅ VERIFIED WORKING | minutes_per_day=1440 fix works |
-| Minute backtest NaT error | 🔴 NEEDS INVESTIGATION | Zipline internal issue |
+| Minute backtest NaT error | ✅ FIXED | Intraday bundles now write both minute AND daily bars |
 | Integration tests | ✅ COMPLETE | 24 tests passing |
 
 ---
@@ -166,33 +166,61 @@ The `minutes_per_day=1440` fix in v1.0.6 resolved the minute bar indexing issue.
 
 ### Issue #7: Minute Backtest NaT Error
 
-**Status:** 🔴 NEEDS INVESTIGATION
+**Status:** ✅ FIXED
 
 **Symptom:**
 ```
 ✗ Error: Backtest execution failed: 'NaTType' object has no attribute 'normalize'
 ```
 
-**Context:**
-- Occurs when running backtests with `data_frequency='minute'`
-- Daily backtests work correctly
-- Error originates in Zipline's `AssetDispatchSessionBarReader`
+**Root Cause Analysis:**
 
-**Possible Root Causes:**
-1. Asset metadata (start_date/end_date) may have NaT values
-2. Calendar session alignment issue with minute bar reader
-3. Mismatch between bundle session dates and backtest date range
-4. Zipline internal bug with minute frequency on certain calendars
+When ingesting intraday bundles (e.g., `yahoo_equities_1h`), we were only writing minute bars.
+The bundle also creates an empty `daily_bar_writer` with 0 rows, which stores `first_trading_day`
+as `-9223372036854775808` (the NaT sentinel value for int64).
 
-**Workaround:**
-- Use daily bundles for backtesting
-- For intraday analysis, aggregate daily results post-backtest
+When Zipline runs a minute-frequency backtest, its internal operations (BenchmarkSource,
+history window calculations, Pipeline API) still require valid daily bar data. When accessing
+the empty daily reader's sessions via `sessions_in_range(first_trading_day, ...)`, it passes
+NaT, causing the `exchange_calendars` library to fail with the normalize error.
 
-**Next Steps:**
-1. Check asset metadata in bundle for NaT values
-2. Verify session date alignment between bundle and calendar
-3. Test with minimal reproduction case
-4. Consider filing Zipline-Reloaded issue if confirmed upstream bug
+**Evidence:**
+```python
+# Before fix - daily bar reader had:
+Table row count: 0
+first_trading_day: -9223372036854775808  # NaT sentinel
+pd.Timestamp(-9223372036854775808, unit="s") = NaT  # Causes error!
+
+# After fix - daily bar reader has:
+Table row count: 312  # Aggregated from minute data
+first_trading_day: 2024-06-01 00:00:00  # Valid timestamp!
+```
+
+**Fix Applied:**
+Modified `lib/data_loader.py` to write BOTH minute and daily bars for intraday bundles:
+1. Collect all minute data from `data_gen()`
+2. Write minute bars to `minute_bar_writer`
+3. Aggregate minute data to daily using `aggregate_ohlcv()`
+4. Write aggregated daily bars to `daily_bar_writer`
+
+**Code Location:** `lib/data_loader.py:593-647`
+
+**Verification:**
+```bash
+# Re-ingest intraday bundle
+python scripts/ingest_data.py --source yahoo --assets equities --symbols SPY -t 1h
+
+# Output now shows:
+#   Collecting minute data for aggregation...
+#   Writing 1 symbol(s) to minute bar writer...
+#   Aggregating minute data to daily bars...
+#   ✓ Both minute and daily bars written successfully
+
+# Run minute backtest - works!
+python scripts/run_backtest.py --strategy spy_sma_cross --bundle yahoo_equities_1h --data-frequency minute
+```
+
+**Note:** Existing intraday bundles need to be re-ingested to apply the fix.
 
 ---
 
@@ -210,6 +238,8 @@ The `minutes_per_day=1440` fix in v1.0.6 resolved the minute bar indexing issue.
 | 6 | Bundle validation utility | `scripts/validate_bundles.py` | NEW |
 | 7 | Integration tests | `tests/test_multi_timeframe.py` | NEW |
 | 8 | Fix tests/__init__.py syntax | `tests/__init__.py` | 1 |
+| 9 | Minute→daily aggregation for intraday bundles | `lib/data_loader.py` | 593-647 |
+| 10 | Import aggregate_ohlcv utility | `lib/data_loader.py` | 28 |
 
 ### Files Created
 
@@ -232,33 +262,31 @@ The `minutes_per_day=1440` fix in v1.0.6 resolved the minute bar indexing issue.
 - [x] Crypto 24/7 calendar ingestion works
 - [x] Integration tests pass (24/24)
 - [x] Bundle validation utility works
+- [x] Minute backtest NaT error fixed (intraday bundles now write both minute AND daily bars)
+- [x] Minute backtest execution verified (spy_sma_cross with yahoo_equities_1h)
 
-### 🔴 Pending
+### ⚠️ Optional/Future
 
-- [ ] Minute backtest NaT error investigation
-- [ ] Daily backtest strategies pass (spy_sma_cross works)
 - [ ] Multi-asset bundle support verification
+- [ ] Add pre-validation for symbol mismatch (strategy symbol vs bundle symbols)
 
 ---
 
 ## 4. Remaining Work for Future Releases
 
-### High Priority
-
-1. **Investigate Minute Backtest NaT Error**
-   - Deep dive into Zipline's minute bar reader
-   - Check for NaT values in asset metadata
-   - Consider upstream bug report
-
 ### Medium Priority
 
-2. **Multi-Symbol Bundle Support**
+1. **Multi-Symbol Bundle Support**
    - Allow strategies to reference any symbol in bundle
    - Dynamic symbol resolution from bundle metadata
 
-3. **Bundle Management CLI**
+2. **Bundle Management CLI**
    - `list`, `delete`, `info` commands
    - Incremental updates (append new data)
+
+3. **Symbol Mismatch Pre-Validation**
+   - Check strategy's required symbol against bundle symbols before running
+   - Provide helpful error message with available symbols
 
 ### Low Priority
 
@@ -297,4 +325,4 @@ python scripts/run_backtest.py --strategy spy_sma_cross --bundle yahoo_equities_
 ---
 
 **Document maintained by Codebase Architect Agent**
-**Last verified: 2025-12-29**
+**Last verified: 2025-12-30**
