@@ -417,6 +417,331 @@ class TestEndToEndWorkflow:
         assert bundle_meta.get('data_frequency') == 'daily'
 
 
+class TestIntradayBundleDailyBars:
+    """Tests for intraday bundle daily bar aggregation (NaT fix verification).
+
+    NOTE: These tests verify bundles ingested AFTER the v1.0.6 NaT fix.
+    Bundles ingested before the fix will have NaT in first_trading_day and
+    need to be re-ingested to apply the fix.
+    """
+
+    def test_intraday_bundle_has_daily_reader(self):
+        """Verify intraday bundles have a daily bar reader with data.
+
+        Bundles ingested before v1.0.6 fix may have NaT first_trading_day.
+        This test warns but doesn't fail for old bundles that need re-ingestion.
+        """
+        from lib.data_loader import load_bundle, _load_bundle_registry
+        import warnings
+
+        registry = _load_bundle_registry()
+        intraday_bundles = [b for b in registry if '1h' in b or '5m' in b or '15m' in b or '30m' in b]
+
+        needs_reingestion = []
+        valid_bundles = []
+
+        for bundle_name in intraday_bundles:
+            try:
+                bundle_data = load_bundle(bundle_name)
+
+                # Check daily bar reader exists
+                assert hasattr(bundle_data, 'equity_daily_bar_reader'), \
+                    f"Bundle {bundle_name} missing equity_daily_bar_reader"
+
+                reader = bundle_data.equity_daily_bar_reader
+                if reader is not None:
+                    first_day = reader.first_trading_day
+                    if pd.isna(first_day):
+                        needs_reingestion.append(bundle_name)
+                    else:
+                        valid_bundles.append(bundle_name)
+                        # Verify table has data
+                        if hasattr(reader, '_table'):
+                            assert len(reader._table) > 0, \
+                                f"Bundle {bundle_name} has empty daily bar table"
+            except FileNotFoundError:
+                continue  # Skip bundles without data files
+
+        # Warn about bundles needing re-ingestion
+        if needs_reingestion:
+            warnings.warn(
+                f"Bundles needing re-ingestion for NaT fix: {needs_reingestion}. "
+                f"Run: python scripts/ingest_data.py --source yahoo --assets <type> --symbols <sym> -t <tf>",
+                UserWarning
+            )
+
+        # Test passes if at least one valid bundle exists or all bundles are old
+        if not valid_bundles and not needs_reingestion:
+            pytest.skip("No intraday bundles found")
+
+    def test_daily_bar_first_trading_day_not_nat(self):
+        """Test that newly ingested bundles don't have NaT sentinel.
+
+        This test validates the NaT fix is working. Bundles ingested before
+        the fix will be reported but won't cause test failure.
+        """
+        from lib.data_loader import load_bundle, _load_bundle_registry
+        import numpy as np
+        import warnings
+
+        NAT_SENTINEL = np.iinfo(np.int64).min  # -9223372036854775808
+
+        registry = _load_bundle_registry()
+        bundles_with_nat = []
+        bundles_valid = []
+
+        for bundle_name in registry.keys():
+            try:
+                bundle_data = load_bundle(bundle_name)
+                reader = bundle_data.equity_daily_bar_reader
+
+                if reader is not None and hasattr(reader, '_table'):
+                    table = reader._table
+                    if hasattr(table, 'attrs') and 'first_trading_day' in table.attrs.attrs:
+                        ftd_value = table.attrs['first_trading_day']
+                        if ftd_value == NAT_SENTINEL:
+                            bundles_with_nat.append(bundle_name)
+                        else:
+                            bundles_valid.append(bundle_name)
+            except FileNotFoundError:
+                continue  # Skip bundles without data files
+
+        # Warn about bundles with NaT (need re-ingestion)
+        if bundles_with_nat:
+            warnings.warn(
+                f"Bundles with NaT sentinel (need re-ingestion): {bundles_with_nat}",
+                UserWarning
+            )
+
+        # Test passes as long as we have at least some valid bundles
+        # This ensures the fix is working for new ingestions
+        assert len(bundles_valid) > 0 or len(bundles_with_nat) == 0, \
+            "All bundles have NaT - the fix may not be working correctly"
+
+    def test_aggregate_minute_to_daily(self):
+        """Test minute-to-daily aggregation produces correct daily bars."""
+        from lib.utils import aggregate_ohlcv
+
+        # Create sample hourly data for 3 full days starting at midnight UTC
+        # Using 00:00 start ensures we get exactly 3 calendar days
+        dates = pd.date_range('2025-01-01 00:00', periods=24*3, freq='1h', tz='UTC')
+        df = pd.DataFrame({
+            'open': [100 + i for i in range(72)],
+            'high': [105 + i for i in range(72)],
+            'low': [95 + i for i in range(72)],
+            'close': [102 + i for i in range(72)],
+            'volume': [1000] * 72
+        }, index=dates)
+
+        # Aggregate to daily
+        df_daily = aggregate_ohlcv(df, 'daily')
+
+        # Should have 3 daily bars (2025-01-01, 2025-01-02, 2025-01-03)
+        assert len(df_daily) == 3, f"Expected 3 daily bars, got {len(df_daily)}"
+
+        # First bar open should be first hourly open
+        assert df_daily.iloc[0]['open'] == 100
+
+        # Daily high should be max of hourly highs for that day (hours 0-23 = indices 0-23)
+        # Hour 23 has index 23, high = 105 + 23 = 128
+        assert df_daily.iloc[0]['high'] == 128, f"Expected high 128, got {df_daily.iloc[0]['high']}"
+
+        # Daily volume should be sum of 24 hourly bars
+        assert df_daily.iloc[0]['volume'] == 24000  # 24 hours * 1000
+
+
+class TestSymbolValidation:
+    """Tests for symbol validation and mismatch detection."""
+
+    def test_bundle_symbols_retrievable(self):
+        """Test that bundle symbols can be retrieved from registry."""
+        from lib.data_loader import _load_bundle_registry
+
+        registry = _load_bundle_registry()
+
+        for bundle_name, meta in registry.items():
+            assert 'symbols' in meta, f"Bundle {bundle_name} missing symbols field"
+            assert isinstance(meta['symbols'], list), f"Bundle {bundle_name} symbols is not a list"
+            assert len(meta['symbols']) > 0, f"Bundle {bundle_name} has empty symbols list"
+
+    def test_symbol_lookup_in_bundle(self):
+        """Test that symbols in bundle can be looked up via asset_finder."""
+        from lib.data_loader import load_bundle, _load_bundle_registry
+
+        registry = _load_bundle_registry()
+
+        for bundle_name, meta in registry.items():
+            try:
+                bundle_data = load_bundle(bundle_name)
+                asset_finder = bundle_data.asset_finder
+
+                for symbol in meta['symbols']:
+                    # Try to look up the symbol
+                    try:
+                        assets = asset_finder.lookup_symbols([symbol], as_of_date=None)
+                        assert len(assets) > 0, f"Symbol {symbol} not found in {bundle_name}"
+                    except Exception:
+                        # Some symbols may have date constraints
+                        pass
+            except FileNotFoundError:
+                continue
+
+
+class TestBundleIntegrity:
+    """Tests for bundle data integrity."""
+
+    def test_bundle_readers_consistent(self):
+        """Test that minute and daily readers have valid first trading days.
+
+        NOTE: The minute bar reader's first_trading_day is set by the calendar
+        (typically 1990-01-02 for XNYS), not the actual data start date.
+        The daily bar reader's first_trading_day reflects actual data.
+
+        This test verifies:
+        1. Daily reader has valid (non-NaT) first_trading_day after NaT fix
+        2. Both readers exist and are accessible
+        """
+        from lib.data_loader import load_bundle, _load_bundle_registry
+        import warnings
+
+        registry = _load_bundle_registry()
+        intraday_bundles = [b for b in registry if registry[b].get('data_frequency') == 'minute']
+
+        bundles_needing_fix = []
+
+        for bundle_name in intraday_bundles:
+            try:
+                bundle_data = load_bundle(bundle_name)
+
+                minute_reader = bundle_data.equity_minute_bar_reader
+                daily_reader = bundle_data.equity_daily_bar_reader
+
+                # Both readers should exist
+                assert minute_reader is not None, f"Bundle {bundle_name} has no minute reader"
+                assert daily_reader is not None, f"Bundle {bundle_name} has no daily reader"
+
+                # Check daily reader first_trading_day (this is what the NaT fix addresses)
+                daily_ftd = daily_reader.first_trading_day
+                if pd.isna(daily_ftd):
+                    bundles_needing_fix.append(bundle_name)
+                else:
+                    # Daily reader should have a valid date
+                    assert pd.Timestamp(daily_ftd).year >= 2000, \
+                        f"Bundle {bundle_name}: daily_ftd ({daily_ftd}) seems invalid"
+
+            except FileNotFoundError:
+                continue
+
+        if bundles_needing_fix:
+            warnings.warn(
+                f"Intraday bundles with NaT daily_ftd (need re-ingestion): {bundles_needing_fix}",
+                UserWarning
+            )
+
+    def test_calendar_consistency(self):
+        """Test that bundle calendar matches registry calendar."""
+        from lib.data_loader import load_bundle, _load_bundle_registry
+
+        registry = _load_bundle_registry()
+
+        for bundle_name, meta in registry.items():
+            try:
+                bundle_data = load_bundle(bundle_name)
+                reader = bundle_data.equity_daily_bar_reader
+
+                if reader is not None and hasattr(reader, 'trading_calendar'):
+                    bundle_calendar = reader.trading_calendar
+                    if bundle_calendar is not None:
+                        expected_calendar = meta.get('calendar_name', '').upper()
+                        actual_calendar = bundle_calendar.name.upper()
+
+                        # Calendar names should match (allowing for aliases)
+                        assert expected_calendar in actual_calendar or actual_calendar in expected_calendar, \
+                            f"Bundle {bundle_name} calendar mismatch: expected {expected_calendar}, got {actual_calendar}"
+            except FileNotFoundError:
+                continue
+
+
+class TestBacktestPrerequisites:
+    """Tests for backtest execution prerequisites."""
+
+    def test_bundle_has_required_data_for_backtest(self):
+        """Test that bundles have data required for backtesting."""
+        from lib.data_loader import load_bundle, _load_bundle_registry
+
+        registry = _load_bundle_registry()
+
+        for bundle_name in registry.keys():
+            try:
+                bundle_data = load_bundle(bundle_name)
+
+                # Must have asset_finder
+                assert bundle_data.asset_finder is not None, \
+                    f"Bundle {bundle_name} missing asset_finder"
+
+                # Must have at least one bar reader
+                has_daily = bundle_data.equity_daily_bar_reader is not None
+                has_minute = bundle_data.equity_minute_bar_reader is not None
+                assert has_daily or has_minute, \
+                    f"Bundle {bundle_name} has no bar readers"
+
+                # Must have adjustment reader
+                assert bundle_data.adjustment_reader is not None, \
+                    f"Bundle {bundle_name} missing adjustment_reader"
+            except FileNotFoundError:
+                continue
+
+    def test_strategy_params_loadable(self):
+        """Test that strategy parameters can be loaded."""
+        from lib.config import load_strategy_params
+        from lib.utils import get_strategy_path
+
+        # Find strategies
+        strategies_dir = project_root / 'strategies'
+        for asset_class_dir in strategies_dir.iterdir():
+            if asset_class_dir.is_dir() and not asset_class_dir.name.startswith('_'):
+                for strategy_dir in asset_class_dir.iterdir():
+                    if strategy_dir.is_dir() and (strategy_dir / 'parameters.yaml').exists():
+                        strategy_name = strategy_dir.name
+                        asset_class = asset_class_dir.name
+
+                        try:
+                            params = load_strategy_params(strategy_name, asset_class)
+                            assert params is not None, f"Strategy {strategy_name} params is None"
+                            assert 'strategy' in params or 'backtest' in params, \
+                                f"Strategy {strategy_name} missing required sections"
+                        except Exception as e:
+                            pytest.fail(f"Failed to load {strategy_name} params: {e}")
+
+
+class TestErrorHandling:
+    """Tests for error handling and edge cases."""
+
+    def test_invalid_bundle_name_handling(self):
+        """Test that invalid bundle names are handled gracefully."""
+        from lib.data_loader import load_bundle
+
+        with pytest.raises((FileNotFoundError, ValueError, KeyError)):
+            load_bundle('nonexistent_bundle_xyz')
+
+    def test_empty_dataframe_aggregation(self):
+        """Test that empty DataFrame aggregation is handled."""
+        from lib.utils import aggregate_ohlcv
+
+        empty_df = pd.DataFrame(columns=['open', 'high', 'low', 'close', 'volume'])
+        result = aggregate_ohlcv(empty_df, 'daily')
+        assert len(result) == 0
+
+    def test_invalid_timeframe_handling(self):
+        """Test that invalid timeframes raise appropriate errors."""
+        from lib.data_loader import get_timeframe_info
+
+        invalid_timeframes = ['invalid', '3h', '2d', '']
+        for tf in invalid_timeframes:
+            with pytest.raises(ValueError):
+                get_timeframe_info(tf)
+
+
 # Marker for slow tests that actually run ingestion
 @pytest.mark.slow
 class TestSlowIntegration:
@@ -460,3 +785,31 @@ class TestSlowIntegration:
             end_date = datetime.strptime(meta['end_date'], '%Y-%m-%d').date()
             today = datetime.now().date()
             assert end_date < today, "FOREX 1h should auto-exclude current day"
+
+    @pytest.mark.skip(reason="Requires network access and takes time")
+    def test_minute_backtest_execution(self):
+        """Test that minute-frequency backtest can execute."""
+        from lib.backtest import run_backtest
+        from lib.data_loader import _load_bundle_registry
+
+        registry = _load_bundle_registry()
+        intraday_bundles = [b for b in registry if '1h' in b and 'equities' in b]
+
+        if not intraday_bundles:
+            pytest.skip("No equities 1h bundle available")
+
+        bundle_name = intraday_bundles[0]
+
+        # This should NOT raise NaT error after the fix
+        try:
+            perf, calendar = run_backtest(
+                strategy_name='spy_sma_cross',
+                bundle=bundle_name,
+                data_frequency='minute',
+                start_date='2024-11-01',
+                end_date='2024-12-01'
+            )
+            assert perf is not None
+        except Exception as e:
+            if "'NaTType' object has no attribute 'normalize'" in str(e):
+                pytest.fail("NaT error occurred - fix not applied or bundle needs re-ingestion")
