@@ -959,19 +959,19 @@ def load_bundle(bundle_name: str) -> Any:
 def _extract_symbols_from_bundle(bundle_name: str) -> List[str]:
     """
     Extract symbol list from an existing bundle's SQLite asset database.
-    
+
     Args:
         bundle_name: Name of the bundle
-        
+
     Returns:
         List of symbols, or empty list if extraction fails
     """
     import sqlite3
-    
+
     bundle_data_path = Path.home() / '.zipline' / 'data' / bundle_name
     if not bundle_data_path.exists():
         return []
-    
+
     # Find the most recent ingestion directory
     ingestion_dirs = sorted(bundle_data_path.glob('*'), reverse=True)
     for ingestion_dir in ingestion_dirs:
@@ -982,7 +982,7 @@ def _extract_symbols_from_bundle(bundle_name: str) -> List[str]:
                 asset_db_path = ingestion_dir / f'assets-{version}.sqlite'
                 if asset_db_path.exists():
                     break
-        
+
         if asset_db_path.exists():
             try:
                 conn = sqlite3.connect(str(asset_db_path))
@@ -994,7 +994,56 @@ def _extract_symbols_from_bundle(bundle_name: str) -> List[str]:
                     return list(set(symbols))  # Remove duplicates
             except (sqlite3.Error, Exception):
                 continue
-    
+
+    return []
+
+
+def get_bundle_symbols(bundle_name: str) -> List[str]:
+    """
+    Get the list of symbols available in a bundle.
+
+    This function first checks the bundle registry for persisted metadata,
+    then falls back to extracting symbols from the bundle's SQLite database.
+
+    Args:
+        bundle_name: Name of the bundle (e.g., 'yahoo_equities_daily')
+
+    Returns:
+        List of symbol strings available in the bundle
+
+    Raises:
+        FileNotFoundError: If bundle doesn't exist
+
+    Example:
+        >>> symbols = get_bundle_symbols('yahoo_equities_daily')
+        >>> print(symbols)
+        ['SPY', 'AAPL', 'GOOGL']
+    """
+    # First check the persistent bundle registry
+    registry = _load_bundle_registry()
+    if bundle_name in registry:
+        symbols = registry[bundle_name].get('symbols', [])
+        if symbols:
+            return symbols
+
+    # Fall back to extracting from SQLite database
+    symbols = _extract_symbols_from_bundle(bundle_name)
+    if symbols:
+        return symbols
+
+    # Check if bundle data directory exists at all
+    bundle_data_path = Path.home() / '.zipline' / 'data' / bundle_name
+    if not bundle_data_path.exists():
+        raise FileNotFoundError(
+            f"Bundle '{bundle_name}' not found. "
+            f"Run: python scripts/ingest_data.py --source yahoo --symbols <SYMBOLS> --bundle-name {bundle_name}"
+        )
+
+    # Bundle exists but couldn't extract symbols - return empty list with warning
+    logger.warning(
+        f"Could not extract symbols from bundle '{bundle_name}'. "
+        f"Bundle may be empty or corrupted."
+    )
     return []
 
 

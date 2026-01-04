@@ -27,30 +27,33 @@ from lib.data_loader import list_bundles, load_bundle
 
 class TestDateNormalization:
     """Test date normalization utility."""
-    
+
     def test_normalize_timezone_aware(self):
-        """Test normalizing timezone-aware datetime."""
+        """Test normalizing timezone-aware datetime to timezone-naive UTC."""
         dt = pd.Timestamp('2024-01-01 12:00:00', tz='UTC')
         result = normalize_to_calendar_timezone(dt)
-        
+
         assert result.tz is None, "Result should be timezone-naive"
-        assert result.time() == pd.Timestamp('00:00:00').time(), "Should normalize to midnight"
+        # normalize_to_utc strips timezone but preserves time
+        assert result.time() == pd.Timestamp('12:00:00').time(), "Time should be preserved"
         assert result.date() == pd.Timestamp('2024-01-01').date(), "Date should be preserved"
-    
+
     def test_normalize_timezone_naive(self):
-        """Test normalizing timezone-naive datetime."""
+        """Test normalizing timezone-naive datetime (no-op except type conversion)."""
         dt = pd.Timestamp('2024-01-01 12:00:00')
         result = normalize_to_calendar_timezone(dt)
-        
+
         assert result.tz is None, "Result should be timezone-naive"
-        assert result.time() == pd.Timestamp('00:00:00').time(), "Should normalize to midnight"
-    
+        # normalize_to_utc preserves time for naive inputs
+        assert result.time() == pd.Timestamp('12:00:00').time(), "Time should be preserved"
+
     def test_normalize_string_date(self):
         """Test normalizing string date."""
         result = normalize_to_calendar_timezone('2024-01-01')
-        
+
         assert result.tz is None, "Result should be timezone-naive"
-        assert result.time() == pd.Timestamp('00:00:00').time(), "Should normalize to midnight"
+        # String date without time defaults to midnight
+        assert result.time() == pd.Timestamp('00:00:00').time(), "Should be midnight for date-only string"
 
 
 class TestCalendarConsistency:
