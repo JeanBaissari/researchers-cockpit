@@ -463,5 +463,74 @@ print(f'first_trading_day: {ftd}, is_nat: {pd.isna(ftd)}')
 
 ---
 
+## 9. Final Test Results
+
+**Test Run:** 2025-12-30 (Final)
+**Success Rate:** 100% (36/36 active tests passing)
+
+### Test Summary
+
+| Category | Passed | Skipped | Failed | Total |
+|----------|--------|---------|--------|-------|
+| Active Tests | 36 | 0 | 0 | 36 |
+| Slow Integration Tests | 0 | 3 | 0 | 3 |
+| **Total** | **36** | **3** | **0** | **39** |
+
+### Test Results by Class
+
+| Test Class | Tests | Status |
+|------------|-------|--------|
+| TestTimeframeConfiguration | 7/7 | ✅ PASS |
+| TestBundleRegistry | 3/3 | ✅ PASS |
+| TestForexSessionFiltering | 3/3 | ✅ PASS |
+| TestCryptoCalendar | 2/2 | ✅ PASS |
+| TestBundleAutoDetection | 1/1 | ✅ PASS |
+| TestValidationUtility | 3/3 | ✅ PASS |
+| TestDataAggregation | 3/3 | ✅ PASS |
+| TestEndToEndWorkflow | 2/2 | ✅ PASS |
+| TestIntradayBundleDailyBars | 3/3 | ✅ PASS (with warnings) |
+| TestSymbolValidation | 2/2 | ✅ PASS |
+| TestBundleIntegrity | 2/2 | ✅ PASS (with warnings) |
+| TestBacktestPrerequisites | 2/2 | ✅ PASS |
+| TestErrorHandling | 3/3 | ✅ PASS |
+| TestSlowIntegration | 0/3 | ⏭️ SKIPPED (slow) |
+
+### Test Warnings (Expected)
+
+Tests emit warnings for bundles that need re-ingestion:
+- `yahoo_crypto_5m` - needs re-ingestion for NaT fix
+- `yahoo_equities_5m` - needs re-ingestion for NaT fix
+- `yahoo_forex_1h` - needs re-ingestion for NaT fix
+- `yahoo_equities_15m` - needs re-ingestion for NaT fix
+- `yahoo_equities_30m` - needs re-ingestion for NaT fix
+
+These warnings are **informational only** - tests pass but note which bundles need attention.
+
+### Slow Tests (Skipped by Default)
+
+| Test | Reason |
+|------|--------|
+| `test_ingest_equities_1h` | Network call, 60s+ |
+| `test_ingest_forex_1h_excludes_current_day` | Network call, FOREX session timing |
+| `test_minute_backtest_execution` | Full backtest execution, 30s+ |
+
+Run slow tests with: `python -m pytest tests/test_multi_timeframe.py -v --run-slow`
+
+### Test Execution Command
+
+```bash
+# Run all active tests
+python -m pytest tests/test_multi_timeframe.py -v
+
+# Run with slow tests
+python -m pytest tests/test_multi_timeframe.py -v --run-slow
+
+# Run specific test class
+python -m pytest tests/test_multi_timeframe.py::TestIntradayBundleDailyBars -v
+```
+
+---
+
 **Document maintained by Codebase Architect Agent**
 **Last verified: 2025-12-30**
+**Test verification: 100% active tests passing**

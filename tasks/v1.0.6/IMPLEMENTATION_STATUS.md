@@ -45,7 +45,7 @@ python scripts/ingest_data.py --source yahoo --assets equities --symbols AAPL --
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| `--timeframe` option | ✅ WORKING | Supports: 1m, 2m, 5m, 15m, 30m, 1h, 4h, daily, weekly, monthly |
+| `--timeframe` option | ✅ WORKING | Supports: 1m, 5m, 15m, 30m, 1h, 4h, daily, weekly, monthly |
 | `--list-timeframes` | ✅ WORKING | Shows all timeframes with data limits |
 | Auto bundle naming | ✅ WORKING | Pattern: `{source}_{asset}_{timeframe}` |
 | Date limit warnings | ✅ WORKING | Warns when requested range exceeds API limits |
