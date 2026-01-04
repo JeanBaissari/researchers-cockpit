@@ -187,6 +187,25 @@ def validate_timeframe_date_range(
     return start_date, end_date, warning
 
 
+def _is_valid_date_string(date_str: str) -> bool:
+    """
+    Check if a string is a valid YYYY-MM-DD date.
+
+    Args:
+        date_str: String to validate
+
+    Returns:
+        True if valid date format, False otherwise
+    """
+    if not date_str or not isinstance(date_str, str):
+        return False
+    try:
+        datetime.strptime(date_str, '%Y-%m-%d')
+        return True
+    except ValueError:
+        return False
+
+
 def _get_bundle_registry_path() -> Path:
     """Get the path to the bundle registry file."""
     return Path.home() / '.zipline' / 'bundle_registry.json'
@@ -278,6 +297,29 @@ def list_bundles() -> List[str]:
 _registered_bundles = set()
 
 
+def unregister_bundle(bundle_name: str) -> bool:
+    """
+    Unregister a bundle from Zipline's registry.
+
+    This removes the bundle registration from Zipline's in-memory registry,
+    allowing it to be re-registered with new parameters. Does not delete
+    the bundle data from disk.
+
+    Args:
+        bundle_name: Name of the bundle to unregister
+
+    Returns:
+        True if bundle was unregistered, False if it wasn't registered
+    """
+    from zipline.data.bundles import bundles, unregister as zipline_unregister
+
+    if bundle_name in bundles:
+        zipline_unregister(bundle_name)
+        _registered_bundles.discard(bundle_name)
+        return True
+    return False
+
+
 def _register_yahoo_bundle(
     bundle_name: str,
     symbols: List[str],
@@ -285,7 +327,8 @@ def _register_yahoo_bundle(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     data_frequency: str = 'daily',
-    timeframe: str = 'daily'
+    timeframe: str = 'daily',
+    force: bool = False
 ):
     """
     Register a Yahoo Finance bundle with multi-timeframe support.
@@ -298,12 +341,16 @@ def _register_yahoo_bundle(
         end_date: End date for data (YYYY-MM-DD)
         data_frequency: Zipline data frequency ('daily' or 'minute')
         timeframe: Actual timeframe for yfinance ('1m', '5m', '15m', '1h', 'daily', etc.)
+        force: If True, unregister and re-register even if already registered
     """
     from zipline.data.bundles import register, bundles
 
     # Check if already registered
     if bundle_name in bundles:
-        return
+        if force:
+            unregister_bundle(bundle_name)
+        else:
+            return
 
     # Get yfinance interval from timeframe
     yf_interval = TIMEFRAME_TO_YF_INTERVAL.get(timeframe.lower(), '1d')
@@ -678,6 +725,7 @@ def ingest_bundle(
     end_date: Optional[str] = None,
     calendar_name: Optional[str] = None,
     timeframe: str = 'daily',
+    force: bool = False,
     **kwargs
 ) -> str:
     """
@@ -703,6 +751,8 @@ def ingest_bundle(
             - '1h': 1-hour (730 days max)
             - 'daily' or '1d': Daily (unlimited)
             - 'weekly' or '1wk': Weekly (unlimited)
+        force: If True, unregister and re-register the bundle even if already registered.
+            Required for re-ingestion with updated parameters.
 
     Returns:
         Bundle name string
@@ -755,9 +805,11 @@ def ingest_bundle(
         logger.warning(warning)
         print(warning)
 
+    # Determine asset class (needed for logging and calendar auto-detection)
+    asset_class = assets[0] if assets else 'equities'
+
     # Auto-generate bundle name with timeframe suffix
     if bundle_name is None:
-        asset_class = assets[0] if assets else 'equities'
         # Normalize timeframe for bundle name (daily -> daily, 1d -> daily, etc.)
         tf_normalized = {
             '1d': 'daily', '1wk': 'weekly', '1mo': 'monthly'
@@ -812,7 +864,7 @@ def ingest_bundle(
     # Register and ingest Yahoo Finance bundle
     if source == 'yahoo':
         try:
-            # Register bundle (will skip if already registered)
+            # Register bundle (will skip if already registered unless force=True)
             _register_yahoo_bundle(
                 bundle_name=bundle_name,
                 symbols=symbols,
@@ -820,7 +872,8 @@ def ingest_bundle(
                 start_date=start_date,
                 end_date=end_date,
                 data_frequency=data_frequency,
-                timeframe=timeframe  # Pass actual timeframe for yfinance interval
+                timeframe=timeframe,  # Pass actual timeframe for yfinance interval
+                force=force
             )
 
             # Ingest the bundle
@@ -1140,12 +1193,18 @@ def _auto_register_yahoo_bundle_if_exists():
             registry = _load_bundle_registry()
             if 'yahoo_equities_daily' in registry:
                 meta = registry['yahoo_equities_daily']
+                # Validate end_date (may be corrupted from earlier bug)
+                end_date = meta.get('end_date')
+                if end_date and not _is_valid_date_string(end_date):
+                    end_date = None
                 _register_yahoo_bundle(
-                    'yahoo_equities_daily',
-                    meta.get('symbols', ['SPY']),
-                    meta.get('calendar_name', 'XNYS'),
-                    meta.get('start_date'),
-                    meta.get('data_frequency', 'daily')
+                    bundle_name='yahoo_equities_daily',
+                    symbols=meta.get('symbols', ['SPY']),
+                    calendar_name=meta.get('calendar_name', 'XNYS'),
+                    start_date=meta.get('start_date'),
+                    end_date=end_date,
+                    data_frequency=meta.get('data_frequency', 'daily'),
+                    timeframe=meta.get('timeframe', 'daily')
                 )
             else:
                 # Fallback to extracting symbols from database
