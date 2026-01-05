@@ -154,6 +154,20 @@ try:
 except ImportError:
     pass
 
+# Data loader
+try:
+    from .data_loader import (
+        ingest_bundle,
+        load_bundle,
+        list_bundles,
+        unregister_bundle,
+        get_bundle_symbols,
+        VALID_TIMEFRAMES,
+        TIMEFRAME_DATA_LIMITS,
+    )
+except ImportError:
+    pass
+
 __all__ = [
     # Config
     'load_settings',
@@ -236,5 +250,13 @@ __all__ = [
     'verify_returns_calculation',
     'verify_positions_match_transactions',
     'save_validation_report',
+    # Data Loader
+    'ingest_bundle',
+    'load_bundle',
+    'list_bundles',
+    'unregister_bundle',
+    'get_bundle_symbols',
+    'VALID_TIMEFRAMES',
+    'TIMEFRAME_DATA_LIMITS',
 ]
 

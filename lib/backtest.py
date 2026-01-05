@@ -270,6 +270,71 @@ def _validate_calendar_consistency(bundle: str, trading_calendar: Any) -> None:
         )
 
 
+def validate_strategy_symbols(
+    strategy_name: str,
+    bundle_name: str,
+    asset_class: Optional[str] = None
+) -> None:
+    """
+    Validate that strategy's required symbols exist in the bundle.
+
+    This pre-flight check provides a clear error message instead of cryptic
+    Zipline errors when a strategy references symbols not present in the bundle.
+
+    Args:
+        strategy_name: Name of the strategy
+        bundle_name: Name of the bundle to check against
+        asset_class: Optional asset class for strategy lookup
+
+    Raises:
+        ValueError: If required symbol is not in the bundle
+        FileNotFoundError: If strategy parameters or bundle not found
+
+    Example:
+        >>> validate_strategy_symbols('spy_sma_cross', 'yahoo_equities_daily')
+        # Raises ValueError if SPY not in bundle
+    """
+    from .data_loader import get_bundle_symbols
+
+    # Load strategy parameters
+    try:
+        params = load_strategy_params(strategy_name, asset_class)
+    except FileNotFoundError:
+        # Strategy has no parameters.yaml - skip symbol validation
+        logger.debug(f"No parameters.yaml for strategy '{strategy_name}', skipping symbol validation")
+        return
+
+    # Get required symbol from strategy config
+    strategy_config = params.get('strategy', {})
+    required_symbol = strategy_config.get('asset_symbol')
+
+    if not required_symbol:
+        # No asset_symbol defined - strategy may use multiple symbols or none
+        logger.debug(f"No asset_symbol in strategy '{strategy_name}', skipping symbol validation")
+        return
+
+    # Get available symbols in bundle
+    try:
+        available_symbols = get_bundle_symbols(bundle_name)
+    except FileNotFoundError as e:
+        raise FileNotFoundError(
+            f"Bundle '{bundle_name}' not found. {e}"
+        ) from e
+
+    # Check if required symbol is available
+    if required_symbol not in available_symbols:
+        available_str = ', '.join(sorted(available_symbols)) if available_symbols else '(none)'
+        raise ValueError(
+            f"Strategy '{strategy_name}' requires symbol '{required_symbol}' "
+            f"but bundle '{bundle_name}' contains: [{available_str}]. "
+            f"Either re-ingest the bundle with the correct symbol:\n"
+            f"  python scripts/ingest_data.py --source yahoo --symbols {required_symbol} --bundle-name {bundle_name}\n"
+            f"Or update the strategy's parameters.yaml to use an available symbol."
+        )
+
+    logger.info(f"Symbol validation passed: '{required_symbol}' found in bundle '{bundle_name}'")
+
+
 def _validate_bundle_date_range(
     bundle: str,
     start_date: str,
@@ -449,6 +514,9 @@ def run_backtest(
             strategy_name
         )
 
+    # Pre-flight symbol validation (ensures strategy symbols exist in bundle)
+    validate_strategy_symbols(strategy_name, config.bundle, config.asset_class)
+
     # Register custom calendars before getting trading calendar
     if config.asset_class:
         calendar_name = get_calendar_for_asset_class(config.asset_class)
@@ -472,7 +540,8 @@ def run_backtest(
     
     # Run backtest with bundle's calendar
     # Create empty benchmark returns Series to avoid Zipline trying to fetch benchmark data
-    benchmark_freq = 'T' if config.data_frequency == 'minute' else 'D'
+    # Note: 'T' is deprecated in pandas 2.x, use 'min' for minute frequency
+    benchmark_freq = 'min' if config.data_frequency == 'minute' else 'D'
     empty_benchmark = pd.Series(dtype=float, index=pd.DatetimeIndex([], freq=benchmark_freq))
     
     try:

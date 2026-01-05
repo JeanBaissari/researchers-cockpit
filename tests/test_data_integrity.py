@@ -91,7 +91,8 @@ def test_verify_positions_match_transactions():
 
 def test_verify_metrics_calculation():
     """Test metrics calculation verification."""
-    # Create sample returns
+    # Create sample returns with fixed seed for reproducibility
+    np.random.seed(42)
     dates = pd.date_range('2020-01-01', periods=100, freq='D')
     returns = pd.Series(np.random.randn(100) * 0.01, index=dates)
     
@@ -114,13 +115,13 @@ def test_verify_metrics_calculation():
     
     # Verify metrics
     is_valid, discrepancies = verify_metrics_calculation(metrics, returns)
-    
+
     assert isinstance(is_valid, bool), "Should return boolean"
     assert isinstance(discrepancies, list), "Should return list of discrepancies"
-    
-    # Metrics should match (within tolerance)
-    assert is_valid or len(discrepancies) == 0, \
-        f"Metrics should match or have minor discrepancies: {discrepancies}"
+
+    # When metrics match (is_valid=True), discrepancies should be empty
+    # When metrics don't match (is_valid=False), discrepancies will have items
+    assert is_valid, f"Metrics should match within tolerance: {discrepancies}"
 
 
 def test_verify_metrics_with_mismatch():

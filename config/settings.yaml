@@ -17,18 +17,50 @@ dates:
 backtesting:
   data_frequency: daily         # 'daily' or 'minute'
   benchmark: SPY                # Default benchmark symbol
-  
+
   # Commission Defaults (override in strategy if needed)
   commission:
     equities_per_share: 0.005   # Per share commission
     equities_min_cost: 1.0      # Minimum commission per trade
     crypto_percent: 0.001       # Crypto exchange fee (0.1%)
     forex_per_trade: 0.0        # Forex brokers often have spread instead
-  
+
   # Slippage Defaults
   slippage:
     volume_limit: 0.025         # Max % of bar volume (2.5%)
     price_impact: 0.1           # Price impact coefficient
+
+# Timeframe Configuration
+# ==============================================================================
+# Supported timeframes for data ingestion and backtesting.
+# Note: Yahoo Finance has data retention limits for intraday data.
+timeframes:
+  # Available timeframes with data limits (days)
+  available:
+    1m: 7           # 1-minute data - only 7 days available
+    2m: 60          # 2-minute data - 60 days
+    5m: 60          # 5-minute data - 60 days
+    15m: 60         # 15-minute data - 60 days
+    30m: 60         # 30-minute data - 60 days
+    1h: 730         # Hourly data - ~2 years
+    4h: 60          # 4-hour data - 60 days (aggregated from 1h)
+    daily: null     # Daily data - unlimited history
+    weekly: null    # Weekly data - unlimited history
+    monthly: null   # Monthly data - unlimited history
+
+  # Default timeframes by use case
+  defaults:
+    research: daily       # For strategy research and validation
+    optimization: daily   # For parameter optimization
+    live_trading: 1h      # For live trading signals
+
+  # Aggregation rules
+  aggregation:
+    open: first           # First price in period
+    high: max             # Highest price in period
+    low: min              # Lowest price in period
+    close: last           # Last price in period
+    volume: sum           # Total volume in period
 
 # Metrics Configuration
 metrics:
@@ -85,9 +117,27 @@ data:
     auto_clean: true            # Clean expired cache automatically
 
   bundles:
-    default_equity: yahoo_equities_daily  # Yahoo Finance daily equities bundle
-    default_crypto: yahoo_crypto_daily    # Yahoo Finance daily crypto bundle
-    default_forex: yahoo_forex_daily      # Yahoo Finance daily forex bundle
+    # Bundle naming convention: {source}_{asset_class}_{timeframe}
+    # Examples: yahoo_equities_daily, yahoo_crypto_1h, yahoo_forex_5m
+
+    # Default bundles by asset class and timeframe
+    equities:
+      daily: yahoo_equities_daily
+      1h: yahoo_equities_1h
+      5m: yahoo_equities_5m
+    crypto:
+      daily: yahoo_crypto_daily
+      1h: yahoo_crypto_1h
+      5m: yahoo_crypto_5m
+    forex:
+      daily: yahoo_forex_daily
+      1h: yahoo_forex_1h
+      5m: yahoo_forex_5m
+
+    # Legacy defaults (for backward compatibility)
+    default_equity: yahoo_equities_daily
+    default_crypto: yahoo_crypto_daily
+    default_forex: yahoo_forex_daily
 
 # Data Validation Configuration
 data_validation:

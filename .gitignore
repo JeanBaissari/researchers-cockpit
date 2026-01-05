@@ -88,3 +88,4 @@ htmlcov/
 *.bak
 *.swp
 
+tasks/

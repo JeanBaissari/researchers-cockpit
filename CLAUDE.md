@@ -54,6 +54,29 @@ Comprehensive fixes for multi-asset class data ingestion and backtesting:
 
 See `tasks/v1.0.5/` for detailed implementation notes.
 
+### ✅ v1.0.6 Multi-Timeframe Data Ingestion Complete (2025-12-28)
+Full multi-timeframe data ingestion for Zipline-Reloaded:
+- **Supported Timeframes**: 1m, 5m, 15m, 30m, 1h, daily (all asset classes)
+- **Timeframe Configuration**: `TIMEFRAME_TO_YF_INTERVAL`, `TIMEFRAME_DATA_LIMITS`, `CALENDAR_MINUTES_PER_DAY` in `lib/data_loader.py`
+- **CLI Enhancement**: `--timeframe` and `--list-timeframes` options in `scripts/ingest_data.py`
+- **Bundle Naming**: Convention `{source}_{asset}_{timeframe}`
+- **Date Validation**: Auto-adjustment for limited timeframes (e.g., 5m = 55 days max)
+- **Data Aggregation**: `aggregate_ohlcv()`, `resample_to_timeframe()` utilities in `lib/utils.py`
+- **24/7 Market Support**: `minutes_per_day=1440` for CRYPTO/FOREX calendars
+
+**Key Fix**: Added `minutes_per_day` parameter to bundle registration for correct minute bar indexing.
+
+**Verified Working:**
+- Equities: 5m, 15m, 30m, 1h, daily
+- Crypto: 5m, 1h, daily
+- Forex: 1h, daily
+
+**Limitations:**
+- Weekly/monthly NOT compatible with Zipline bundles (use aggregation from daily)
+- 4h requires aggregation from 1h (yfinance doesn't support 4h natively)
+
+See `tasks/v1.0.6/` for detailed documentation.
+
 ### 🚧 Implementation Needed
 Everything described in `README.md` and `project.structure.md` needs to be created.
 
