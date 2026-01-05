@@ -743,13 +743,19 @@ class TestErrorHandling:
 
 
 # Marker for slow tests that actually run ingestion
+# Use --run-slow flag to run these tests: pytest tests/test_multi_timeframe.py -v --run-slow
 @pytest.mark.slow
 class TestSlowIntegration:
-    """Slow integration tests that perform actual data operations."""
+    """Slow integration tests that perform actual data operations.
 
-    @pytest.mark.skip(reason="Requires network access and takes time")
+    Run with: python -m pytest tests/test_multi_timeframe.py -v --run-slow
+    """
+
     def test_ingest_equities_1h(self):
-        """Test ingesting equities hourly data."""
+        """Test ingesting equities hourly data.
+
+        Expected: Should complete in ~60s with network access.
+        """
         from lib.data_loader import ingest_bundle
 
         bundle_name = ingest_bundle(
@@ -763,9 +769,11 @@ class TestSlowIntegration:
         assert bundle_name is not None
         assert '1h' in bundle_name
 
-    @pytest.mark.skip(reason="Requires network access and takes time")
     def test_ingest_forex_1h_excludes_current_day(self):
-        """Test that FOREX 1h ingestion auto-excludes current day."""
+        """Test that FOREX 1h ingestion auto-excludes current day.
+
+        Verifies FOREX session filtering works correctly.
+        """
         from lib.data_loader import ingest_bundle, _load_bundle_registry
 
         bundle_name = ingest_bundle(
@@ -786,9 +794,11 @@ class TestSlowIntegration:
             today = datetime.now().date()
             assert end_date < today, "FOREX 1h should auto-exclude current day"
 
-    @pytest.mark.skip(reason="Requires network access and takes time")
     def test_minute_backtest_execution(self):
-        """Test that minute-frequency backtest can execute."""
+        """Test that minute-frequency backtest can execute.
+
+        Full end-to-end validation of intraday backtest execution.
+        """
         from lib.backtest import run_backtest
         from lib.data_loader import _load_bundle_registry
 

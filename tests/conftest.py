@@ -13,6 +13,33 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 
+def pytest_addoption(parser):
+    """Add custom command line options."""
+    parser.addoption(
+        "--run-slow",
+        action="store_true",
+        default=False,
+        help="Run slow integration tests that require network access"
+    )
+
+
+def pytest_configure(config):
+    """Configure custom markers."""
+    config.addinivalue_line("markers", "slow: mark test as slow (requires --run-slow to run)")
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip slow tests unless --run-slow is passed."""
+    if config.getoption("--run-slow"):
+        # --run-slow given in cli: do not skip slow tests
+        return
+
+    skip_slow = pytest.mark.skip(reason="need --run-slow option to run")
+    for item in items:
+        if "slow" in item.keywords:
+            item.add_marker(skip_slow)
+
+
 @pytest.fixture
 def project_root_path():
     """Return the project root path."""
