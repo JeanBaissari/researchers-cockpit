@@ -310,6 +310,7 @@ def initialize(context):
     # Initialize strategy state
     context.in_position = False
     context.entry_price = 0.0
+    context.highest_price = 0.0  # For trailing stop tracking
     context.day_count = 0  # For explicit warmup tracking
     
     # Set benchmark
@@ -488,40 +489,69 @@ def rebalance(context, data):
         order_target_percent(context.asset, position_size)
         context.in_position = True
         context.entry_price = current_price
+        context.highest_price = current_price  # Initialize for trailing stop
 
     elif signal == -1 and context.in_position:
         # Exit position
         order_target_percent(context.asset, 0)
         context.in_position = False
         context.entry_price = 0.0
+        context.highest_price = 0.0  # Reset trailing stop tracking
 
 
 def check_stop_loss(context, data):
     """
     Check and execute stop loss orders.
-    
+
+    Supports both fixed and trailing stop losses:
+    - Fixed stop: exits when price drops below entry_price * (1 - stop_loss_pct)
+    - Trailing stop: exits when price drops below highest_price * (1 - trailing_stop_pct)
+
     Called separately from rebalance to check stops more frequently.
     """
     if not context.in_position:
         return
-    
+
     if not data.can_trade(context.asset):
         return
-    
+
     current_price = data.current(context.asset, 'price')
     risk_params = context.params.get('risk', {})
-    
-    if risk_params.get('use_stop_loss', False):
+
+    # Update highest price for trailing stop tracking
+    if context.highest_price > 0:
+        context.highest_price = max(context.highest_price, current_price)
+
+    should_stop = False
+    stop_type = None
+
+    # Check trailing stop first (takes precedence if both enabled)
+    if risk_params.get('use_trailing_stop', False):
+        trailing_stop_pct = risk_params.get('trailing_stop_pct', 0.08)
+        if context.highest_price > 0:
+            stop_price = context.highest_price * (1 - trailing_stop_pct)
+            if current_price <= stop_price:
+                should_stop = True
+                stop_type = 'trailing'
+
+    # Check fixed stop if trailing not triggered
+    if not should_stop and risk_params.get('use_stop_loss', False):
         stop_loss_pct = risk_params.get('stop_loss_pct', 0.05)
-        stop_price = context.entry_price * (1 - stop_loss_pct)
-        
-        if current_price <= stop_price:
-            order_target_percent(context.asset, 0)
-            context.in_position = False
-            context.entry_price = 0.0
-            record(stop_triggered=1)
-        else:
-            record(stop_triggered=0)
+        if context.entry_price > 0:
+            stop_price = context.entry_price * (1 - stop_loss_pct)
+            if current_price <= stop_price:
+                should_stop = True
+                stop_type = 'fixed'
+
+    if should_stop:
+        order_target_percent(context.asset, 0)
+        context.in_position = False
+        context.entry_price = 0.0
+        context.highest_price = 0.0
+        # Record stop type as numeric hash for charting
+        record(stop_triggered=1, stop_type=1 if stop_type == 'fixed' else 2)
+    else:
+        record(stop_triggered=0)
 
 
 def handle_data(context, data):
