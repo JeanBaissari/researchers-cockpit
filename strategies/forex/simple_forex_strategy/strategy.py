@@ -188,7 +188,7 @@ def analyze(context, perf):
     try:
         import empyrical as ep
         # Forex uses 260 trading days per year (5 days/week * 52 weeks)
-        sharpe = float(ep.sharpe_ratio(returns, risk_free=0.04, period='daily', annualization=260))
+        sharpe = float(ep.sharpe_ratio(returns, risk_free=0.04/252, period='daily', annualization=260))
         max_dd = float(ep.max_drawdown(returns))
         # Validate Sharpe ratio
         if not np.isfinite(sharpe):

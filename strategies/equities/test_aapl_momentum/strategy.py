@@ -42,19 +42,7 @@ import sys
 
 # Add project root to path for lib imports
 # This allows strategies to import lib modules
-# Uses marker-based root discovery for robust path resolution
-def _find_project_root() -> Path:
-    """Find project root by searching for marker files."""
-    markers = ['pyproject.toml', '.git', 'config/settings.yaml', 'CLAUDE.md']
-    current = Path(__file__).resolve().parent
-    while current != current.parent:
-        for marker in markers:
-            if (current / marker).exists():
-                return current
-        current = current.parent
-    raise RuntimeError("Could not find project root. Missing marker files.")
-
-_project_root = _find_project_root()
+_project_root = Path(__file__).parent.parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
@@ -106,63 +94,19 @@ def load_params():
         return yaml.safe_load(f)
 
 
-def _calculate_required_warmup(params: dict) -> int:
-    """
-    Dynamically calculate required warmup days from strategy parameters.
-
-    Finds the maximum of all indicator period parameters to ensure
-    sufficient data for indicator initialization.
-
-    Args:
-        params: Strategy parameters dictionary
-
-    Returns:
-        int: Required warmup days
-    """
-    strategy_config = params.get('strategy', {})
-    period_values = []
-
-    # Collect all *_period parameters
-    for key, value in strategy_config.items():
-        if key.endswith('_period') and isinstance(value, (int, float)) and value > 0:
-            period_values.append(int(value))
-
-    # Also check common non-suffixed period params
-    for key in ['lookback', 'window', 'span']:
-        if key in strategy_config:
-            value = strategy_config[key]
-            if isinstance(value, (int, float)) and value > 0:
-                period_values.append(int(value))
-
-    return max(period_values) if period_values else 30
-
-
 def initialize(context):
     """
     Set up the strategy.
-
+    
     This function is called once at the start of the backtest.
     Load parameters, set up assets, configure costs, and schedule functions.
     """
     # Load parameters from YAML
     params = load_params()
-
+    
     # Store parameters in context for easy access
     context.params = params
-
-    # Calculate and store required warmup days
-    context.required_warmup_days = _calculate_required_warmup(params)
-
-    # Validate warmup configuration
-    configured_warmup = params.get('backtest', {}).get('warmup_days')
-    if configured_warmup is not None and configured_warmup < context.required_warmup_days:
-        import warnings
-        warnings.warn(
-            f"Configured warmup_days ({configured_warmup}) is less than calculated "
-            f"required warmup ({context.required_warmup_days}) based on indicator periods. "
-            f"Consider increasing warmup_days in parameters.yaml to avoid insufficient data."
-        )
-
+    
     # Get data frequency from parameters, default to 'daily'
     context.data_frequency = params.get('backtest', {}).get('data_frequency', 'daily')
 
@@ -177,11 +121,10 @@ def initialize(context):
     # Set benchmark
     set_benchmark(context.asset)
 
-    # Attach Pipeline only if use_pipeline is enabled (and Pipeline is available)
+    # Attach Pipeline (if available)
     context.pipeline_data = None
     context.pipeline_universe = []
-    context.use_pipeline = params['strategy'].get('use_pipeline', False)
-    if context.use_pipeline and _PIPELINE_AVAILABLE:
+    if _PIPELINE_AVAILABLE:
         pipeline = make_pipeline()
         if pipeline is not None:
             attach_pipeline(pipeline, 'my_pipeline')
@@ -248,7 +191,7 @@ def before_trading_start(context, data):
 
     Use this to fetch pipeline output and update context.
     """
-    if context.use_pipeline and _PIPELINE_AVAILABLE:
+    if _PIPELINE_AVAILABLE:
         try:
             context.pipeline_data = pipeline_output('my_pipeline')
             # Example: Store the list of assets in our universe
@@ -380,50 +323,44 @@ def handle_data(context, data):
 def analyze(context, perf):
     """
     Post-backtest analysis.
-
+    
     This function is called after the backtest completes.
     Use it to print summary statistics or perform final calculations.
-
+    
     Args:
         context: Zipline context object
         perf: Performance DataFrame with returns, positions, etc.
     """
     params = load_params()
     asset_symbol = params['strategy']['asset_symbol']
-
+    
     print("\n" + "=" * 60)
     print(f"STRATEGY RESULTS: {asset_symbol}")
     print("=" * 60)
-
+    
     # Calculate basic metrics
-    returns = perf['returns'].dropna()
-    total_return = (1 + returns).prod() - 1
+    returns = perf['returns']
+    total_return = perf['returns'].sum()
     final_value = perf['portfolio_value'].iloc[-1]
-
-    # Use empyrical for consistent Sharpe calculation (matches lib/metrics.py)
-    # NOTE: Adjust annualization factor based on asset class:
-    #   - Equities: 252
-    #   - Forex: 260
-    #   - Crypto: 365
-    try:
-        import empyrical as ep
-        sharpe = float(ep.sharpe_ratio(returns, risk_free=0.04/252, period='daily', annualization=252))
-        max_dd = float(ep.max_drawdown(returns))
-        # Validate Sharpe ratio
-        if not np.isfinite(sharpe):
-            sharpe = 0.0
-    except ImportError:
-        # Fallback if empyrical not available
-        if len(returns) > 0 and returns.std() > 0:
-            sharpe = np.sqrt(252) * returns.mean() / returns.std()
-        else:
-            sharpe = 0.0
-        cumulative = (1 + returns).cumprod()
-        max_dd = ((cumulative.cummax() - cumulative) / cumulative.cummax()).max()
-
+    
+    if len(returns) > 0 and returns.std() > 0:
+        sharpe = np.sqrt(252) * returns.mean() / returns.std()
+    else:
+        sharpe = 0.0
+    
+    cumulative = (1 + returns).cumprod()
+    max_dd = ((cumulative.cummax() - cumulative) / cumulative.cummax()).max()
+    
     print(f"Total Return: {total_return:.2%}")
     print(f"Final Portfolio Value: ${final_value:,.2f}")
     print(f"Sharpe Ratio: {sharpe:.2f}")
     print(f"Max Drawdown: {max_dd:.2%}")
     print("=" * 60)
+    
+    # TODO: Add more detailed analysis here
+    # - Trade statistics
+    # - Win rate
+    # - Average trade duration
+    # - Regime breakdown
+    # etc.
 

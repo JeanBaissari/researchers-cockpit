@@ -251,7 +251,7 @@ def analyze(context, perf):
 
     try:
         import empyrical as ep
-        sharpe = float(ep.sharpe_ratio(returns, risk_free=0.04, period='daily', annualization=252))
+        sharpe = float(ep.sharpe_ratio(returns, risk_free=0.04/252, period='daily', annualization=252))
         max_dd = float(ep.max_drawdown(returns))
         if not np.isfinite(sharpe):
             sharpe = 0.0

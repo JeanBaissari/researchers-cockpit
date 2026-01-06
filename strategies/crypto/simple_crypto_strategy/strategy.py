@@ -189,7 +189,7 @@ def analyze(context, perf):
     try:
         import empyrical as ep
         # Crypto uses 365 trading days per year
-        sharpe = float(ep.sharpe_ratio(returns, risk_free=0.04, period='daily', annualization=365))
+        sharpe = float(ep.sharpe_ratio(returns, risk_free=0.04/252, period='daily', annualization=365))
         max_dd = float(ep.max_drawdown(returns))
         # Validate Sharpe ratio
         if not np.isfinite(sharpe):

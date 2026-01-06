@@ -165,11 +165,13 @@ def calculate_metrics(
         sharpe = 0.0
     elif EMPYRICAL_AVAILABLE:
         try:
-            # empyrical-reloaded expects annualized risk-free rate and handles conversion internally
+            # empyrical expects DAILY risk-free rate, so convert from annual
+            # risk_free_rate=0.04 annual -> 0.04/252 ≈ 0.000159 daily
+            daily_rf = risk_free_rate / trading_days_per_year
             sharpe = float(ep.sharpe_ratio(
-                returns, 
-                risk_free=risk_free_rate, 
-                period='daily', 
+                returns,
+                risk_free=daily_rf,
+                period='daily',
                 annualization=trading_days_per_year
             ))
             sharpe = _sanitize_value(sharpe)
@@ -190,11 +192,11 @@ def calculate_metrics(
         sortino = 0.0
     elif EMPYRICAL_AVAILABLE:
         try:
-            # empyrical-reloaded expects annualized required return
+            # empyrical expects DAILY required return, use daily_risk_free_rate
             sortino = float(ep.sortino_ratio(
-                returns, 
-                required_return=risk_free_rate, 
-                period='daily', 
+                returns,
+                required_return=daily_risk_free_rate,
+                period='daily',
                 annualization=trading_days_per_year
             ))
             sortino = _sanitize_value(sortino)

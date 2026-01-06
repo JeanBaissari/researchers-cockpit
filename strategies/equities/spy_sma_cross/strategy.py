@@ -344,7 +344,8 @@ def analyze(context, perf):
     try:
         import empyrical as ep
         # Equities use 252 trading days per year
-        sharpe = float(ep.sharpe_ratio(returns, risk_free=0.04, period='daily', annualization=252))
+        # empyrical expects DAILY risk-free rate: 0.04/252 ≈ 0.000159
+        sharpe = float(ep.sharpe_ratio(returns, risk_free=0.04/252, period='daily', annualization=252))
         max_dd = float(ep.max_drawdown(returns))
         # Validate Sharpe ratio
         if not np.isfinite(sharpe):
