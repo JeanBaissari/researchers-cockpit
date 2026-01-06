@@ -25,13 +25,20 @@ from zipline.api import (
 )
 from zipline.finance import commission, slippage
 
-# Optional Pipeline imports
+# Optional Pipeline imports with two-level fallback for version compatibility
 _PIPELINE_AVAILABLE = False
+_PRICING_CLASS = None
 try:
     from zipline.api import attach_pipeline, pipeline_output
     from zipline.pipeline import Pipeline
-    from zipline.pipeline.data import EquityPricing  # Generic, not USEquityPricing
     from zipline.pipeline.factors import SimpleMovingAverage
+    # Two-level fallback: prefer EquityPricing (Zipline-Reloaded 3.x), fall back to USEquityPricing
+    try:
+        from zipline.pipeline.data import EquityPricing
+        _PRICING_CLASS = EquityPricing
+    except ImportError:
+        from zipline.pipeline.data import USEquityPricing
+        _PRICING_CLASS = USEquityPricing
     _PIPELINE_AVAILABLE = True
 except ImportError:
     pass
@@ -137,6 +144,50 @@ def _calculate_required_warmup(params: dict) -> int:
     return max(period_values) if period_values else 30
 
 
+def _get_required_param(params: dict, *keys, default=None, error_msg: str = None):
+    """
+    Safely retrieve a nested parameter with clear error messaging.
+
+    Args:
+        params: Parameters dictionary
+        *keys: Nested keys to traverse (e.g., 'strategy', 'asset_symbol')
+        default: Default value if not found (None raises error for required params)
+        error_msg: Custom error message
+
+    Returns:
+        Parameter value
+
+    Raises:
+        ValueError: If required parameter is missing (when default is None)
+
+    Example:
+        asset = _get_required_param(params, 'strategy', 'asset_symbol')
+        warmup = _get_required_param(params, 'backtest', 'warmup_days', default=30)
+    """
+    value = params
+    path = []
+    for key in keys:
+        path.append(str(key))
+        if not isinstance(value, dict):
+            value = None
+            break
+        value = value.get(key)
+        if value is None:
+            break
+
+    if value is None:
+        if default is not None:
+            return default
+        path_str = '.'.join(path)
+        msg = error_msg or (
+            f"Missing required parameter '{path_str}' in parameters.yaml. "
+            f"Please add this parameter to your strategy configuration."
+        )
+        raise ValueError(msg)
+
+    return value
+
+
 def initialize(context):
     """
     Set up the strategy.
@@ -164,10 +215,14 @@ def initialize(context):
         )
 
     # Get data frequency from parameters, default to 'daily'
-    context.data_frequency = params.get('backtest', {}).get('data_frequency', 'daily')
+    context.data_frequency = _get_required_param(params, 'backtest', 'data_frequency', default='daily')
 
-    # Get asset symbol from parameters
-    asset_symbol = params['strategy']['asset_symbol']
+    # Get asset symbol from parameters (required)
+    asset_symbol = _get_required_param(
+        params, 'strategy', 'asset_symbol',
+        error_msg="Missing required parameter 'strategy.asset_symbol' in parameters.yaml. "
+                  "Example: asset_symbol: SPY (for equities), BTC-USD (for crypto), EURUSD=X (for forex)"
+    )
     context.asset = symbol(asset_symbol)
     
     # Initialize strategy state
@@ -227,19 +282,27 @@ def initialize(context):
         )
     
     # Schedule risk management checks if enabled
-    if params.get('risk', {}).get('use_stop_loss', False):
+    if params.get('risk', {}).get('use_stop_loss', False) or params.get('risk', {}).get('use_trailing_stop', False):
         schedule_function(
             check_stop_loss,
             date_rule=date_rules.every_day(),
             time_rule=time_rules.market_open(minutes=1)
         )
 
+    # Schedule before_trading_start explicitly for cross-version compatibility
+    # This ensures pipeline data is fetched before rebalance runs
+    schedule_function(
+        before_trading_start,
+        date_rule=date_rules.every_day(),
+        time_rule=time_rules.market_open(minutes=0)
+    )
+
 
 def make_pipeline():
     """Create Pipeline with generic pricing data."""
-    if not _PIPELINE_AVAILABLE:
+    if not _PIPELINE_AVAILABLE or _PRICING_CLASS is None:
         return None
-    sma_30 = SimpleMovingAverage(inputs=[EquityPricing.close], window_length=30)
+    sma_30 = SimpleMovingAverage(inputs=[_PRICING_CLASS.close], window_length=30)
     return Pipeline(columns={'sma_30': sma_30}, screen=sma_30.isfinite())
 
 def before_trading_start(context, data):
