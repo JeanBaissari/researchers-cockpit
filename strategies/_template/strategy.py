@@ -188,6 +188,88 @@ def _get_required_param(params: dict, *keys, default=None, error_msg: str = None
     return value
 
 
+def compute_position_size(context, data) -> float:
+    """
+    Calculate position size based on the configured method.
+
+    Supports three methods:
+    - 'fixed': Returns max_position_pct directly
+    - 'volatility_scaled': Scales position inversely with volatility to target vol
+    - 'kelly': Uses Kelly Criterion with fractional sizing for capital preservation
+
+    Args:
+        context: Zipline context object with params
+        data: Zipline data object for price history
+
+    Returns:
+        Position size as float (0.0 to max_position_pct)
+    """
+    params = context.params
+    pos_config = params.get('position_sizing', {})
+    method = pos_config.get('method', 'fixed')
+    max_position = pos_config.get('max_position_pct', 0.95)
+    min_position = pos_config.get('min_position_pct', 0.10)
+
+    if method == 'fixed':
+        return max_position
+
+    elif method == 'volatility_scaled':
+        vol_lookback = pos_config.get('volatility_lookback', 20)
+        vol_target = pos_config.get('volatility_target', 0.15)
+
+        if not data.can_trade(context.asset):
+            return max_position
+
+        try:
+            prices = data.history(context.asset, 'price', vol_lookback + 1, '1d')
+            if len(prices) < vol_lookback + 1:
+                return max_position
+
+            returns = prices.pct_change().dropna()
+            if len(returns) < vol_lookback:
+                return max_position
+
+            # Annualized volatility (252 trading days default)
+            asset_class = params.get('strategy', {}).get('asset_class', 'equities')
+            trading_days = {'equities': 252, 'forex': 260, 'crypto': 365}.get(asset_class, 252)
+            current_vol = returns.std() * np.sqrt(trading_days)
+
+            if current_vol > 0:
+                # Scale position to target volatility
+                size = vol_target / current_vol
+                return float(np.clip(size, min_position, max_position))
+
+            return max_position
+        except Exception:
+            return max_position
+
+    elif method == 'kelly':
+        # Kelly Criterion: f* = (bp - q) / b
+        # where b = avg_win/avg_loss ratio, p = win rate, q = 1 - p
+        kelly_config = pos_config.get('kelly', {})
+        win_rate = kelly_config.get('win_rate_estimate', 0.55)
+        win_loss_ratio = kelly_config.get('avg_win_loss_ratio', 1.5)
+        kelly_fraction = kelly_config.get('kelly_fraction', 0.25)
+        kelly_min = kelly_config.get('min_position_pct', min_position)
+
+        # Kelly formula
+        b = win_loss_ratio
+        p = win_rate
+        q = 1 - p
+
+        # Full Kelly (can be > 1 for high edge strategies)
+        full_kelly = (b * p - q) / b if b > 0 else 0
+
+        # Apply fractional Kelly for safety (typically 0.25-0.50 of full Kelly)
+        position_size = full_kelly * kelly_fraction
+
+        # Clamp to bounds
+        return float(np.clip(position_size, kelly_min, max_position))
+
+    # Fallback for unknown method
+    return max_position
+
+
 def initialize(context):
     """
     Set up the strategy.
@@ -228,6 +310,7 @@ def initialize(context):
     # Initialize strategy state
     context.in_position = False
     context.entry_price = 0.0
+    context.day_count = 0  # For explicit warmup tracking
     
     # Set benchmark
     set_benchmark(context.asset)
@@ -362,39 +445,50 @@ def compute_signals(context, data):
 def rebalance(context, data):
     """
     Main rebalancing function called on schedule.
-    
+
     This function:
-    1. Computes signals
-    2. Executes trades
-    3. Records metrics
+    1. Checks warmup period
+    2. Computes signals
+    3. Executes trades
+    4. Records metrics
     """
+    # Increment day counter for warmup tracking
+    context.day_count += 1
+
+    # Skip warmup period - ensures sufficient data for indicators
+    warmup_days = context.params.get('backtest', {}).get('warmup_days')
+    if warmup_days is None:
+        warmup_days = context.required_warmup_days
+
+    if context.day_count <= warmup_days:
+        return
+
     signal, additional_data = compute_signals(context, data)
-    
+
     if signal is None:
         return
-    
+
     current_price = data.current(context.asset, 'price')
-    
+
     # Record metrics
     record(
         signal=signal,
         price=current_price,
         **additional_data
     )
-    
+
     # Cancel any open orders
     for order in get_open_orders(context.asset):
         cancel_order(order)
-    
-    # Execute trades based on signal
-    max_position = context.params['position_sizing'].get('max_position_pct', 0.95)
-    
+
+    # Execute trades based on signal using dynamic position sizing
     if signal == 1 and not context.in_position:
-        # Enter position
-        order_target_percent(context.asset, max_position)
+        # Calculate position size based on configured method
+        position_size = compute_position_size(context, data)
+        order_target_percent(context.asset, position_size)
         context.in_position = True
         context.entry_price = current_price
-        
+
     elif signal == -1 and context.in_position:
         # Exit position
         order_target_percent(context.asset, 0)
