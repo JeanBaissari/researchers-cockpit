@@ -644,6 +644,37 @@ def _extract_transactions_dataframe(perf: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame(columns=['sid', 'amount', 'price', 'commission', 'order_id'])
 
 
+def _sanitize_for_json(obj: Any) -> Any:
+    """
+    Recursively sanitize values for JSON serialization.
+
+    v1.0.7: Ensures no NaN/Inf values escape to JSON output, which would
+    produce invalid strict JSON (Python's json.dump outputs 'NaN' literal).
+
+    Args:
+        obj: Any value to sanitize
+
+    Returns:
+        Sanitized value safe for JSON serialization
+    """
+    import math
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_sanitize_for_json(item) for item in obj]
+    elif isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return 0.0
+        return obj
+    elif isinstance(obj, np.floating):
+        if np.isnan(obj) or np.isinf(obj):
+            return 0.0
+        return float(obj)
+    elif isinstance(obj, np.integer):
+        return int(obj)
+    return obj
+
+
 def _calculate_and_save_metrics(
     perf: pd.DataFrame,
     transactions_df: pd.DataFrame,
@@ -695,8 +726,9 @@ def _calculate_and_save_metrics(
         metrics['initial_portfolio_value'] = float(perf['portfolio_value'].iloc[0])
     
     # Save metrics JSON
+    # v1.0.7: Sanitize metrics to ensure valid strict JSON (no NaN/Inf)
     with open(result_dir / 'metrics.json', 'w') as f:
-        json.dump(metrics, f, indent=2)
+        json.dump(_sanitize_for_json(metrics), f, indent=2)
     
     return metrics
 

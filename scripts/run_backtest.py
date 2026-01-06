@@ -136,10 +136,11 @@ def main(strategy, start, end, capital, bundle, asset_class, data_frequency, ski
                 metrics = json.load(f)
             
             click.echo("\nPerformance Metrics:")
-            click.echo(f"  Total Return: {metrics.get('total_return', 0):.2%}")
-            click.echo(f"  Annual Return: {metrics.get('annual_return', 0):.2%}")
+            # v1.0.7: Metrics are now in percentage format, use .2f instead of .2%
+            click.echo(f"  Total Return: {metrics.get('total_return', 0):.2f}%")
+            click.echo(f"  Annual Return: {metrics.get('annual_return', 0):.2f}%")
             click.echo(f"  Sharpe Ratio: {metrics.get('sharpe', 0):.2f}")
-            click.echo(f"  Max Drawdown: {metrics.get('max_drawdown', 0):.2%}")
+            click.echo(f"  Max Drawdown: {metrics.get('max_drawdown', 0):.2f}%")
         
         click.echo("=" * 60)
         

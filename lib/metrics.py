@@ -46,6 +46,41 @@ def _sanitize_value(value: float, default: float = 0.0) -> float:
     return float(value)
 
 
+# v1.0.7: Metrics that should be displayed as percentages (multiply by 100)
+# This makes metrics.json more human-readable (80.0 instead of 0.8 for win_rate)
+PERCENTAGE_METRICS = {
+    'total_return',
+    'annual_return',
+    'annual_volatility',
+    'max_drawdown',
+    'win_rate',
+    'avg_trade_return',
+    'avg_win',
+    'avg_loss',
+    'max_win',
+    'max_loss',
+}
+
+
+def _convert_to_percentages(metrics: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Convert decimal metrics to percentage format for human readability.
+
+    v1.0.7: Converts metrics like win_rate from 0.8 to 80.0 for clarity.
+
+    Args:
+        metrics: Dictionary of metrics with decimal values
+
+    Returns:
+        Dictionary with percentage metrics multiplied by 100
+    """
+    converted = metrics.copy()
+    for key in PERCENTAGE_METRICS:
+        if key in converted and isinstance(converted[key], (int, float)):
+            converted[key] = converted[key] * 100
+    return converted
+
+
 def _validate_returns(returns: pd.Series) -> pd.Series:
     """
     Validate and clean a returns series.
@@ -190,6 +225,9 @@ def calculate_metrics(
     if n_days < MIN_PERIODS_FOR_SHARPE:
         # v1.0.4: Not enough data for reliable Sortino ratio
         sortino = 0.0
+    elif volatility < 1e-10:
+        # v1.0.7: Zero volatility edge case - can't calculate meaningful Sortino
+        sortino = 0.0
     elif EMPYRICAL_AVAILABLE:
         try:
             # empyrical expects DAILY required return, use daily_risk_free_rate
@@ -271,8 +309,8 @@ def calculate_metrics(
         # Omega ratio
         try:
             omega = float(ep.omega_ratio(
-                returns, 
-                risk_free=risk_free_rate, 
+                returns,
+                risk_free=daily_risk_free_rate,  # v1.0.7: Use daily rate for consistency
                 required_return=0.0, 
                 annualization=trading_days_per_year
             ))
@@ -347,7 +385,9 @@ def calculate_metrics(
             # v1.0.6: Empty transactions DataFrame - still include trade_count: 0
             metrics['trade_count'] = 0
 
-    return metrics
+    # v1.0.7: Convert decimal metrics to percentages for human readability
+    # e.g., win_rate 0.8 → 80.0, total_return 0.15 → 15.0
+    return _convert_to_percentages(metrics)
 
 
 def _calculate_sortino_manual(
@@ -534,8 +574,9 @@ def calculate_trade_metrics(transactions: pd.DataFrame) -> Dict[str, float]:
     avg_loss = _sanitize_value(float(np.mean(losing_trades))) if len(losing_trades) > 0 else 0.0
     
     # Max win/loss
-    max_win = _sanitize_value(float(np.max(trade_returns))) if len(trade_returns) > 0 else 0.0
-    max_loss = _sanitize_value(float(np.min(trade_returns))) if len(trade_returns) > 0 else 0.0
+    # v1.0.7: Use only winning/losing trades for max calculations (not all trades)
+    max_win = _sanitize_value(float(np.max(winning_trades))) if len(winning_trades) > 0 else 0.0
+    max_loss = _sanitize_value(float(np.min(losing_trades))) if len(losing_trades) > 0 else 0.0
     
     # Max consecutive losses
     max_consecutive_losses = _calculate_max_consecutive_losses(trade_returns)
@@ -556,6 +597,8 @@ def calculate_trade_metrics(transactions: pd.DataFrame) -> Dict[str, float]:
         except Exception:
             trades_per_month = 0.0
     
+    # Note: Percentage conversion is done in calculate_metrics() after merging
+    # Do NOT convert here to avoid double conversion when called from calculate_metrics()
     return {
         'trade_count': len(trades),
         'win_rate': win_rate,

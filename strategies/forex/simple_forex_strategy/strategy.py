@@ -81,6 +81,7 @@ def initialize(context):
     # Initialize strategy state
     context.in_position = False
     context.entry_price = 0.0
+    context.first_bar = True  # v1.0.7: Track first bar for initial position check
 
     # Forex uses simplified commission model
     set_commission(
@@ -115,6 +116,20 @@ def compute_signals(context, data):
     fast_sma = prices[-fast_period:].mean()
     slow_sma = prices[-slow_period:].mean()
 
+    additional_data = {
+        'fast_sma': fast_sma,
+        'slow_sma': slow_sma,
+        'price': prices.iloc[-1],
+    }
+
+    # v1.0.7: On first bar after warmup, enter position if SMAs already favorable
+    # This fixes the issue where crossover-only logic misses trades when
+    # the strategy starts with SMAs already in the right relationship
+    if context.first_bar and not context.in_position:
+        context.first_bar = False
+        if fast_sma > slow_sma:
+            return 1, additional_data  # Enter long if fast > slow
+
     fast_sma_prev = prices[-(fast_period + 1):-1].mean()
     slow_sma_prev = prices[-(slow_period + 1):-1].mean()
 
@@ -126,12 +141,6 @@ def compute_signals(context, data):
         signal = 1
     elif death_cross:
         signal = -1
-
-    additional_data = {
-        'fast_sma': fast_sma,
-        'slow_sma': slow_sma,
-        'price': prices.iloc[-1],
-    }
 
     return signal, additional_data
 
