@@ -2,14 +2,18 @@
 # ==============================================================================
 # All tunable parameters for this strategy.
 # NO hardcoded parameters in strategy.py - everything comes from here.
+#
+# IMPORTANT: Copy this entire _template/ directory to create a new strategy.
+# Then customize these parameters for your specific trading hypothesis.
+# ==============================================================================
 
 # Strategy Configuration
 strategy:
-  asset_symbol: SPY              # Asset to trade (e.g., SPY, BTC-USD, EURUSD=X)
+  asset_symbol: SPY              # [PLACEHOLDER] Asset to trade (e.g., SPY, BTC-USD, EURUSD=X)
   asset_class: equities          # 'equities', 'crypto', 'forex'
-  rebalance_frequency: daily    # 'daily', 'weekly', 'monthly'
-  minutes_after_open: 30         # Minutes after market open to trade (0-60)
-  lookback_period: 30            # Default lookback period for indicators
+  rebalance_frequency: daily     # 'daily', 'weekly', 'monthly'
+  minutes_after_open: 30         # Minutes after market open to trade (Range: 0-60)
+  lookback_period: 30            # Default lookback period for indicators (Range: 5-252)
 
   # Pipeline Configuration
   # NOTE: Pipeline API is primarily designed for US equities with proper metadata.
@@ -21,59 +25,133 @@ strategy:
   use_pipeline: false
 
   # Strategy-specific parameters
-  # TODO: Add your strategy parameters here
-  # Example:
-  # fast_period: 10
-  # slow_period: 30
-  # trend_filter_period: 200
+  # ==============================================================================
+  # [EXAMPLE] These are placeholder values - uncomment and customize for your strategy
+  # Each parameter should have a comment indicating its valid range.
+  #
+  # Moving Average Parameters:
+  # fast_period: 10              # [EXAMPLE] Fast MA lookback (Range: 5-20)
+  # slow_period: 30              # [EXAMPLE] Slow MA lookback (Range: 20-100)
+  # trend_filter_period: 200     # [EXAMPLE] Trend filter period (Range: 100-300, 0=disabled)
+  #
+  # Oscillator Parameters:
+  # rsi_period: 14               # [EXAMPLE] RSI lookback (Range: 10-25)
+  # rsi_oversold: 30             # [EXAMPLE] RSI oversold threshold (Range: 20-40)
+  # rsi_overbought: 70           # [EXAMPLE] RSI overbought threshold (Range: 60-80)
+  #
+  # Volatility Parameters:
+  # atr_period: 14               # [EXAMPLE] ATR lookback (Range: 10-20)
+  # bollinger_period: 20         # [EXAMPLE] Bollinger Bands period (Range: 15-30)
+  # bollinger_std: 2.0           # [EXAMPLE] Bollinger Bands std dev (Range: 1.5-3.0)
+  # ==============================================================================
 
 # Position Sizing
+# ==============================================================================
+# Controls how much capital to allocate per trade.
+# method options:
+#   - 'fixed': Use max_position_pct directly
+#   - 'volatility_scaled': Scale position to target volatility
+#   - 'kelly': Use Kelly Criterion with fractional sizing
+# ==============================================================================
 position_sizing:
-  max_position_pct: 0.95         # Maximum portfolio allocation (0.0-1.0)
-  method: fixed                   # 'fixed', 'volatility_scaled', 'kelly'
-  
-  # Volatility scaling (if method = volatility_scaled)
-  volatility_lookback: 20         # Days for volatility calculation
-  volatility_target: 0.15        # Target annualized volatility
+  max_position_pct: 0.95         # Maximum portfolio allocation (Range: 0.10-1.00)
+  min_position_pct: 0.10         # Minimum position size (Range: 0.05-0.30)
+  method: fixed                  # 'fixed', 'volatility_scaled', 'kelly'
+
+  # Volatility Scaling (if method = 'volatility_scaled')
+  # ==============================================================================
+  # Scales position size inversely with volatility to target a specific vol level.
+  # Formula: position = volatility_target / current_volatility
+  # ==============================================================================
+  volatility_lookback: 20        # Days for volatility calculation (Range: 10-60)
+  volatility_target: 0.15        # Target annualized volatility (Range: 0.05-0.30)
+
+  # Kelly Criterion (if method = 'kelly')
+  # ==============================================================================
+  # Kelly formula: f* = (bp - q) / b
+  # where: b = avg_win/avg_loss ratio, p = win rate, q = 1 - p
+  #
+  # NOTE: Full Kelly can be aggressive. Fractional Kelly (0.25-0.50) is recommended.
+  # These parameters should be estimated from backtest results or paper trading.
+  # ==============================================================================
+  kelly:
+    win_rate_estimate: 0.55      # Estimated win rate from backtests (Range: 0.40-0.70)
+    avg_win_loss_ratio: 1.5      # Average win / average loss (Range: 1.0-3.0)
+    kelly_fraction: 0.25         # Fraction of full Kelly to use (Range: 0.10-0.50)
+    min_position_pct: 0.10       # Minimum position for Kelly (Range: 0.05-0.30)
 
 # Risk Management
+# ==============================================================================
+# Controls downside protection and profit taking.
+# Both fixed and trailing stops can be enabled simultaneously.
+# ==============================================================================
 risk:
-  use_stop_loss: true             # Enable stop loss
-  stop_loss_pct: 0.05             # Stop loss percentage (0.01-0.10)
-  
-  use_trailing_stop: false        # Use trailing stop instead of fixed
-  trailing_stop_pct: 0.08        # Trailing stop percentage
-  
-  use_take_profit: false          # Enable take profit
-  take_profit_pct: 0.10           # Take profit percentage
+  use_stop_loss: true            # Enable fixed stop loss
+  stop_loss_pct: 0.05            # Fixed stop loss percentage (Range: 0.01-0.15)
+
+  use_trailing_stop: false       # Enable trailing stop (tracks highest price)
+  trailing_stop_pct: 0.08        # Trailing stop percentage from peak (Range: 0.03-0.20)
+
+  use_take_profit: false         # Enable take profit
+  take_profit_pct: 0.10          # Take profit percentage (Range: 0.05-0.30)
 
 # Costs (override defaults from config/settings.yaml if needed)
+# ==============================================================================
+# Realistic cost assumptions are critical for valid backtests.
+# ==============================================================================
 costs:
   commission:
-    per_share: 0.005              # Commission per share
-    min_cost: 1.0                 # Minimum commission per trade
-  
+    per_share: 0.005             # Commission per share (Range: 0.00-0.02)
+    min_cost: 1.0                # Minimum commission per trade (Range: 0.00-5.00)
+
   slippage:
-    volume_limit: 0.025          # Max % of bar volume (2.5%)
-    price_impact: 0.1             # Price impact coefficient
+    volume_limit: 0.025          # Max % of bar volume (Range: 0.01-0.10)
+    price_impact: 0.1            # Price impact coefficient (Range: 0.05-0.30)
 
 # Backtest Configuration
+# ==============================================================================
+# Controls backtest execution and metric calculation.
+# ==============================================================================
 backtest:
-  data_frequency: daily         # Data frequency for backtest: 'daily' or 'minute'
+  data_frequency: daily          # Data frequency: 'daily' or 'minute'
 
-  # Warmup Period Configuration
-  # The warmup period is the number of days needed before the strategy can generate signals.
-  # This should be >= max(all indicator periods used in the strategy).
+  # Warmup Period
+  # ==============================================================================
+  # Number of days needed before the strategy can generate signals.
+  # Should be >= max(all indicator periods used in the strategy).
   # Example: For a 50/200 SMA crossover, warmup_days should be at least 200.
-  # If not specified, calculated dynamically from strategy parameters.
-  warmup_days: 30               # Minimum days of data before first signal (auto-calculated if null)
-  validate_warmup: true         # Enable pre-flight warmup validation
+  # If set to null, calculated dynamically from strategy parameters.
+  # ==============================================================================
+  warmup_days: 30                # Days before first signal (Range: 10-252, null=auto)
+  validate_warmup: true          # Enable pre-flight warmup validation
+
+  # Performance Metrics Configuration
+  # ==============================================================================
+  # Used for Sharpe ratio and other risk-adjusted metrics in analyze().
+  # ==============================================================================
+  risk_free_rate: 0.04           # Annual risk-free rate (Range: 0.00-0.10)
+
+  # Trading Days Per Year (for annualization)
+  # ==============================================================================
+  # - equities: 252 (standard US market days)
+  # - forex: 260 (5-day weeks, no holidays)
+  # - crypto: 365 (24/7 trading)
+  # ==============================================================================
+  trading_days_per_year: 252     # Annualization factor (Range: 252-365)
 
 # Notes
+# ==============================================================================
 notes: |
   Edit these parameters to customize the strategy.
   All values here override defaults from config/settings.yaml.
-  
-  When optimizing, modify parameter ranges, not individual values.
-  See lib/optimize.py for optimization procedures.
 
+  WORKFLOW:
+  1. Copy _template/ to strategies/{asset_class}/{strategy_name}/
+  2. Edit hypothesis.md with your trading rationale
+  3. Configure these parameters
+  4. Implement compute_signals() in strategy.py
+  5. Run backtest: python scripts/run_backtest.py --strategy {name}
+
+  OPTIMIZATION:
+  When optimizing, modify parameter ranges in lib/optimize.py, not individual values here.
+  See hypothesis.md for recommended optimization bounds.
