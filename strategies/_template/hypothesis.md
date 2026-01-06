@@ -71,6 +71,157 @@ Example:
 
 ---
 
+## Parameter Sensitivity
+
+**Which parameters have the most impact on performance?**
+
+[Identify the 2-3 most important parameters and their sensitivity.]
+
+| Parameter | Sensitivity | Impact Description |
+|-----------|-------------|-------------------|
+| [param1] | High | [Why this parameter matters most] |
+| [param2] | Medium | [Moderate impact on results] |
+| [param3] | Low | [Less critical, can use default] |
+
+**Critical Parameters:**
+- [List 2-3 parameters that most affect Sharpe ratio]
+
+**Robust Parameters:**
+- [List parameters where small changes don't significantly impact results]
+
+**Optimization Priority:**
+1. [Highest priority parameter]
+2. [Second priority]
+3. [Lower priority]
+
+---
+
+## Data Requirements
+
+**What data is needed for valid backtesting?**
+
+**Minimum History:**
+- Duration: [e.g., "5+ years for regime diversity"]
+- Frequency: [e.g., "Daily OHLCV"]
+- Observations: [e.g., "At least 1000 trading days"]
+
+**Warmup Period:**
+- Required: [e.g., "200 days for longest indicator"]
+- Must be >= max(all indicator periods)
+- Configure in `parameters.yaml` under `backtest.warmup_days`
+
+**Data Quality:**
+- [ ] Adjusted prices required? (for equities with splits/dividends)
+- [ ] Volume data required?
+- [ ] Missing data tolerance: [X] consecutive days max
+
+**Asset Class Considerations:**
+| Asset Class | Trading Days/Year | Session Hours | Notes |
+|-------------|-------------------|---------------|-------|
+| Equities | 252 | 9:30-16:00 ET | Standard US market |
+| Forex | 260 | 24/5 | No weekends |
+| Crypto | 365 | 24/7 | No market close |
+
+---
+
+## Risk Regime
+
+**How does the strategy perform across different volatility environments?**
+
+| Regime | VIX Equivalent | Expected Behavior | Recommended Action |
+|--------|----------------|-------------------|-------------------|
+| Low Vol | < 15 | [Expected performance] | [Position sizing adjustment] |
+| Normal Vol | 15-25 | [Expected performance] | [Normal operation] |
+| High Vol | 25-40 | [Expected performance] | [Reduce exposure?] |
+| Crisis | > 40 | [Expected performance] | [Consider pausing] |
+
+**Regime Detection:**
+- How to identify current regime: [e.g., "20-day rolling volatility"]
+- Indicators to watch: [e.g., "VIX, ATR, realized vol"]
+
+**Adaptive Behavior:**
+- [ ] Should position sizing scale with volatility?
+- [ ] Should parameters adapt to regime?
+- [ ] Should strategy pause in certain regimes?
+
+---
+
+## Correlation Analysis
+
+**What is this strategy correlated with?**
+
+| Factor/Strategy | Expected Correlation | Diversification Value |
+|-----------------|---------------------|----------------------|
+| Market (SPY) | [High/Medium/Low] | [Good/Poor for portfolio] |
+| Momentum Factor | [High/Medium/Low] | [Notes] |
+| Value Factor | [High/Medium/Low] | [Notes] |
+| Volatility | [High/Medium/Low] | [Notes] |
+
+**Portfolio Construction Notes:**
+- Best paired with: [Strategies that would complement this one]
+- Avoid combining with: [Highly correlated strategies]
+- Suggested portfolio weight: [e.g., "10-20% of strategy allocation"]
+
+**Return Driver Analysis:**
+- [ ] Long-biased or market-neutral?
+- [ ] Exposed to specific sector risk?
+- [ ] Sensitive to interest rate changes?
+
+---
+
+## Exit Criteria
+
+**When should this strategy be abandoned entirely?**
+
+**Quantitative Triggers:**
+- [ ] Sharpe ratio < [X] for [Y] consecutive months
+- [ ] Maximum drawdown exceeds [X]%
+- [ ] Win rate drops below [X]% over [Y] trades
+- [ ] [X] consecutive losing months
+- [ ] Annual return < [X]% for 2+ years
+
+**Qualitative Triggers:**
+- [ ] Market structure fundamentally changed
+- [ ] Regulatory changes affect the edge
+- [ ] Strategy becomes too crowded
+- [ ] Data source becomes unreliable
+
+**Review Schedule:**
+- Weekly: Monitor live performance vs. backtest expectations
+- Monthly: Review rolling metrics, compare to benchmarks
+- Quarterly: Deep dive into strategy health, reassess hypothesis
+- Annually: Full re-evaluation, consider retirement
+
+---
+
+## Optimization Bounds
+
+**Valid parameter ranges for optimization searches:**
+
+| Parameter | Min | Max | Step | Default | Rationale |
+|-----------|-----|-----|------|---------|-----------|
+| [param1] | [X] | [X] | [X] | [X] | [Why these bounds] |
+| [param2] | [X] | [X] | [X] | [X] | [Why these bounds] |
+| [param3] | [X] | [X] | [X] | [X] | [Why these bounds] |
+
+**Parameter Constraints:**
+- [Constraint 1, e.g., "slow_period must be > fast_period * 2"]
+- [Constraint 2, e.g., "stop_loss_pct should be < take_profit_pct"]
+- [Constraint 3]
+
+**Overfitting Protection:**
+- Maximum parameters to optimize: [e.g., "3 at a time"]
+- Walk-forward window: [e.g., "252 days train / 63 days test"]
+- Out-of-sample threshold: [e.g., "Must retain 70%+ of in-sample Sharpe"]
+- Number of trials limit: [e.g., "< 100 combinations"]
+
+**Optimization Strategy:**
+- Recommended method: [Grid search / Random search / Bayesian]
+- Cross-validation folds: [e.g., "5-fold time-series split"]
+- Primary objective: [e.g., "Sharpe ratio" or "Risk-adjusted return"]
+
+---
+
 ## Expected Outcomes
 
 **What results would validate this hypothesis?**
@@ -97,4 +248,3 @@ Example:
 | Date | Change | Author |
 |------|--------|--------|
 | YYYY-MM-DD | Initial hypothesis | [Your name] |
-
