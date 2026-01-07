@@ -576,7 +576,25 @@ def analyze(context, perf):
         perf: Performance DataFrame with returns, positions, etc.
     """
     params = load_params()
-    asset_symbol = params['strategy']['asset_symbol']
+
+    # Get strategy configuration
+    strategy_config = params.get('strategy', {})
+    asset_symbol = strategy_config.get('asset_symbol', 'UNKNOWN')
+    asset_class = strategy_config.get('asset_class', 'equities')
+
+    # Get risk-free rate and trading days from backtest config
+    backtest_config = params.get('backtest', {})
+    risk_free_rate = backtest_config.get('risk_free_rate', 0.04)
+
+    # Trading days varies by asset class - use config or default by asset class
+    trading_days_defaults = {'equities': 252, 'forex': 260, 'crypto': 365}
+    trading_days = backtest_config.get(
+        'trading_days_per_year',
+        trading_days_defaults.get(asset_class, 252)
+    )
+
+    # Calculate daily risk-free rate
+    daily_rf = risk_free_rate / trading_days
 
     print("\n" + "=" * 60)
     print(f"STRATEGY RESULTS: {asset_symbol}")
@@ -587,30 +605,46 @@ def analyze(context, perf):
     total_return = (1 + returns).prod() - 1
     final_value = perf['portfolio_value'].iloc[-1]
 
-    # Use empyrical for consistent Sharpe calculation (matches lib/metrics.py)
-    # NOTE: Adjust annualization factor based on asset class:
-    #   - Equities: 252
-    #   - Forex: 260
-    #   - Crypto: 365
+    # Use empyrical for consistent Sharpe/Sortino calculation (matches lib/metrics.py)
     try:
         import empyrical as ep
-        sharpe = float(ep.sharpe_ratio(returns, risk_free=0.04/252, period='daily', annualization=252))
+        sharpe = float(ep.sharpe_ratio(
+            returns,
+            risk_free=daily_rf,
+            period='daily',
+            annualization=trading_days
+        ))
+        sortino = float(ep.sortino_ratio(
+            returns,
+            required_return=daily_rf,
+            period='daily',
+            annualization=trading_days
+        ))
         max_dd = float(ep.max_drawdown(returns))
-        # Validate Sharpe ratio
+
+        # Validate metrics (handle edge cases)
         if not np.isfinite(sharpe):
             sharpe = 0.0
+        if not np.isfinite(sortino):
+            sortino = 0.0
     except ImportError:
         # Fallback if empyrical not available
         if len(returns) > 0 and returns.std() > 0:
-            sharpe = np.sqrt(252) * returns.mean() / returns.std()
+            excess_return = returns.mean() - daily_rf
+            sharpe = np.sqrt(trading_days) * excess_return / returns.std()
         else:
             sharpe = 0.0
+        sortino = 0.0  # Sortino requires empyrical for proper downside deviation
         cumulative = (1 + returns).cumprod()
         max_dd = ((cumulative.cummax() - cumulative) / cumulative.cummax()).max()
 
+    # Print results
     print(f"Total Return: {total_return:.2%}")
     print(f"Final Portfolio Value: ${final_value:,.2f}")
     print(f"Sharpe Ratio: {sharpe:.2f}")
+    print(f"Sortino Ratio: {sortino:.2f}")
     print(f"Max Drawdown: {max_dd:.2%}")
+    print("-" * 60)
+    print(f"Config: risk_free_rate={risk_free_rate:.2%}, trading_days={trading_days}")
     print("=" * 60)
 
