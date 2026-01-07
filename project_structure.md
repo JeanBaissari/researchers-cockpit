@@ -22,6 +22,15 @@ zipline-algo/
 │   │   └── yahoo_equities_daily/              # Yahoo Finance equities bundle
 │   ├── cache/
 │   │   └── yahoo_2024_12_18.parquet          # Cached API responses
+│   ├── processed/                             # Staging area for CSV files before bundle ingestion
+│   │   ├── 1m/                                # 1-minute timeframe CSV files
+│   │   │   └── {symbol}_{timeframe}_{start}_{end}_ready.csv
+│   │   ├── 5m/                                # 5-minute timeframe CSV files
+│   │   ├── 15m/                               # 15-minute timeframe CSV files
+│   │   ├── 30m/                               # 30-minute timeframe CSV files
+│   │   ├── 1h/                                # 1-hour timeframe CSV files
+│   │   ├── 4h/                                # 4-hour timeframe CSV files
+│   │   └── 1d/                                # Daily timeframe CSV files
 │   └── exports/
 │       ├── btc_sma_cross_returns.csv
 │       └── eurusd_breakout_trades.csv

@@ -88,14 +88,29 @@ data/
 │   └── us_equities_daily/
 ├── cache/                 # Temporary API response storage
 │   └── yahoo_2024_12_18.parquet
+├── processed/             # Staging area for CSV files before bundle ingestion
+│   ├── 1m/               # 1-minute timeframe CSV files
+│   ├── 5m/               # 5-minute timeframe CSV files
+│   ├── 15m/              # 15-minute timeframe CSV files
+│   ├── 30m/              # 30-minute timeframe CSV files
+│   ├── 1h/               # 1-hour timeframe CSV files
+│   ├── 4h/               # 4-hour timeframe CSV files
+│   └── 1d/               # Daily timeframe CSV files
 └── exports/               # Extracted results for external use
     ├── btc_sma_cross_returns.csv
     └── eurusd_breakout_trades.csv
 ```
 
-**Bundle vs Cache vs Export:**
-- **Bundles** = Permanent, Zipline-formatted, ready for `run_algorithm()`
+**Data Flow:**
+1. **Cache** = Temporary, raw API responses, can be deleted safely
+2. **Processed** = Cleaned/normalized CSV files organized by timeframe, ready for bundle ingestion
+3. **Bundles** = Permanent, Zipline-formatted, ready for `run_algorithm()`
+4. **Exports** = Processed outputs meant for sharing or external analysis
+
+**Bundle vs Cache vs Processed vs Export:**
 - **Cache** = Temporary, raw API responses, can be deleted safely
+- **Processed** = Staging area for CSV files before bundle ingestion (organized by timeframe)
+- **Bundles** = Permanent, Zipline-formatted, ready for `run_algorithm()`
 - **Exports** = Processed outputs meant for sharing or external analysis
 
 ---
