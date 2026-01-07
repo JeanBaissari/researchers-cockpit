@@ -847,6 +847,8 @@ class BaseValidator(ABC):
             'timeframe': self.config.timeframe
         })
         result.add_metadata('timestamp', datetime.utcnow().isoformat() + 'Z')
+        result.add_metadata('timezone', 'UTC')
+        result.add_metadata('timezone_aware', True)
         return result
 
     def _run_check(
@@ -1052,6 +1054,145 @@ class DataValidator(BaseValidator):
         if self.config.check_gaps:
             result = self._run_continuity_checks(df, calendar, result, asset_name, calendar_name)
 
+        # Generate fix suggestions if enabled
+        if self.config.suggest_fixes:
+            result = self._add_fix_suggestions(result, df, asset_name)
+
+        return result
+
+    def validate_and_report(
+        self,
+        df: pd.DataFrame,
+        calendar: Optional[Any] = None,
+        asset_name: str = "unknown",
+        calendar_name: Optional[str] = None
+    ) -> Tuple[ValidationResult, pd.DataFrame]:
+        """
+        Validate OHLCV DataFrame and return result with optional fix suggestions.
+        
+        This method is designed for validation chaining workflows where you may
+        want to validate, check results, and potentially apply fixes in a pipeline.
+        
+        Args:
+            df: DataFrame with OHLCV columns (case-insensitive matching)
+            calendar: Optional trading calendar for gap detection
+            asset_name: Asset name for logging
+            calendar_name: Calendar name (e.g., 'XNYS', '24/7')
+            
+        Returns:
+            Tuple of (ValidationResult, pd.DataFrame):
+            - ValidationResult with all check outcomes and optional fix suggestions
+            - Original DataFrame (unchanged, for chaining)
+            
+        Example:
+            >>> validator = DataValidator(config=ValidationConfig(suggest_fixes=True))
+            >>> result, df = validator.validate_and_report(df, asset_name='AAPL')
+            >>> if not result.passed:
+            ...     fixes = result.metadata.get('suggested_fixes', [])
+            ...     for fix in fixes:
+            ...         print(f"Suggested: {fix['description']}")
+        """
+        result = self.validate(
+            df=df,
+            calendar=calendar,
+            asset_name=asset_name,
+            calendar_name=calendar_name
+        )
+        return result, df
+
+    def _add_fix_suggestions(
+        self,
+        result: ValidationResult,
+        df: pd.DataFrame,
+        asset_name: str
+    ) -> ValidationResult:
+        """
+        Add fix suggestions to validation result based on detected issues.
+        
+        Uses lazy imports to avoid circular dependencies with lib.utils.
+        
+        Args:
+            result: ValidationResult to add suggestions to
+            df: DataFrame that was validated
+            asset_name: Asset name for context
+            
+        Returns:
+            ValidationResult with suggested fixes added to metadata
+        """
+        fixes = []
+        
+        # Check for Sunday bars issue
+        sunday_bars_check = result.get_check('sunday_bars')
+        if sunday_bars_check and not sunday_bars_check.passed:
+            try:
+                # Lazy import to avoid circular dependency
+                from .utils import consolidate_sunday_to_friday
+                fixes.append({
+                    'issue': 'sunday_bars',
+                    'function': 'lib.utils.consolidate_sunday_to_friday',
+                    'description': 'Consolidate Sunday bars into Friday to preserve weekend gap semantics',
+                    'usage': f'df_fixed = consolidate_sunday_to_friday(df)',
+                    'module': 'lib.utils'
+                })
+            except ImportError:
+                logger.warning("Could not import consolidate_sunday_to_friday for fix suggestion")
+        
+        # Check for null values issue
+        no_nulls_check = result.get_check('no_nulls')
+        if no_nulls_check and not no_nulls_check.passed:
+            fixes.append({
+                'issue': 'no_nulls',
+                'function': 'pandas.DataFrame.fillna',
+                'description': 'Fill null values using forward fill or interpolation',
+                'usage': "df_fixed = df.fillna(method='ffill')  # or df.interpolate()",
+                'module': 'pandas'
+            })
+            fixes.append({
+                'issue': 'no_nulls',
+                'function': 'pandas.DataFrame.dropna',
+                'description': 'Drop rows with null values if they are not critical',
+                'usage': 'df_fixed = df.dropna()',
+                'module': 'pandas'
+            })
+        
+        # Check for unsorted index issue
+        sorted_index_check = result.get_check('sorted_index')
+        if sorted_index_check and not sorted_index_check.passed:
+            fixes.append({
+                'issue': 'sorted_index',
+                'function': 'pandas.DataFrame.sort_index',
+                'description': 'Sort DataFrame index in ascending order',
+                'usage': 'df_fixed = df.sort_index()',
+                'module': 'pandas'
+            })
+        
+        # Check for duplicate dates issue
+        duplicate_dates_check = result.get_check('duplicate_dates')
+        if duplicate_dates_check and not duplicate_dates_check.passed:
+            fixes.append({
+                'issue': 'duplicate_dates',
+                'function': 'pandas.DataFrame.drop_duplicates',
+                'description': 'Remove duplicate index entries, keeping the first occurrence',
+                'usage': 'df_fixed = df[~df.index.duplicated(keep="first")]',
+                'module': 'pandas'
+            })
+        
+        # Check for negative values issue
+        negative_values_check = result.get_check('no_negative_values')
+        if negative_values_check and not negative_values_check.passed:
+            fixes.append({
+                'issue': 'no_negative_values',
+                'function': 'Data cleaning',
+                'description': 'Review and correct negative OHLCV values - may indicate data corruption',
+                'usage': 'df_fixed = df[df[["open", "high", "low", "close", "volume"]] >= 0]',
+                'module': 'manual_review'
+            })
+        
+        # Add fixes to result metadata if any were found
+        if fixes:
+            result.add_metadata('suggested_fixes', fixes)
+            logger.debug(f"Added {len(fixes)} fix suggestions for {asset_name}")
+        
         return result
 
     def _run_continuity_checks(
