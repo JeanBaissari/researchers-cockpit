@@ -35,6 +35,32 @@ import json
 import click
 from datetime import datetime
 
+# Import shared constants from lib modules to ensure consistency
+from lib.data_loader import VALID_TIMEFRAMES, TIMEFRAME_DATA_LIMITS
+from lib.extension import register_custom_calendars, CUSTOM_CALENDARS
+
+# =============================================================================
+# CONSTANTS
+# =============================================================================
+
+# Valid calendars: standard exchange calendars + our custom calendars
+# Standard calendars from exchange_calendars package
+STANDARD_CALENDARS = ['XNYS', 'XNAS', 'XLON', 'XJPX', 'XHKG', 'XSHG', 'XSHE']
+
+# Custom calendars registered by our extension module
+# These are defined in lib/extension.py
+CUSTOM_CALENDAR_NAMES = list(CUSTOM_CALENDARS.keys()) if CUSTOM_CALENDARS else ['CRYPTO', 'FOREX']
+
+# Combined valid calendars
+VALID_CALENDARS = STANDARD_CALENDARS + CUSTOM_CALENDAR_NAMES
+
+# Valid data frequencies for Zipline
+VALID_DATA_FREQUENCIES = ['daily', 'minute']
+
+
+# =============================================================================
+# PATH UTILITIES
+# =============================================================================
 
 def get_registry_path() -> Path:
     """Get path to bundle registry file."""
@@ -42,9 +68,48 @@ def get_registry_path() -> Path:
 
 
 def get_bundle_data_path(bundle_name: str) -> Path:
-    """Get path to bundle data directory."""
-    return Path.home() / '.zipline' / 'data' / bundle_name
+    """
+    Get path to bundle data directory.
+    
+    Zipline stores bundles in versioned subdirectories under ~/.zipline/bundles/{bundle_name}/
+    Each ingestion creates a new timestamp-based version directory.
+    """
+    # Zipline's actual bundle storage location
+    return Path.home() / '.zipline' / 'bundles' / bundle_name
 
+
+def check_bundle_data_exists(bundle_name: str) -> tuple:
+    """
+    Check if bundle data exists on disk.
+    
+    Returns:
+        (exists: bool, path: Path, details: str)
+    """
+    bundle_path = get_bundle_data_path(bundle_name)
+    
+    if not bundle_path.exists():
+        return False, bundle_path, "Bundle directory does not exist"
+    
+    if not bundle_path.is_dir():
+        return False, bundle_path, "Bundle path exists but is not a directory"
+    
+    # Check for versioned subdirectories (Zipline creates timestamp-based versions)
+    versions = [d for d in bundle_path.iterdir() if d.is_dir()]
+    if not versions:
+        return False, bundle_path, "Bundle directory exists but contains no version data"
+    
+    # Check the latest version has actual data files
+    latest_version = max(versions, key=lambda d: d.name)
+    data_files = list(latest_version.glob('*'))
+    if not data_files:
+        return False, bundle_path, f"Latest version {latest_version.name} is empty"
+    
+    return True, bundle_path, f"{len(versions)} version(s), latest: {latest_version.name}"
+
+
+# =============================================================================
+# REGISTRY UTILITIES
+# =============================================================================
 
 def load_registry() -> dict:
     """Load bundle registry from disk."""
@@ -54,7 +119,11 @@ def load_registry() -> dict:
     try:
         with open(registry_path) as f:
             return json.load(f)
-    except (json.JSONDecodeError, IOError):
+    except json.JSONDecodeError as e:
+        click.echo(f"Warning: Registry file is corrupted: {e}", err=True)
+        return {}
+    except IOError as e:
+        click.echo(f"Warning: Could not read registry file: {e}", err=True)
         return {}
 
 
@@ -65,6 +134,10 @@ def save_registry(registry: dict) -> None:
     with open(registry_path, 'w') as f:
         json.dump(registry, f, indent=2)
 
+
+# =============================================================================
+# VALIDATION FUNCTIONS
+# =============================================================================
 
 def validate_date_field(value, field_name: str) -> tuple:
     """
@@ -77,18 +150,94 @@ def validate_date_field(value, field_name: str) -> tuple:
         return True, None, None
 
     if not isinstance(value, str):
-        return False, f"{field_name} should be string or null, got {type(value).__name__}", None
+        return False, f"{field_name} should be string or null, got {type(value).__name__}", ('set_null', field_name)
 
-    # Check for common corruptions
-    if value in ('daily', 'minute', '1h', '5m', '15m', '30m', 'weekly', 'monthly'):
-        return False, f"{field_name} contains timeframe '{value}' instead of date", None
+    # Check for common corruptions - timeframe values in date fields
+    if value.lower() in [tf.lower() for tf in VALID_TIMEFRAMES]:
+        return False, f"{field_name} contains timeframe '{value}' instead of date", ('set_null', field_name)
 
     # Try to parse as date
     try:
         datetime.strptime(value, '%Y-%m-%d')
         return True, None, None
     except ValueError:
-        return False, f"{field_name} is not a valid date: '{value}'", None
+        # Try other common date formats
+        for fmt in ['%Y/%m/%d', '%d-%m-%Y', '%m/%d/%Y']:
+            try:
+                parsed = datetime.strptime(value, fmt)
+                # Suggest converting to standard format
+                correct_date = parsed.strftime('%Y-%m-%d')
+                return False, f"{field_name} uses non-standard format: '{value}'", ('set_date', field_name, correct_date)
+            except ValueError:
+                continue
+        return False, f"{field_name} is not a valid date: '{value}'", ('set_null', field_name)
+
+
+def validate_timeframe_field(meta: dict, bundle_name: str) -> list:
+    """
+    Validate timeframe field and its consistency with bundle name.
+    
+    Returns:
+        List of (issue_type, message, fix_action) tuples
+    """
+    issues = []
+    
+    # Extract timeframe from bundle name (last component after final underscore)
+    name_parts = bundle_name.split('_')
+    inferred_timeframe = None
+    
+    if len(name_parts) >= 2:
+        potential_tf = name_parts[-1].lower()
+        # Check if the last part matches any valid timeframe
+        if potential_tf in [tf.lower() for tf in VALID_TIMEFRAMES]:
+            inferred_timeframe = potential_tf
+    
+    # Check if timeframe field exists
+    if 'timeframe' not in meta:
+        if inferred_timeframe:
+            issues.append((
+                'missing_field',
+                f"Missing 'timeframe' field (bundle name suggests '{inferred_timeframe}')",
+                ('set_timeframe', inferred_timeframe)
+            ))
+        else:
+            issues.append((
+                'missing_field',
+                "Missing 'timeframe' field and cannot infer from bundle name",
+                None
+            ))
+    else:
+        tf = meta['timeframe']
+        
+        # Validate timeframe value
+        if tf is None:
+            if inferred_timeframe:
+                issues.append((
+                    'null_value',
+                    f"timeframe is null (bundle name suggests '{inferred_timeframe}')",
+                    ('set_timeframe', inferred_timeframe)
+                ))
+        elif not isinstance(tf, str):
+            issues.append((
+                'invalid_type',
+                f"timeframe should be string, got {type(tf).__name__}",
+                ('set_timeframe', inferred_timeframe) if inferred_timeframe else None
+            ))
+        elif tf.lower() not in [t.lower() for t in VALID_TIMEFRAMES]:
+            issues.append((
+                'invalid_value',
+                f"Invalid timeframe: '{tf}'. Valid options: {', '.join(VALID_TIMEFRAMES)}",
+                ('set_timeframe', inferred_timeframe) if inferred_timeframe else None
+            ))
+        elif inferred_timeframe and tf.lower() != inferred_timeframe:
+            # Timeframe exists but doesn't match bundle name
+            issues.append((
+                'inconsistent',
+                f"Bundle name suggests '{inferred_timeframe}' but timeframe is '{tf}'",
+                ('set_timeframe', inferred_timeframe)
+            ))
+    
+    return issues
 
 
 def validate_bundle_entry(bundle_name: str, meta: dict) -> list:
@@ -108,43 +257,73 @@ def validate_bundle_entry(bundle_name: str, meta: dict) -> list:
 
     # Validate symbols
     if 'symbols' in meta:
-        if not isinstance(meta['symbols'], list):
-            issues.append(('invalid_type', f"symbols should be a list, got {type(meta['symbols']).__name__}", None))
-        elif len(meta['symbols']) == 0:
+        symbols = meta['symbols']
+        if not isinstance(symbols, list):
+            issues.append(('invalid_type', f"symbols should be a list, got {type(symbols).__name__}", None))
+        elif len(symbols) == 0:
             issues.append(('empty_value', "symbols list is empty", None))
+        else:
+            # Check for invalid symbol entries
+            for i, sym in enumerate(symbols):
+                if not isinstance(sym, str):
+                    issues.append(('invalid_type', f"symbols[{i}] should be string, got {type(sym).__name__}", None))
+                elif not sym.strip():
+                    issues.append(('empty_value', f"symbols[{i}] is empty string", None))
 
     # Validate calendar_name
-    valid_calendars = ['XNYS', 'XNAS', 'CRYPTO', 'FOREX']
-    if 'calendar_name' in meta and meta['calendar_name'] not in valid_calendars:
-        issues.append(('invalid_value', f"Unknown calendar: {meta['calendar_name']}", None))
+    if 'calendar_name' in meta:
+        cal = meta['calendar_name']
+        if cal is None:
+            issues.append(('null_value', "calendar_name is null", None))
+        elif not isinstance(cal, str):
+            issues.append(('invalid_type', f"calendar_name should be string, got {type(cal).__name__}", None))
+        elif cal not in VALID_CALENDARS:
+            # Provide helpful suggestion
+            suggestion = ""
+            cal_lower = cal.lower()
+            if 'crypto' in cal_lower or 'btc' in cal_lower:
+                suggestion = " (did you mean 'CRYPTO'?)"
+            elif 'forex' in cal_lower or 'fx' in cal_lower:
+                suggestion = " (did you mean 'FOREX'?)"
+            elif 'nyse' in cal_lower or 'us' in cal_lower:
+                suggestion = " (did you mean 'XNYS'?)"
+            issues.append(('invalid_value', f"Unknown calendar: '{cal}'{suggestion}. Valid: {', '.join(VALID_CALENDARS)}", None))
 
     # Validate data_frequency
-    valid_frequencies = ['daily', 'minute']
-    if 'data_frequency' in meta and meta['data_frequency'] not in valid_frequencies:
-        issues.append(('invalid_value', f"Invalid data_frequency: {meta['data_frequency']}", None))
+    if 'data_frequency' in meta:
+        freq = meta['data_frequency']
+        if freq is None:
+            issues.append(('null_value', "data_frequency is null", None))
+        elif not isinstance(freq, str):
+            issues.append(('invalid_type', f"data_frequency should be string, got {type(freq).__name__}", None))
+        elif freq not in VALID_DATA_FREQUENCIES:
+            # Try to suggest correct value
+            suggested_fix = None
+            if freq.lower() in ['daily', 'day', '1d', 'd']:
+                suggested_fix = ('set_frequency', 'daily')
+            elif freq.lower() in ['minute', 'min', '1m', 'm', 'intraday']:
+                suggested_fix = ('set_frequency', 'minute')
+            issues.append((
+                'invalid_value',
+                f"Invalid data_frequency: '{freq}'. Valid: {', '.join(VALID_DATA_FREQUENCIES)}",
+                suggested_fix
+            ))
 
     # Validate date fields
     for date_field in ['start_date', 'end_date']:
         if date_field in meta:
             is_valid, error, fix = validate_date_field(meta[date_field], date_field)
             if not is_valid:
-                issues.append(('corrupted_date', error, ('set_null', date_field)))
+                issues.append(('corrupted_date', error, fix))
 
-    # Validate timeframe consistency with bundle name
-    # Note: Check longer patterns first to avoid substring matches (e.g., '15m' vs '5m')
-    if 'timeframe' in meta:
-        tf = meta['timeframe']
-        # Extract timeframe from bundle name (last component after final underscore)
-        name_parts = bundle_name.split('_')
-        if len(name_parts) >= 3:
-            name_tf = name_parts[-1]  # e.g., 'daily', '1h', '5m', '15m', '30m'
-            if name_tf in ('1h', '5m', '15m', '30m', 'daily') and name_tf != tf:
-                issues.append(('inconsistent', f"Bundle name suggests {name_tf} but timeframe is '{tf}'", ('set_timeframe', name_tf)))
+    # Validate timeframe field and consistency
+    timeframe_issues = validate_timeframe_field(meta, bundle_name)
+    issues.extend(timeframe_issues)
 
     # Check if bundle data exists on disk
-    bundle_path = get_bundle_data_path(bundle_name)
-    if not bundle_path.exists():
-        issues.append(('missing_data', f"Bundle data not found at {bundle_path}", None))
+    exists, bundle_path, details = check_bundle_data_exists(bundle_name)
+    if not exists:
+        issues.append(('missing_data', f"Bundle data issue: {details} (path: {bundle_path})", None))
 
     return issues
 
@@ -159,23 +338,39 @@ def apply_fix(meta: dict, fix_action: tuple) -> bool:
     if fix_action is None:
         return False
 
-    action, param = fix_action
+    action = fix_action[0]
 
     if action == 'set_null':
-        meta[param] = None
+        field = fix_action[1]
+        meta[field] = None
+        return True
+    elif action == 'set_date':
+        field = fix_action[1]
+        value = fix_action[2]
+        meta[field] = value
         return True
     elif action == 'set_timeframe':
-        meta['timeframe'] = param
+        value = fix_action[1]
+        meta['timeframe'] = value
+        return True
+    elif action == 'set_frequency':
+        value = fix_action[1]
+        meta['data_frequency'] = value
         return True
 
     return False
 
 
+# =============================================================================
+# CLI COMMAND
+# =============================================================================
+
 @click.command()
 @click.option('--fix', is_flag=True, help='Auto-fix corrupted entries')
 @click.option('--bundle', default=None, help='Validate specific bundle only')
 @click.option('--verbose', '-v', is_flag=True, help='Show detailed output')
-def main(fix, bundle, verbose):
+@click.option('--check-disk/--no-check-disk', default=True, help='Check if bundle data exists on disk')
+def main(fix, bundle, verbose, check_disk):
     """
     Validate bundle registry integrity and optionally fix issues.
 
@@ -183,7 +378,14 @@ def main(fix, bundle, verbose):
         python scripts/validate_bundles.py              # List and validate
         python scripts/validate_bundles.py --fix        # Auto-fix issues
         python scripts/validate_bundles.py --bundle X   # Check specific bundle
+        python scripts/validate_bundles.py --no-check-disk  # Skip disk checks
     """
+    # Register custom calendars to ensure they're available
+    try:
+        register_custom_calendars()
+    except Exception as e:
+        click.echo(f"Warning: Could not register custom calendars: {e}", err=True)
+
     registry = load_registry()
 
     if not registry:
@@ -192,21 +394,29 @@ def main(fix, bundle, verbose):
         return
 
     # Filter to specific bundle if requested
+    original_registry = registry.copy()
     if bundle:
         if bundle not in registry:
             click.echo(f"Bundle '{bundle}' not found in registry.")
-            click.echo(f"Available bundles: {', '.join(registry.keys())}")
+            click.echo(f"Available bundles: {', '.join(sorted(registry.keys()))}")
             sys.exit(1)
         registry = {bundle: registry[bundle]}
 
-    click.echo(f"Validating {len(registry)} bundle(s)...\n")
+    click.echo(f"Validating {len(registry)} bundle(s)...")
+    click.echo(f"Using {len(VALID_TIMEFRAMES)} valid timeframes: {', '.join(VALID_TIMEFRAMES)}")
+    click.echo(f"Using {len(VALID_CALENDARS)} valid calendars: {', '.join(VALID_CALENDARS)}")
+    click.echo()
 
     total_issues = 0
     fixed_issues = 0
     bundles_with_issues = []
 
-    for bundle_name, meta in registry.items():
+    for bundle_name, meta in sorted(registry.items()):
         issues = validate_bundle_entry(bundle_name, meta)
+        
+        # Filter out disk check issues if --no-check-disk
+        if not check_disk:
+            issues = [i for i in issues if i[0] != 'missing_data']
 
         if issues:
             bundles_with_issues.append(bundle_name)
@@ -222,7 +432,8 @@ def main(fix, bundle, verbose):
                     else:
                         click.echo(f"{prefix}✗ {message}")
                 else:
-                    click.echo(f"{prefix}✗ {message}")
+                    fixable = " [fixable]" if fix_action else ""
+                    click.echo(f"{prefix}✗ {message}{fixable}")
         else:
             if verbose:
                 click.echo(f"✓ {bundle_name}")
@@ -230,16 +441,18 @@ def main(fix, bundle, verbose):
                 click.echo(f"    calendar: {meta.get('calendar_name')}")
                 click.echo(f"    frequency: {meta.get('data_frequency')}")
                 click.echo(f"    timeframe: {meta.get('timeframe')}")
+                if check_disk:
+                    exists, path, details = check_bundle_data_exists(bundle_name)
+                    click.echo(f"    disk: {details}")
             else:
                 click.echo(f"✓ {bundle_name}")
 
     # Save fixes if any were applied
     if fix and fixed_issues > 0:
-        # Reload full registry if we filtered
+        # Merge fixes back into full registry if we filtered
         if bundle:
-            full_registry = load_registry()
-            full_registry[bundle] = meta
-            save_registry(full_registry)
+            original_registry[bundle] = meta
+            save_registry(original_registry)
         else:
             save_registry(registry)
         click.echo(f"\nSaved {fixed_issues} fix(es) to registry.")
@@ -256,7 +469,13 @@ def main(fix, bundle, verbose):
         click.echo(f"Issues remaining: {total_issues - fixed_issues}")
 
     if bundles_with_issues and not fix:
-        click.echo("\nRun with --fix to auto-repair fixable issues.")
+        fixable_count = sum(
+            1 for bn in bundles_with_issues
+            for issue in validate_bundle_entry(bn, original_registry.get(bn, registry.get(bn, {})))
+            if issue[2] is not None
+        )
+        if fixable_count > 0:
+            click.echo(f"\n{fixable_count} issue(s) can be auto-fixed. Run with --fix to repair.")
 
     # Exit with error code if unfixed issues remain
     if total_issues - fixed_issues > 0:
