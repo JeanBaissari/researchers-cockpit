@@ -13,6 +13,7 @@ and manage cached API responses. Supports multiple timeframes including:
 import json
 import logging
 import os
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional, Union, Any, Dict
@@ -25,7 +26,8 @@ from zipline.utils.calendar_utils import get_calendar
 
 # Local imports
 from .config import get_data_source, load_settings
-from .utils import get_project_root, ensure_dir, fill_data_gaps, normalize_to_utc, aggregate_ohlcv
+from .utils import get_project_root, ensure_dir, fill_data_gaps, normalize_to_utc, aggregate_ohlcv, consolidate_sunday_to_friday
+from .data_validation import DataValidator, ValidationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -320,10 +322,723 @@ def unregister_bundle(bundle_name: str) -> bool:
     return False
 
 
+# =============================================================================
+# CSV COLUMN NORMALIZATION
+# =============================================================================
+
+def _normalize_csv_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Normalize CSV column names to lowercase standard format.
+    
+    Handles various column naming conventions:
+    - Title case: Open, High, Low, Close, Volume
+    - Uppercase: OPEN, HIGH, LOW, CLOSE, VOLUME
+    - Mixed case: open, HIGH, Close, etc.
+    - With prefixes: Adj Close, Adj_Close, adjusted_close
+    
+    Args:
+        df: DataFrame with potentially non-standard column names
+        
+    Returns:
+        DataFrame with normalized lowercase column names
+        
+    Raises:
+        ValueError: If required OHLCV columns cannot be identified
+    """
+    # Create a mapping from original to normalized names
+    column_mapping = {}
+    
+    # Define patterns for each required column
+    column_patterns = {
+        'open': [r'^open$', r'^o$'],
+        'high': [r'^high$', r'^h$'],
+        'low': [r'^low$', r'^l$'],
+        'close': [r'^close$', r'^c$', r'^adj[_\s]?close$', r'^adjusted[_\s]?close$'],
+        'volume': [r'^volume$', r'^vol$', r'^v$'],
+    }
+    
+    # Track which columns we've found
+    found_columns = {}
+    
+    for target_name, patterns in column_patterns.items():
+        for col in df.columns:
+            col_lower = str(col).lower().strip()
+            for pattern in patterns:
+                if re.match(pattern, col_lower):
+                    if target_name not in found_columns:
+                        found_columns[target_name] = col
+                        column_mapping[col] = target_name
+                    break
+            if target_name in found_columns:
+                break
+    
+    # Check for missing required columns
+    required = {'open', 'high', 'low', 'close', 'volume'}
+    missing = required - set(found_columns.keys())
+    
+    if missing:
+        raise ValueError(
+            f"CSV missing required columns: {missing}. "
+            f"Found columns: {list(df.columns)}. "
+            f"Expected: open, high, low, close, volume (case-insensitive)"
+        )
+    
+    # Rename columns
+    df = df.rename(columns=column_mapping)
+    
+    # Keep only the required columns (drop any extras like 'Dividends', 'Stock Splits')
+    df = df[['open', 'high', 'low', 'close', 'volume']]
+    
+    return df
+
+
+def _parse_csv_filename(filename: str, symbol: str, timeframe: str) -> tuple:
+    """
+    Parse CSV filename to extract date range using flexible regex patterns.
+    
+    Supports multiple filename formats:
+    - EURUSD_1h_20200102-050000_20250717-030000_ready.csv
+    - EURUSD_1h_20200102_20250717_ready.csv
+    - EURUSD_1h_2020-01-02_2025-07-17.csv
+    - EURUSD_1h.csv (no dates in filename)
+    
+    Args:
+        filename: CSV filename (without path)
+        symbol: Expected symbol name
+        timeframe: Expected timeframe
+        
+    Returns:
+        Tuple of (start_date: pd.Timestamp or None, end_date: pd.Timestamp or None)
+    """
+    # Remove extension
+    stem = Path(filename).stem
+    
+    # Pattern 1: SYMBOL_TIMEFRAME_YYYYMMDD-HHMMSS_YYYYMMDD-HHMMSS_suffix
+    # Example: EURUSD_1h_20200102-050000_20250717-030000_ready
+    pattern1 = re.compile(
+        rf'^{re.escape(symbol)}_{re.escape(timeframe)}_'
+        r'(\d{8})(?:-\d{6})?_'  # Start date with optional time
+        r'(\d{8})(?:-\d{6})?'   # End date with optional time
+        r'(?:_\w+)?$'           # Optional suffix like _ready
+    )
+    
+    # Pattern 2: SYMBOL_TIMEFRAME_YYYY-MM-DD_YYYY-MM-DD
+    # Example: EURUSD_1h_2020-01-02_2025-07-17
+    pattern2 = re.compile(
+        rf'^{re.escape(symbol)}_{re.escape(timeframe)}_'
+        r'(\d{4}-\d{2}-\d{2})_'  # Start date
+        r'(\d{4}-\d{2}-\d{2})'   # End date
+        r'(?:_\w+)?$'            # Optional suffix
+    )
+    
+    # Pattern 3: SYMBOL_TIMEFRAME_YYYYMMDD_YYYYMMDD
+    # Example: EURUSD_1h_20200102_20250717
+    pattern3 = re.compile(
+        rf'^{re.escape(symbol)}_{re.escape(timeframe)}_'
+        r'(\d{8})_'              # Start date
+        r'(\d{8})'               # End date
+        r'(?:_\w+)?$'            # Optional suffix
+    )
+    
+    # Try each pattern
+    for pattern in [pattern1, pattern2, pattern3]:
+        match = pattern.match(stem)
+        if match:
+            start_str, end_str = match.groups()
+            
+            # Parse dates based on format
+            try:
+                if '-' in start_str:
+                    # YYYY-MM-DD format
+                    start_date = pd.Timestamp(start_str, tz='UTC')
+                    end_date = pd.Timestamp(end_str, tz='UTC')
+                else:
+                    # YYYYMMDD format
+                    start_date = pd.Timestamp(
+                        f"{start_str[:4]}-{start_str[4:6]}-{start_str[6:8]}", 
+                        tz='UTC'
+                    )
+                    end_date = pd.Timestamp(
+                        f"{end_str[:4]}-{end_str[4:6]}-{end_str[6:8]}", 
+                        tz='UTC'
+                    )
+                
+                # Normalize start to beginning of day, end to end of day
+                start_date = start_date.normalize()
+                end_date = end_date.normalize() + pd.Timedelta(days=1, seconds=-1)
+                
+                return start_date, end_date
+            except Exception as e:
+                logger.warning(f"Failed to parse dates from filename {filename}: {e}")
+                continue
+    
+    # No pattern matched - return None for both dates
+    logger.info(f"Could not parse dates from filename {filename}. Using full file range.")
+    return None, None
+
+
+# =============================================================================
+# SHARED FOREX/CRYPTO PROCESSING HELPERS
+# =============================================================================
+
+def _filter_forex_presession_bars(df: pd.DataFrame, calendar_obj, show_progress: bool = False, symbol: str = "") -> pd.DataFrame:
+    """
+    Filter out FOREX pre-session bars (00:00-04:59 UTC).
+    
+    FOREX sessions span midnight UTC (05:00 UTC to 04:58 UTC next day).
+    Bars at 00:00-04:59 UTC on a given date actually belong to the PREVIOUS
+    day's session. The minute bar writer creates indices starting at session
+    open (05:00 UTC), so pre-session bars cause KeyError.
+    
+    Args:
+        df: DataFrame with UTC timezone-aware DatetimeIndex
+        calendar_obj: Trading calendar object
+        show_progress: Whether to print progress messages
+        symbol: Symbol name for logging
+        
+    Returns:
+        DataFrame with pre-session bars filtered out
+    """
+    if df.empty:
+        return df
+    
+    try:
+        # Get unique dates in the data
+        unique_dates = df.index.normalize().unique()
+        valid_mask = pd.Series(True, index=df.index)
+
+        for date_ts in unique_dates:
+            try:
+                # Get session open for this date
+                date_naive = date_ts.tz_convert(None) if date_ts.tz else date_ts
+                if date_naive not in calendar_obj.sessions:
+                    # Not a trading day, mark all bars for this date as invalid
+                    date_bars = df.index.normalize() == date_ts
+                    valid_mask[date_bars] = False
+                    continue
+
+                session_open = calendar_obj.session_open(date_naive)
+                # Ensure session_open is UTC for comparison
+                if session_open.tz is None:
+                    session_open = session_open.tz_localize('UTC')
+                elif str(session_open.tz) != 'UTC':
+                    session_open = session_open.tz_convert('UTC')
+
+                # Find bars on this date that are before session open
+                date_bars = df.index.normalize() == date_ts
+                pre_session = df.index < session_open
+                invalid = date_bars & pre_session
+                valid_mask[invalid] = False
+            except Exception:
+                # If we can't get session info, keep the bars
+                continue
+
+        excluded = (~valid_mask).sum()
+        if excluded > 0:
+            if show_progress:
+                print(f"  {symbol}: Filtered {excluded} pre-session bars (FOREX 00:00-04:59 UTC)")
+            df = df[valid_mask]
+    except Exception as forex_err:
+        print(f"Warning: FOREX intraday session filtering failed for {symbol}: {forex_err}")
+        logger.warning(f"FOREX intraday session filtering failed for {symbol}: {forex_err}")
+    
+    return df
+
+
+def _consolidate_forex_sunday_to_friday(df: pd.DataFrame, calendar_obj, show_progress: bool = False, sid: int = 0) -> pd.DataFrame:
+    """
+    Consolidate FOREX Sunday bars into the preceding Friday's close.
+    
+    Wrapper around utils.consolidate_sunday_to_friday with logging support.
+    
+    Args:
+        df: DataFrame with daily OHLCV data (UTC timezone-aware DatetimeIndex)
+        calendar_obj: Trading calendar object
+        show_progress: Whether to print progress messages
+        sid: Symbol ID for logging
+        
+    Returns:
+        DataFrame with Sunday data consolidated into Friday
+    """
+    if df.empty:
+        return df
+    
+    # Count Sunday bars before consolidation for logging
+    sunday_count = (df.index.dayofweek == 6).sum()
+    
+    if sunday_count > 0 and show_progress:
+        print(f"  SID {sid}: Consolidating {sunday_count} Sunday bars into Friday...")
+    
+    # Call the utility function to consolidate Sunday into Friday
+    result_df = consolidate_sunday_to_friday(df, calendar_obj)
+    
+    if show_progress and sunday_count > 0:
+        new_sunday_count = (result_df.index.dayofweek == 6).sum()
+        consolidated = sunday_count - new_sunday_count
+        print(f"  SID {sid}: Consolidated {consolidated} Sunday bars into Friday")
+    
+    return result_df
+
+
+def _filter_to_calendar_sessions(df: pd.DataFrame, calendar_obj, show_progress: bool = False, sid: int = 0) -> pd.DataFrame:
+    """
+    Filter daily data to include only valid calendar sessions.
+    
+    Args:
+        df: DataFrame with daily OHLCV data (UTC timezone-aware DatetimeIndex)
+        calendar_obj: Trading calendar object
+        show_progress: Whether to print progress messages
+        sid: Symbol ID for logging
+        
+    Returns:
+        DataFrame filtered to valid calendar sessions only
+    """
+    if df.empty:
+        return df
+    
+    try:
+        min_date = df.index.min().normalize()
+        max_date = df.index.max().normalize()
+        
+        # Get all valid trading sessions within the date range
+        valid_calendar_sessions = calendar_obj.sessions_in_range(min_date, max_date)
+        
+        # Ensure both are timezone-naive for accurate comparison, then normalize to midnight
+        if valid_calendar_sessions.tz is not None:
+            valid_calendar_sessions = valid_calendar_sessions.tz_convert(None).normalize()
+        else:
+            valid_calendar_sessions = valid_calendar_sessions.normalize()
+        
+        current_daily_df_dates = df.index.tz_convert(None).normalize() if df.index.tz is not None else df.index.normalize()
+        
+        # Filter df to keep only those days that are in valid_calendar_sessions
+        df = df[current_daily_df_dates.isin(valid_calendar_sessions)]
+        
+        if df.empty:
+            print(f"  Warning: No daily data after calendar filtering for SID {sid}")
+    except Exception as cal_err:
+        print(f"Warning: Calendar session filtering failed for SID {sid}: {cal_err}")
+        logger.warning(f"Calendar session filtering failed for SID {sid}: {cal_err}")
+    
+    return df
+
+
+def _apply_gap_filling(df: pd.DataFrame, calendar_obj, calendar_name: str, show_progress: bool = False, symbol: str = "") -> pd.DataFrame:
+    """
+    Apply gap-filling for FOREX and CRYPTO daily data.
+    
+    Args:
+        df: DataFrame with daily OHLCV data
+        calendar_obj: Trading calendar object
+        calendar_name: Calendar name string (e.g., 'FOREX', 'CRYPTO')
+        show_progress: Whether to print progress messages
+        symbol: Symbol name for logging
+        
+    Returns:
+        DataFrame with gaps filled
+    """
+    if df.empty:
+        return df
+    
+    try:
+        # Crypto: stricter gap tolerance (3 days), Forex: 5 days
+        max_gap = 5 if 'FOREX' in calendar_name.upper() else 3
+        df = fill_data_gaps(
+            df,
+            calendar_obj,
+            method='ffill',
+            max_gap_days=max_gap
+        )
+        if show_progress:
+            print(f"  Gap-filled {calendar_name} data for {symbol}")
+    except Exception as gap_err:
+        print(f"Warning: Gap-filling failed for {symbol}: {gap_err}")
+        logger.warning(f"Gap-filling failed for {symbol}: {gap_err}")
+    
+    return df
+
+
+def _filter_daily_to_calendar_sessions(df: pd.DataFrame, calendar_obj, show_progress: bool = False, symbol: str = "") -> pd.DataFrame:
+    """
+    Filter daily bars to only include valid calendar sessions.
+    
+    Used for daily data frequency to ensure bars align with trading calendar.
+    
+    Args:
+        df: DataFrame with daily OHLCV data (UTC timezone-aware DatetimeIndex)
+        calendar_obj: Trading calendar object
+        show_progress: Whether to print progress messages
+        symbol: Symbol name for logging
+        
+    Returns:
+        DataFrame filtered to valid calendar sessions
+    """
+    if df.empty or len(df) == 0:
+        return df
+    
+    try:
+        # Convert index bounds to naive timestamps for calendar API
+        idx_min = df.index.min()
+        idx_max = df.index.max()
+        if idx_min.tz is not None:
+            idx_min = idx_min.tz_convert(None)
+        if idx_max.tz is not None:
+            idx_max = idx_max.tz_convert(None)
+
+        calendar_sessions = calendar_obj.sessions_in_range(idx_min, idx_max)
+
+        # Normalize both to naive for comparison
+        if hasattr(calendar_sessions, 'tz') and calendar_sessions.tz is not None:
+            calendar_sessions_naive = calendar_sessions.tz_convert(None)
+        else:
+            calendar_sessions_naive = calendar_sessions
+
+        if df.index.tz is not None:
+            bars_index_naive = df.index.tz_convert(None)
+        else:
+            bars_index_naive = df.index
+
+        # Filter bars to only calendar sessions
+        valid_mask = bars_index_naive.normalize().isin(calendar_sessions_naive)
+        excluded = (~valid_mask).sum()
+        df = df[valid_mask]
+
+        if show_progress and excluded > 0:
+            print(f"  {symbol}: Filtered {excluded} non-calendar sessions")
+    except Exception as cal_err:
+        print(f"Warning: Calendar session filtering failed for {symbol}: {cal_err}")
+        logger.warning(f"Calendar session filtering failed for {symbol}: {cal_err}")
+    
+    return df
+
+
+def _register_csv_bundle(
+    bundle_name: str,
+    symbols: List[str],
+    calendar_name: str,
+    timeframe: str,
+    asset_class: str,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    force: bool = False
+):
+    """
+    Register a local CSV data bundle for ingestion.
+    This function expects CSV files to be located in:
+    data/processed/{timeframe}/{symbol}_{timeframe}_{start_date}-{end_date}_ready.csv
+    
+    Expected CSV columns: Date, Open, High, Low, Close, Volume
+    """
+    from zipline.data.bundles import register, bundles
+    
+    if bundle_name in bundles:
+        if force:
+            unregister_bundle(bundle_name)
+        else:
+            logger.info(f"Bundle {bundle_name} already registered. Use --force to re-ingest.")
+            return
+
+    # Capture closure variables for the ingest function
+    closure_start_date = start_date
+    closure_end_date = end_date
+    closure_timeframe = timeframe
+    closure_calendar_name = calendar_name
+
+    def make_csv_ingest(symbols_list):
+        mpd = get_minutes_per_day(closure_calendar_name)
+        
+        @register(bundle_name, calendar_name=closure_calendar_name, minutes_per_day=mpd)
+        def csv_ingest(environ, asset_db_writer, minute_bar_writer,
+                         daily_bar_writer, adjustment_writer, calendar,
+                         start_session, end_session, cache, show_progress, timestamp):
+            """CSV bundle ingest function."""
+            
+            # Get calendar object inside ingest function (consistent with Yahoo pattern)
+            calendar_obj = get_calendar(closure_calendar_name)
+            
+            # Use user-specified start/end dates from closure, converted to UTC
+            start_date_utc = pd.Timestamp(closure_start_date, tz='UTC').normalize() if closure_start_date else None
+            end_date_utc = pd.Timestamp(closure_end_date, tz='UTC').normalize() if closure_end_date else None
+
+            if show_progress:
+                print(f"Ingesting {closure_timeframe} data for {len(symbols_list)} symbols from local CSVs...")
+
+            # Initialize data validator for CSV data quality checks
+            config = ValidationConfig(timeframe=closure_timeframe)
+            data_validator = DataValidator(config=config)
+
+            # Get Zipline data frequency from timeframe info
+            tf_info = get_timeframe_info(closure_timeframe)
+            data_frequency = tf_info['data_frequency']
+
+            def data_gen():
+                local_data_path = get_project_root() / 'data' / 'processed' / closure_timeframe
+                if not local_data_path.is_dir():
+                    raise FileNotFoundError(f"Local CSV data directory not found: {local_data_path}")
+
+                successful_fetches = 0
+                for sid, symbol in enumerate(symbols_list):
+                    try:
+                        # Use glob to find files matching the pattern
+                        # e.g., EURUSD_1h_20200102-050000_20250717-030000_ready.csv
+                        file_pattern = f"{symbol}_{closure_timeframe}_*.csv"
+                        matching_files = list(local_data_path.glob(file_pattern))
+
+                        if not matching_files:
+                            print(f"Warning: No CSV file found for {symbol} with pattern '{file_pattern}' in {local_data_path}")
+                            continue
+                        
+                        # Assuming only one matching file for now, or pick the first one
+                        csv_file = matching_files[0] 
+                        
+                        # Parse dates from filename using flexible regex
+                        file_start_date, file_end_date = _parse_csv_filename(
+                            csv_file.name, symbol, closure_timeframe
+                        )
+
+                        df = pd.read_csv(
+                            csv_file,
+                            parse_dates=[0],
+                            index_col=0,
+                        )
+                        
+                        if df.empty:
+                            print(f"Warning: Empty data for {symbol} from {csv_file}.")
+                            continue
+
+                        # === COLUMN NORMALIZATION ===
+                        # Normalize column names to lowercase standard format
+                        try:
+                            df = _normalize_csv_columns(df)
+                        except ValueError as col_err:
+                            print(f"Error: {col_err}")
+                            logger.error(f"Column normalization failed for {symbol}: {col_err}")
+                            continue
+
+                        # === DATA VALIDATION HOOK ===
+                        # Validate CSV data quality before ingestion
+                        if show_progress:
+                            print(f"  Validating data for {symbol}...")
+                        
+                        validation_result = data_validator.validate(df, asset_name=symbol)
+                        
+                        if not validation_result.passed:
+                            # Log validation errors
+                            error_checks = validation_result.error_checks[:5]
+                            error_summary = "; ".join([
+                                f"{check.details.get('field', check.name)}: {check.message}" 
+                                for check in error_checks
+                            ])
+                            if len(validation_result.error_checks) > 5:
+                                error_summary += f" ... and {len(validation_result.error_checks) - 5} more errors"
+                            
+                            print(f"  Error: Data validation failed for {symbol}: {error_summary}")
+                            logger.error(f"CSV data validation failed for {symbol}: {error_summary}")
+                            print(f"  Error: Validation failed for {symbol}. Skipping symbol.")
+                            continue
+                        else:
+                            if show_progress:
+                                print(f"  ✓ Data validation passed for {symbol}")
+                        
+                        # Log any warnings even if validation passed
+                        if validation_result.warning_checks:
+                            warning_summary = "; ".join([
+                                check.message for check in validation_result.warning_checks[:3]
+                            ])
+                            if len(validation_result.warning_checks) > 3:
+                                warning_summary += f" ... and {len(validation_result.warning_checks) - 3} more warnings"
+                            logger.info(f"Data validation warnings for {symbol}: {warning_summary}")
+
+                        # Ensure timezone-aware UTC index
+                        df.index = pd.to_datetime(df.index, utc=True)
+                        
+                        # Determine the effective start and end dates for filtering:
+                        # If user provided start_date/end_date, use those. Otherwise, use dates from filename.
+                        effective_start_date = pd.Timestamp(closure_start_date, tz='UTC') if closure_start_date else file_start_date
+                        effective_end_date = pd.Timestamp(closure_end_date, tz='UTC') if closure_end_date else file_end_date
+
+                        # Apply effective date filtering
+                        if effective_start_date is not None:
+                            df = df[df.index >= effective_start_date]
+                        if effective_end_date is not None:
+                            df = df[df.index <= effective_end_date]
+
+                        # === CALENDAR BOUNDS FILTERING ===
+                        # Align data to calendar first session
+                        first_calendar_session = calendar_obj.first_session
+                        if first_calendar_session.tz is None:
+                            first_calendar_session = first_calendar_session.tz_localize('UTC')
+                        df = df[df.index >= first_calendar_session]
+
+                        # === FOREX PRE-SESSION FILTERING (for intraday data) ===
+                        if data_frequency == 'minute' and 'FOREX' in closure_calendar_name.upper():
+                            df = _filter_forex_presession_bars(df, calendar_obj, show_progress, symbol)
+
+                        # === CALENDAR SESSION FILTERING (for daily data) ===
+                        if data_frequency == 'daily' and len(df) > 0:
+                            df = _filter_daily_to_calendar_sessions(df, calendar_obj, show_progress, symbol)
+
+                        # === GAP-FILLING FOR FOREX AND CRYPTO (daily data only) ===
+                        if data_frequency == 'daily':
+                            if 'FOREX' in closure_calendar_name.upper() or 'CRYPTO' in closure_calendar_name.upper():
+                                df = _apply_gap_filling(df, calendar_obj, closure_calendar_name, show_progress, symbol)
+
+                        # Prepare DataFrame with required columns
+                        bars_df = pd.DataFrame({
+                            'open': df['open'],
+                            'high': df['high'],
+                            'low': df['low'],
+                            'close': df['close'],
+                            'volume': df['volume'],
+                        }, index=df.index)
+
+                        if bars_df.empty:
+                            print(f"Warning: No data for {symbol} after date filtering.")
+                            continue
+
+                        successful_fetches += 1
+                        yield sid, bars_df
+
+                    except Exception as e:
+                        print(f"Error processing CSV data for {symbol}: {e}")
+                        logger.exception(f"Error processing CSV data for {symbol}")
+                        continue
+                
+                if successful_fetches == 0:
+                    raise RuntimeError(
+                        f"No CSV data was successfully loaded for any symbol. "
+                        f"Symbols attempted: {symbols_list}. "
+                        f"Check that CSV files exist in data/processed/{closure_timeframe}/ and are correctly formatted."
+                    )
+
+            if data_frequency == 'minute':
+                # For intraday bundles, we need to write BOTH minute and daily bars.
+                # Step 1: Collect all minute data (generator can only be consumed once)
+                if show_progress:
+                    print("  Collecting minute data for aggregation...")
+                all_minute_data = list(data_gen())
+
+                if not all_minute_data:
+                    raise RuntimeError("No minute data was collected. Check symbol validity and date range.")
+
+                # Step 2: Build asset metadata from collected data
+                # This ensures start/end dates are accurate (not NaT)
+                asset_data_list = []
+                for sid, minute_df in all_minute_data:
+                    symbol = symbols_list[sid]
+                    first_trade = minute_df.index.min().normalize()
+                    last_trade = minute_df.index.max().normalize()
+                    asset_data_list.append({
+                        'sid': sid,
+                        'symbol': symbol,
+                        'asset_name': symbol,
+                        'start_date': first_trade,
+                        'end_date': last_trade,
+                        'exchange': 'CSV',
+                        'country_code': 'XX',
+                    })
+                assets_df = pd.DataFrame(asset_data_list).set_index('sid')
+                asset_db_writer.write(equities=assets_df)
+
+                # Step 3: Write minute bars
+                if show_progress:
+                    print(f"  Writing {len(all_minute_data)} symbol(s) to minute bar writer...")
+                minute_bar_writer.write(iter(all_minute_data), show_progress=show_progress)
+
+                # Step 4: Aggregate minute data to daily and write to daily bar writer
+                if show_progress:
+                    print("  Aggregating minute data to daily bars...")
+
+                def daily_data_gen():
+                    """Generator that yields aggregated daily data from minute data."""
+                    for sid, minute_df in all_minute_data:
+                        try:
+                            daily_df = aggregate_ohlcv(minute_df, 'daily')
+                            if daily_df.empty:
+                                print(f"  Warning: No daily data after aggregating minute data for SID {sid}")
+                                continue
+                            # Ensure UTC timezone and normalize to midnight
+                            if daily_df.index.tz is not None:
+                                daily_df.index = daily_df.index.tz_convert('UTC').normalize()
+                            else:
+                                daily_df.index = daily_df.index.tz_localize('UTC').normalize()
+
+                            # === FOREX SUNDAY CONSOLIDATION ===
+                            if 'FOREX' in closure_calendar_name.upper():
+                                daily_df = _consolidate_forex_sunday_to_friday(daily_df, calendar_obj, show_progress, sid)
+                                if daily_df.empty:
+                                    continue
+
+                            # === CALENDAR SESSION FILTERING ===
+                            if 'FOREX' in closure_calendar_name.upper():
+                                daily_df = _filter_to_calendar_sessions(daily_df, calendar_obj, show_progress, sid)
+                                if daily_df.empty:
+                                    continue
+
+                            yield sid, daily_df
+                        except Exception as agg_err:
+                            print(f"  Warning: Failed to aggregate daily data for SID {sid}: {agg_err}")
+                            logger.exception(f"Failed to aggregate daily data for SID {sid}")
+                            continue
+
+                daily_bar_writer.write(daily_data_gen(), show_progress=show_progress)
+
+                if show_progress:
+                    print("  ✓ Both minute and daily bars written successfully")
+            else:
+                # Daily data frequency
+                # Step 1: Collect all daily data
+                if show_progress:
+                    print("  Collecting daily data...")
+                all_daily_data = list(data_gen())
+
+                if not all_daily_data:
+                    raise RuntimeError("No daily data was collected. Check symbol validity and date range.")
+
+                # Step 2: Build asset metadata from collected data
+                asset_data_list = []
+                for sid, daily_df in all_daily_data:
+                    symbol = symbols_list[sid]
+                    first_trade = daily_df.index.min().normalize()
+                    last_trade = daily_df.index.max().normalize()
+                    asset_data_list.append({
+                        'sid': sid,
+                        'symbol': symbol,
+                        'asset_name': symbol,
+                        'start_date': first_trade,
+                        'end_date': last_trade,
+                        'exchange': 'CSV',
+                        'country_code': 'XX',
+                    })
+                assets_df = pd.DataFrame(asset_data_list).set_index('sid')
+                asset_db_writer.write(equities=assets_df)
+
+                # Step 3: Write daily bars
+                daily_bar_writer.write(iter(all_daily_data), show_progress=show_progress)
+
+            adjustment_writer.write(splits=None, dividends=None, mergers=None)
+        
+        return csv_ingest
+    
+    make_csv_ingest(symbols)
+    _registered_bundles.add(bundle_name)
+
+    _register_bundle_metadata(
+        bundle_name=bundle_name,
+        symbols=symbols,
+        calendar_name=calendar_name,
+        start_date=start_date,
+        end_date=end_date,
+        data_frequency=get_timeframe_info(timeframe)['data_frequency'],
+        timeframe=timeframe
+    )
+
+
 def _register_yahoo_bundle(
     bundle_name: str,
     symbols: List[str],
     calendar_name: str = 'XNYS',
+
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     data_frequency: str = 'daily',
@@ -352,8 +1067,24 @@ def _register_yahoo_bundle(
         else:
             return
 
+    # Validate and adjust date range based on timeframe limits for Yahoo Finance
+    adjusted_start_date, adjusted_end_date, warning = validate_timeframe_date_range(
+        timeframe, start_date, end_date
+    )
+    if warning:
+        logger.warning(warning)
+        print(warning)
+
     # Get yfinance interval from timeframe
     yf_interval = TIMEFRAME_TO_YF_INTERVAL.get(timeframe.lower(), '1d')
+
+    # Capture closure variables explicitly
+    closure_start_date = adjusted_start_date
+    closure_end_date = adjusted_end_date
+    closure_data_frequency = data_frequency
+    closure_timeframe = timeframe
+    closure_yf_interval = yf_interval
+    closure_calendar_name = calendar_name
 
     # Store symbols for this bundle (needed for the ingest function)
     # Use closure to capture symbols
@@ -365,17 +1096,12 @@ def _register_yahoo_bundle(
         # - '24/7' (Crypto - always open)
         # calendar_name should already be in exchange_calendars format
 
-        # Get the actual calendar object
-        calendar_obj = get_calendar(calendar_name)
-        # Use the first session of the calendar as start_session
-        first_session = calendar_obj.first_session
-
         # Get minutes_per_day for the calendar type
         # CRITICAL: This must be set correctly for minute bar writers
         # 24/7 markets (CRYPTO) need 1440, standard markets use 390
-        mpd = get_minutes_per_day(calendar_name)
+        mpd = get_minutes_per_day(closure_calendar_name)
 
-        @register(bundle_name, calendar_name=calendar_name, minutes_per_day=mpd)
+        @register(bundle_name, calendar_name=closure_calendar_name, minutes_per_day=mpd)
         def yahoo_ingest(environ, asset_db_writer, minute_bar_writer,
                          daily_bar_writer, adjustment_writer, calendar,
                          start_session, end_session, cache, show_progress, timestamp):
@@ -394,6 +1120,9 @@ def _register_yahoo_bundle(
                 show_progress: Whether to show progress
                 timestamp: Bundle timestamp string
             """
+            # Get calendar object inside ingest function for consistency
+            calendar_obj = get_calendar(closure_calendar_name)
+            
             # Convert start/end sessions to timezone-aware UTC at midnight
             # Per Zipline patterns: dates must be pd.Timestamp with tz='utc'
             def to_utc_midnight(ts):
@@ -416,10 +1145,10 @@ def _register_yahoo_bundle(
             n_symbols = len(symbols_list)
             equities_data = {
                 'symbol': symbols_list,
-                'asset_name': symbols_list,  # Use symbol as name for now
+                'asset_name': symbols_list,  # Use symbol as name for now'
                 'start_date': [start_date_utc] * n_symbols,   # List for datetime64[ns]
                 'end_date': [end_date_utc] * n_symbols,       # List for datetime64[ns]
-                'exchange': ['NYSE' if calendar_name == 'XNYS' else ('NASDAQ' if calendar_name == 'XNAS' else 'NYSE')] * n_symbols,
+                'exchange': ['NYSE' if closure_calendar_name == 'XNYS' else ('NASDAQ' if closure_calendar_name == 'XNAS' else 'NYSE')] * n_symbols,
                 'country_code': ['US'] * n_symbols,  # Add country code column
             }
             equities_df = pd.DataFrame(equities_data, index=pd.Index(range(n_symbols), name='sid'))
@@ -427,14 +1156,14 @@ def _register_yahoo_bundle(
 
             # Fetch data from Yahoo Finance
             if show_progress:
-                print(f"Fetching {timeframe} data for {len(symbols_list)} symbols from Yahoo Finance...")
-                if data_frequency == 'minute':
-                    print(f"  Using minute bar writer (yfinance interval: {yf_interval})")
+                print(f"Fetching {closure_timeframe} data for {len(symbols_list)} symbols from Yahoo Finance...")
+                if closure_data_frequency == 'minute':
+                    print(f"  Using minute bar writer (yfinance interval: {closure_yf_interval})")
 
             # Download data and prepare for writing
             def data_gen():
                 # Use the yf_interval from closure (set based on timeframe)
-                nonlocal yf_interval
+                current_yf_interval = closure_yf_interval
 
                 # Track successful fetches for validation
                 successful_fetches = 0
@@ -444,27 +1173,27 @@ def _register_yahoo_bundle(
                         ticker = yf.Ticker(symbol)
                         # CRITICAL: Use user-specified dates from closure, not Zipline's session dates
                         # For intraday data (1h, 5m, etc.), yfinance has strict date limits
-                        # The start_date/end_date from closure are the user's intended range
-                        if start_date:
-                            yf_start = pd.Timestamp(start_date).to_pydatetime()
+                        # The closure_start_date/closure_end_date are the user's intended range
+                        if closure_start_date:
+                            yf_start = pd.Timestamp(closure_start_date).to_pydatetime()
                         else:
                             yf_start = start_date_utc.tz_localize(None).to_pydatetime() if start_date_utc else None
 
-                        if end_date:
-                            yf_end = pd.Timestamp(end_date).to_pydatetime()
+                        if closure_end_date:
+                            yf_end = pd.Timestamp(closure_end_date).to_pydatetime()
                         else:
                             yf_end = None  # Let yfinance use today
 
-                        hist = ticker.history(start=yf_start, end=yf_end, interval=yf_interval)
+                        hist = ticker.history(start=yf_start, end=yf_end, interval=current_yf_interval)
 
                         if hist.empty:
-                            print(f"Warning: No data for {symbol} at {timeframe} timeframe.")
+                            print(f"Warning: No data for {symbol} at {closure_timeframe} timeframe.")
                             continue
 
                         # Timestamp handling depends on data frequency:
                         # - Daily data: Normalize to midnight UTC (Zipline expectation)
                         # - Intraday data (minute, hourly): Keep time-of-day, just ensure UTC
-                        if data_frequency == 'daily':
+                        if closure_data_frequency == 'daily':
                             # Per Zipline patterns: daily bar data must be at midnight UTC
                             if hist.index.tz is not None:
                                 hist.index = hist.index.tz_convert('UTC').normalize()
@@ -505,11 +1234,11 @@ def _register_yahoo_bundle(
 
                         # === USER-SPECIFIED DATE FILTERING ===
                         # Filter to user-specified date range (from closure)
-                        if start_date:
-                            user_start = pd.Timestamp(start_date, tz='UTC')
+                        if closure_start_date:
+                            user_start = pd.Timestamp(closure_start_date, tz='UTC')
                             bars_df = bars_df[bars_df.index >= user_start]
-                        if end_date:
-                            user_end = pd.Timestamp(end_date, tz='UTC')
+                        if closure_end_date:
+                            user_end = pd.Timestamp(closure_end_date, tz='UTC')
                             bars_df = bars_df[bars_df.index <= user_end]
 
                         # === CALENDAR BOUNDS FILTERING ===
@@ -519,85 +1248,13 @@ def _register_yahoo_bundle(
                             first_calendar_session = first_calendar_session.tz_localize('UTC')
                         bars_df = bars_df[bars_df.index >= first_calendar_session]
 
-                        # === CALENDAR SESSION FILTERING (for FOREX Sunday issue) ===
-                        # Only apply for daily data - intraday data has different session semantics
-                        if data_frequency == 'daily' and len(bars_df) > 0:
-                            try:
-                                # Convert index bounds to naive timestamps for calendar API
-                                idx_min = bars_df.index.min()
-                                idx_max = bars_df.index.max()
-                                if idx_min.tz is not None:
-                                    idx_min = idx_min.tz_convert(None)
-                                if idx_max.tz is not None:
-                                    idx_max = idx_max.tz_convert(None)
+                        # === CALENDAR SESSION FILTERING (for daily data) ===
+                        if closure_data_frequency == 'daily' and len(bars_df) > 0:
+                            bars_df = _filter_daily_to_calendar_sessions(bars_df, calendar_obj, show_progress, symbol)
 
-                                calendar_sessions = calendar_obj.sessions_in_range(idx_min, idx_max)
-
-                                # Normalize both to naive for comparison
-                                if hasattr(calendar_sessions, 'tz') and calendar_sessions.tz is not None:
-                                    calendar_sessions_naive = calendar_sessions.tz_convert(None)
-                                else:
-                                    calendar_sessions_naive = calendar_sessions
-
-                                if bars_df.index.tz is not None:
-                                    bars_index_naive = bars_df.index.tz_convert(None)
-                                else:
-                                    bars_index_naive = bars_df.index
-
-                                # Filter bars to only calendar sessions
-                                valid_mask = bars_index_naive.normalize().isin(calendar_sessions_naive)
-                                bars_df = bars_df[valid_mask]
-
-                                if show_progress and (~valid_mask).any():
-                                    excluded = (~valid_mask).sum()
-                                    print(f"  {symbol}: Filtered {excluded} non-calendar sessions")
-                            except Exception as cal_err:
-                                print(f"Warning: Calendar session filtering failed for {symbol}: {cal_err}")
-
-                        # === INTRADAY SESSION FILTERING (for FOREX) ===
-                        # For FOREX intraday data, bars at 00:00-04:00 UTC on a given date
-                        # actually belong to the PREVIOUS day's session (which ends at ~04:58 UTC).
-                        # The minute bar writer creates indices starting at session open (05:00 UTC),
-                        # so pre-session bars cause KeyError. Filter them out.
-                        if data_frequency == 'minute' and 'FOREX' in calendar_name.upper():
-                            try:
-                                # Get unique dates in the data
-                                unique_dates = bars_df.index.normalize().unique()
-                                valid_mask = pd.Series(True, index=bars_df.index)
-
-                                for date_ts in unique_dates:
-                                    try:
-                                        # Get session open for this date
-                                        date_naive = date_ts.tz_convert(None) if date_ts.tz else date_ts
-                                        if date_naive not in calendar_obj.sessions:
-                                            # Not a trading day, mark all bars for this date as invalid
-                                            date_bars = bars_df.index.normalize() == date_ts
-                                            valid_mask[date_bars] = False
-                                            continue
-
-                                        session_open = calendar_obj.session_open(date_naive)
-                                        # Ensure session_open is UTC for comparison
-                                        if session_open.tz is None:
-                                            session_open = session_open.tz_localize('UTC')
-                                        elif str(session_open.tz) != 'UTC':
-                                            session_open = session_open.tz_convert('UTC')
-
-                                        # Find bars on this date that are before session open
-                                        date_bars = bars_df.index.normalize() == date_ts
-                                        pre_session = bars_df.index < session_open
-                                        invalid = date_bars & pre_session
-                                        valid_mask[invalid] = False
-                                    except Exception:
-                                        # If we can't get session info, keep the bars
-                                        continue
-
-                                excluded = (~valid_mask).sum()
-                                if excluded > 0:
-                                    if show_progress:
-                                        print(f"  {symbol}: Filtered {excluded} pre-session bars (FOREX 00:00-04:59 UTC)")
-                                    bars_df = bars_df[valid_mask]
-                            except Exception as forex_err:
-                                print(f"Warning: FOREX intraday session filtering failed for {symbol}: {forex_err}")
+                        # === FOREX PRE-SESSION FILTERING (for intraday data) ===
+                        if closure_data_frequency == 'minute' and 'FOREX' in closure_calendar_name.upper():
+                            bars_df = _filter_forex_presession_bars(bars_df, calendar_obj, show_progress, symbol)
 
                         # Check if we have any data left after filtering
                         if bars_df.empty:
@@ -605,28 +1262,16 @@ def _register_yahoo_bundle(
                             continue
 
                         # === GAP-FILLING FOR FOREX AND CRYPTO (daily data only) ===
-                        # Gap-filling is designed for daily data - skip for intraday
-                        if data_frequency == 'daily':
-                            if 'FOREX' in calendar_name.upper() or 'CRYPTO' in calendar_name.upper():
-                                try:
-                                    # Crypto: stricter gap tolerance (3 days), Forex: 5 days
-                                    max_gap = 5 if 'FOREX' in calendar_name.upper() else 3
-                                    bars_df = fill_data_gaps(
-                                        bars_df,
-                                        calendar_obj,
-                                        method='ffill',
-                                        max_gap_days=max_gap
-                                    )
-                                    if show_progress:
-                                        print(f"  Gap-filled {calendar_name} data for {symbol}")
-                                except Exception as gap_err:
-                                    print(f"Warning: Gap-filling failed for {symbol}: {gap_err}")
+                        if closure_data_frequency == 'daily':
+                            if 'FOREX' in closure_calendar_name.upper() or 'CRYPTO' in closure_calendar_name.upper():
+                                bars_df = _apply_gap_filling(bars_df, calendar_obj, closure_calendar_name, show_progress, symbol)
 
                         successful_fetches += 1
                         yield sid, bars_df
 
                     except Exception as e:
-                        print(f"Error fetching {timeframe} data for {symbol}: {e}")
+                        print(f"Error fetching {closure_timeframe} data for {symbol}: {e}")
+                        logger.exception(f"Error fetching {closure_timeframe} data for {symbol}")
                         continue
 
                 # Validate that at least some data was fetched
@@ -637,7 +1282,7 @@ def _register_yahoo_bundle(
                         f"Check that symbols are valid and date range has data."
                     )
             
-            if data_frequency == 'minute':
+            if closure_data_frequency == 'minute':
                 # For intraday bundles, we need to write BOTH minute and daily bars.
                 # Zipline's internal operations (benchmark, history window, Pipeline API)
                 # require valid daily bar data even when running minute-frequency backtests.
@@ -673,19 +1318,30 @@ def _register_yahoo_bundle(
                                 print(f"  Warning: No daily data after aggregating minute data for SID {sid}")
                                 continue
 
-                            # Normalize timestamps to midnight UTC for daily bar writer
-                            # Daily bars must be at midnight UTC (Zipline expectation)
-                            daily_df.index = daily_df.index.normalize()
-
-                            # Ensure UTC timezone
+                            # Ensure UTC timezone and normalize to midnight
+                            # This needs to happen BEFORE shifting, as shifting operates on dates
                             if daily_df.index.tz is None:
                                 daily_df.index = daily_df.index.tz_localize('UTC')
                             elif str(daily_df.index.tz) != 'UTC':
                                 daily_df.index = daily_df.index.tz_convert('UTC')
+                            daily_df.index = daily_df.index.normalize() # Normalize to midnight UTC
+
+                            # === FOREX SUNDAY CONSOLIDATION ===
+                            if 'FOREX' in closure_calendar_name.upper():
+                                daily_df = _consolidate_forex_sunday_to_friday(daily_df, calendar_obj, show_progress, sid)
+                                if daily_df.empty:
+                                    continue
+
+                            # === CALENDAR SESSION FILTERING ===
+                            if 'FOREX' in closure_calendar_name.upper():
+                                daily_df = _filter_to_calendar_sessions(daily_df, calendar_obj, show_progress, sid)
+                                if daily_df.empty:
+                                    continue
 
                             yield sid, daily_df
                         except Exception as agg_err:
                             print(f"  Warning: Failed to aggregate daily data for SID {sid}: {agg_err}")
+                            logger.exception(f"Failed to aggregate daily data for SID {sid}")
                             continue
 
                 daily_bar_writer.write(daily_data_gen(), show_progress=show_progress)
@@ -791,19 +1447,12 @@ def ingest_bundle(
     except KeyError:
         raise ValueError(
             f"Unsupported data source: {source}. "
-            f"Supported sources: yahoo, binance, oanda"
+            f"Supported sources: yahoo, binance, oanda, csv"
         )
 
     if not source_config.get('enabled', False):
         raise ValueError(f"Data source '{source}' is not enabled in config/data_sources.yaml")
 
-    # Validate and adjust date range based on timeframe limits
-    start_date, end_date, warning = validate_timeframe_date_range(
-        timeframe, start_date, end_date
-    )
-    if warning:
-        logger.warning(warning)
-        print(warning)
 
     # Determine asset class (needed for logging and calendar auto-detection)
     asset_class = assets[0] if assets else 'equities'
@@ -841,6 +1490,17 @@ def ingest_bundle(
 
     # Get the Zipline data frequency (daily or minute)
     data_frequency = tf_info['data_frequency']
+
+    # Validate timeframe compatibility with calendar
+    if data_frequency == 'minute' and calendar_name in ('XNYS', 'XNAS') and timeframe not in TIMEFRAME_TO_YF_INTERVAL:
+        # This is a defensive check; TIMEFRAME_TO_YF_INTERVAL should always contain intraday timeframes
+        # that map to 'minute' frequency. If somehow a minute timeframe slips through
+        # that is not explicitly defined in TIMEFRAME_TO_YF_INTERVAL, it's an issue.
+        raise ValueError(
+            f"Incompatible timeframe '{timeframe}' with calendar '{calendar_name}'. "
+            f"Minute frequency data requires a supported intraday timeframe. "
+            f"Please check TIMEFRAME_TO_YF_INTERVAL configuration."
+        )
 
     # === AUTO-EXCLUDE CURRENT DAY FOR FOREX INTRADAY ===
     # FOREX sessions span midnight UTC (05:00 UTC to 04:58 UTC next day).
@@ -883,6 +1543,7 @@ def ingest_bundle(
             return bundle_name
 
         except Exception as e:
+            logger.exception(f"Failed to ingest Yahoo Finance bundle: {bundle_name}")
             raise RuntimeError(f"Failed to ingest Yahoo Finance bundle: {e}") from e
 
     elif source == 'binance':
@@ -891,8 +1552,30 @@ def ingest_bundle(
     elif source == 'oanda':
         raise NotImplementedError("OANDA bundle ingestion not yet implemented")
 
+    elif source == 'csv':
+        try:
+            _register_csv_bundle(
+                bundle_name=bundle_name,
+                symbols=symbols,
+                calendar_name=calendar_name,
+                timeframe=timeframe,
+                asset_class=asset_class,
+                start_date=start_date,
+                end_date=end_date,
+                force=force
+            )
+            from zipline.data.bundles import ingest
+            ingest(bundle_name, show_progress=True)
+            return bundle_name
+        except Exception as e:
+            logger.exception(f"Failed to ingest local CSV bundle: {bundle_name}")
+            raise RuntimeError(f"Failed to ingest local CSV bundle: {e}") from e
+
     else:
-        raise ValueError(f"Unsupported source: {source}")
+        raise ValueError(
+            f"Unsupported data source: {source}. "
+            f"Supported sources: yahoo, binance, oanda, csv"
+        )
 
 
 def load_bundle(bundle_name: str) -> Any:
@@ -1006,6 +1689,7 @@ def load_bundle(bundle_name: str) -> Any:
         bundle_data = load(bundle_name)
         return bundle_data
     except Exception as e:
+        logger.exception(f"Failed to load bundle '{bundle_name}'")
         raise RuntimeError(f"Failed to load bundle '{bundle_name}': {e}") from e
 
 
@@ -1045,7 +1729,8 @@ def _extract_symbols_from_bundle(bundle_name: str) -> List[str]:
                 conn.close()
                 if symbols:
                     return list(set(symbols))  # Remove duplicates
-            except (sqlite3.Error, Exception):
+            except (sqlite3.Error, Exception) as e:
+                logger.warning(f"Failed to extract symbols from {asset_db_path}: {e}")
                 continue
 
     return []
@@ -1145,6 +1830,7 @@ def cache_api_data(
                 combined.to_parquet(cache_file)
                 return cache_file
         except Exception as e:
+            logger.exception(f"Failed to cache Yahoo Finance data")
             raise RuntimeError(f"Failed to cache Yahoo Finance data: {e}") from e
     
     raise ValueError(f"Caching not implemented for source: {source}")
@@ -1224,4 +1910,3 @@ try:
     _auto_register_yahoo_bundle_if_exists()
 except Exception:
     pass
-
