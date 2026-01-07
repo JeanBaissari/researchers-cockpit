@@ -356,6 +356,21 @@ class ValidationResult:
         """Get checks filtered by pass/fail status."""
         return [c for c in self.checks if c.passed == passed]
 
+    def get_check(self, name: str) -> Optional[ValidationCheck]:
+        """
+        Get a specific check by name.
+        
+        Args:
+            name: Check name to look up
+            
+        Returns:
+            ValidationCheck if found, None otherwise
+        """
+        for check in self.checks:
+            if check.name == name:
+                return check
+        return None
+
     @property
     def failed_checks(self) -> List[ValidationCheck]:
         """Get list of failed checks."""
@@ -966,6 +981,8 @@ class BaseValidator(ABC):
             '_check_sorted_index': self.config.check_sorted_index,
             '_check_volume_spikes': self.config.check_volume_spikes,
             '_check_potential_splits': self.config.check_adjustments,
+            '_check_sunday_bars': self.config.check_sunday_bars,
+            '_check_weekend_gap_integrity': self.config.check_weekend_gaps,
         }
         return not config_map.get(check_name, True)
 
@@ -1042,6 +1059,8 @@ class DataValidator(BaseValidator):
             self._check_price_outliers,
             self._check_volume_spikes,
             self._check_potential_splits,
+            self._check_sunday_bars,
+            self._check_weekend_gap_integrity,
         ]
 
     def validate(
