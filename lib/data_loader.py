@@ -36,6 +36,8 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 # Supported timeframes with their yfinance interval codes
+# NOTE: 4h is NOT natively supported by yfinance - it requires fetching 1h data
+# and aggregating. Use _aggregate_to_4h() helper when timeframe='4h'.
 TIMEFRAME_TO_YF_INTERVAL: Dict[str, str] = {
     '1m': '1m',
     '2m': '2m',
@@ -43,13 +45,19 @@ TIMEFRAME_TO_YF_INTERVAL: Dict[str, str] = {
     '15m': '15m',
     '30m': '30m',
     '1h': '1h',
-    '4h': '4h',      # Note: yfinance doesn't support 4h natively, requires aggregation
+    '4h': '1h',      # Fetch 1h data, then aggregate to 4h
     'daily': '1d',
     '1d': '1d',
     'weekly': '1wk',
     '1wk': '1wk',
     'monthly': '1mo',
     '1mo': '1mo',
+}
+
+# Timeframes that require post-fetch aggregation
+# Maps timeframe -> (fetch_interval, aggregation_target)
+TIMEFRAMES_REQUIRING_AGGREGATION: Dict[str, str] = {
+    '4h': '4h',  # Fetch 1h, aggregate to 4h
 }
 
 # Data retention limits for yfinance (in days)
@@ -62,7 +70,7 @@ TIMEFRAME_DATA_LIMITS: Dict[str, Optional[int]] = {
     '15m': 55,       # 60 days max, use 55 for safety
     '30m': 55,       # 60 days max, use 55 for safety
     '1h': 720,       # 730 days max, use 720 for safety
-    '4h': 55,        # 60 days max (via 1h aggregation)
+    '4h': 720,       # Uses 1h data limit (730 days max)
     'daily': None,   # Unlimited
     '1d': None,      # Unlimited
     'weekly': None,  # Unlimited
@@ -124,7 +132,8 @@ def get_timeframe_info(timeframe: str) -> Dict[str, Any]:
         timeframe: Timeframe string (e.g., '1h', 'daily', '5m')
 
     Returns:
-        Dictionary with yf_interval, data_limit_days, data_frequency, is_intraday
+        Dictionary with yf_interval, data_limit_days, data_frequency, is_intraday,
+        requires_aggregation, aggregation_target
 
     Raises:
         ValueError: If timeframe is not supported
@@ -142,7 +151,50 @@ def get_timeframe_info(timeframe: str) -> Dict[str, Any]:
         'data_limit_days': TIMEFRAME_DATA_LIMITS.get(timeframe),
         'data_frequency': TIMEFRAME_TO_DATA_FREQUENCY.get(timeframe, 'daily'),
         'is_intraday': timeframe not in ('daily', '1d', 'weekly', '1wk', 'monthly', '1mo'),
+        'requires_aggregation': timeframe in TIMEFRAMES_REQUIRING_AGGREGATION,
+        'aggregation_target': TIMEFRAMES_REQUIRING_AGGREGATION.get(timeframe),
     }
+
+
+def _aggregate_to_4h(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Aggregate 1-hour OHLCV data to 4-hour bars.
+    
+    yfinance does not natively support 4h intervals. This function takes
+    1h data and aggregates it to 4h bars using standard OHLCV aggregation rules.
+    
+    Args:
+        df: DataFrame with 1h OHLCV data (columns: open, high, low, close, volume)
+            Index must be a DatetimeIndex
+            
+    Returns:
+        DataFrame with 4h OHLCV data
+    """
+    if df.empty:
+        return df
+    
+    # Ensure we have the required columns
+    required_cols = ['open', 'high', 'low', 'close', 'volume']
+    missing = set(required_cols) - set(df.columns)
+    if missing:
+        raise ValueError(f"DataFrame missing required columns for 4h aggregation: {missing}")
+    
+    # Resample to 4h using standard OHLCV aggregation
+    agg_rules = {
+        'open': 'first',
+        'high': 'max',
+        'low': 'min',
+        'close': 'last',
+        'volume': 'sum',
+    }
+    
+    # Use label='left' to label bars by their start time
+    result = df.resample('4h', label='left', closed='left').agg(agg_rules)
+    
+    # Drop any rows where all values are NaN (incomplete periods)
+    result = result.dropna(how='all')
+    
+    return result
 
 
 def validate_timeframe_date_range(
@@ -249,17 +301,32 @@ def _register_bundle_metadata(
         bundle_name: Name of the bundle
         symbols: List of symbols in the bundle
         calendar_name: Trading calendar name
-        start_date: Start date for data
-        end_date: End date for data (actual date string, not the timeframe)
+        start_date: Start date for data (YYYY-MM-DD format, validated)
+        end_date: End date for data (YYYY-MM-DD format, validated)
         data_frequency: Zipline data frequency ('daily' or 'minute')
         timeframe: Actual data timeframe ('1m', '5m', '1h', 'daily', etc.)
+    
+    Note:
+        Dates are validated before storage to prevent registry corruption.
+        Invalid dates are stored as None rather than corrupted values.
     """
     registry = _load_bundle_registry()
+    
+    # Validate dates before storing to prevent registry corruption
+    validated_start_date = start_date if _is_valid_date_string(start_date) else None
+    validated_end_date = end_date if _is_valid_date_string(end_date) else None
+    
+    # Log warning if dates were invalid
+    if start_date and not validated_start_date:
+        logger.warning(f"Invalid start_date '{start_date}' for bundle {bundle_name}, storing as None")
+    if end_date and not validated_end_date:
+        logger.warning(f"Invalid end_date '{end_date}' for bundle {bundle_name}, storing as None")
+    
     registry[bundle_name] = {
         'symbols': symbols,
         'calendar_name': calendar_name,
-        'start_date': start_date,
-        'end_date': end_date,
+        'start_date': validated_start_date,
+        'end_date': validated_end_date,
         'data_frequency': data_frequency,
         'timeframe': timeframe,
         'registered_at': datetime.now().isoformat()
@@ -829,6 +896,16 @@ def _register_csv_bundle(
                             logger.error(f"Column normalization failed for {symbol}: {col_err}")
                             continue
 
+                        # === TIMEZONE CONVERSION (BEFORE VALIDATION) ===
+                        # Convert index to UTC DatetimeIndex before validation
+                        # This handles timezone-aware strings in CSV files
+                        try:
+                            df.index = pd.to_datetime(df.index, utc=True)
+                        except Exception as tz_err:
+                            print(f"  Error: Failed to convert index to UTC for {symbol}: {tz_err}")
+                            logger.error(f"Timezone conversion failed for {symbol}: {tz_err}")
+                            continue
+
                         # === DATA VALIDATION HOOK ===
                         # Validate CSV data quality before ingestion
                         if show_progress:
@@ -867,9 +944,6 @@ def _register_csv_bundle(
                             if len(validation_result.warning_checks) > 3:
                                 warning_summary += f" ... and {len(validation_result.warning_checks) - 3} more warnings"
                             logger.info(f"Data validation warnings for {symbol}: {warning_summary}")
-
-                        # Ensure timezone-aware UTC index
-                        df.index = pd.to_datetime(df.index, utc=True)
                         
                         # Determine the effective start and end dates for filtering:
                         # If user provided start_date/end_date, use those. Otherwise, use dates from filename.
@@ -1074,8 +1148,12 @@ def _register_yahoo_bundle(
         start_date: Start date for data (YYYY-MM-DD)
         end_date: End date for data (YYYY-MM-DD)
         data_frequency: Zipline data frequency ('daily' or 'minute')
-        timeframe: Actual timeframe for yfinance ('1m', '5m', '15m', '1h', 'daily', etc.)
+        timeframe: Actual timeframe for yfinance ('1m', '5m', '15m', '1h', '4h', 'daily', etc.)
         force: If True, unregister and re-register even if already registered
+    
+    Note:
+        For 4h timeframe, this fetches 1h data from yfinance and aggregates to 4h,
+        since yfinance does not natively support 4h intervals.
     """
     from zipline.data.bundles import register, bundles
 
@@ -1094,8 +1172,11 @@ def _register_yahoo_bundle(
         logger.warning(warning)
         print(warning)
 
-    # Get yfinance interval from timeframe
-    yf_interval = TIMEFRAME_TO_YF_INTERVAL.get(timeframe.lower(), '1d')
+    # Get timeframe info including aggregation requirements
+    tf_info = get_timeframe_info(timeframe.lower())
+    yf_interval = tf_info['yf_interval']
+    requires_aggregation = tf_info['requires_aggregation']
+    aggregation_target = tf_info['aggregation_target']
 
     # Capture closure variables explicitly
     closure_start_date = adjusted_start_date
@@ -1104,6 +1185,8 @@ def _register_yahoo_bundle(
     closure_timeframe = timeframe
     closure_yf_interval = yf_interval
     closure_calendar_name = calendar_name
+    closure_requires_aggregation = requires_aggregation
+    closure_aggregation_target = aggregation_target
 
     # Store symbols for this bundle (needed for the ingest function)
     # Use closure to capture symbols
@@ -1178,6 +1261,8 @@ def _register_yahoo_bundle(
                 print(f"Fetching {closure_timeframe} data for {len(symbols_list)} symbols from Yahoo Finance...")
                 if closure_data_frequency == 'minute':
                     print(f"  Using minute bar writer (yfinance interval: {closure_yf_interval})")
+                if closure_requires_aggregation:
+                    print(f"  Note: Will aggregate {closure_yf_interval} data to {closure_aggregation_target}")
 
             # Download data and prepare for writing
             def data_gen():
@@ -1250,6 +1335,14 @@ def _register_yahoo_bundle(
                             'close': hist['Close'],
                             'volume': volume_data,
                         }, index=hist.index)
+
+                        # === 4H AGGREGATION ===
+                        # If timeframe requires aggregation (e.g., 4h from 1h), do it now
+                        if closure_requires_aggregation and closure_aggregation_target == '4h':
+                            original_count = len(bars_df)
+                            bars_df = _aggregate_to_4h(bars_df)
+                            if show_progress:
+                                print(f"  {symbol}: Aggregated {original_count} 1h bars to {len(bars_df)} 4h bars")
 
                         # === USER-SPECIFIED DATE FILTERING ===
                         # Filter to user-specified date range (from closure)
@@ -1411,7 +1504,7 @@ def ingest_bundle(
     Supports multiple timeframes with automatic data limit validation.
 
     Args:
-        source: Data source name ('yahoo', 'binance', 'oanda')
+        source: Data source name ('yahoo', 'binance', 'oanda', 'csv')
         assets: List of asset classes (['crypto'], ['forex'], ['equities'])
         bundle_name: Custom bundle name. Auto-generated as {source}_{asset}_{timeframe} if not provided
         symbols: List of symbols to ingest (required)
@@ -1424,6 +1517,7 @@ def ingest_bundle(
             - '15m': 15-minute (60 days max)
             - '30m': 30-minute (60 days max)
             - '1h': 1-hour (730 days max)
+            - '4h': 4-hour (730 days max, aggregated from 1h)
             - 'daily' or '1d': Daily (unlimited)
             - 'weekly' or '1wk': Weekly (unlimited)
         force: If True, unregister and re-register the bundle even if already registered.
@@ -1460,17 +1554,20 @@ def ingest_bundle(
             f"aggregation functions (aggregate_ohlcv, resample_to_timeframe)."
         )
 
-    # Get source config
-    try:
-        source_config = get_data_source(source)
-    except KeyError:
-        raise ValueError(
-            f"Unsupported data source: {source}. "
-            f"Supported sources: yahoo, binance, oanda, csv"
-        )
+    # CSV source is handled specially - it doesn't require config/data_sources.yaml entry
+    # because it reads from local files, not an external API
+    if source != 'csv':
+        # Get source config for API-based sources
+        try:
+            source_config = get_data_source(source)
+        except KeyError:
+            raise ValueError(
+                f"Unsupported data source: {source}. "
+                f"Supported sources: yahoo, binance, oanda, csv"
+            )
 
-    if not source_config.get('enabled', False):
-        raise ValueError(f"Data source '{source}' is not enabled in config/data_sources.yaml")
+        if not source_config.get('enabled', False):
+            raise ValueError(f"Data source '{source}' is not enabled in config/data_sources.yaml")
 
 
     # Determine asset class (needed for logging and calendar auto-detection)
@@ -1539,6 +1636,13 @@ def ingest_bundle(
         f"Ingesting {source}/{asset_class} bundle: {bundle_name} "
         f"(timeframe={timeframe}, frequency={data_frequency})"
     )
+    
+    # Log if aggregation will be used
+    if tf_info['requires_aggregation']:
+        logger.info(
+            f"Timeframe {timeframe} requires aggregation from {tf_info['yf_interval']} "
+            f"to {tf_info['aggregation_target']}"
+        )
 
     # Register and ingest Yahoo Finance bundle
     if source == 'yahoo':
