@@ -7,6 +7,7 @@ The Researcher's Cockpit provides a comprehensive library for algorithmic tradin
 | Module | Purpose | CLI Equivalent |
 |--------|---------|----------------|
 | [data_loader](data_loader.md) | Data ingestion, bundle management | `scripts/ingest_data.py` |
+| [data_validation](data_validation.md) | OHLCV data validation, quality checks | `scripts/validate_csv_data.py` |
 | [backtest](backtest.md) | Backtest execution, result saving | `scripts/run_backtest.py` |
 | [utils](utils.md) | Utilities, aggregation, gap-filling | - |
 | [metrics](metrics.md) | Performance metrics calculation | - |
@@ -116,6 +117,7 @@ python scripts/run_optimization.py --strategy spy_sma_cross \
 
 ### Support Modules
 
+- **data_validation.py** - Comprehensive OHLCV data validation before ingestion
 - **config.py** - YAML configuration loading with caching
 - **utils.py** - Path resolution, OHLCV aggregation, gap-filling
 - **extension.py** - Custom calendar registration (CRYPTO, FOREX)
