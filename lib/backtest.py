@@ -151,6 +151,13 @@ def _prepare_backtest_config(
         if end_date is None:
             end_date = datetime.now().strftime('%Y-%m-%d')
     
+    # Adjust start_date for CSV minute data to ensure enough buffer for calendar
+    if bundle and bundle.startswith('csv_') and data_frequency == 'minute':
+        original_start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+        adjusted_start_date = original_start_date - timedelta(days=1)
+        start_date = adjusted_start_date.strftime('%Y-%m-%d')
+        logger.info(f"Adjusted start_date for CSV minute bundle: {original_start_date} -> {start_date}")
+    
     # Get capital
     if capital_base is None:
         capital_base = settings['capital']['default_initial']
