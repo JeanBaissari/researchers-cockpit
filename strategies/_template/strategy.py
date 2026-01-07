@@ -49,29 +49,39 @@ import sys
 
 # Add project root to path for lib imports
 # This allows strategies to import lib modules
-# Uses marker-based root discovery for robust path resolution
-def _find_project_root() -> Path:
-    """Find project root by searching for marker files."""
+# Uses centralized utility for robust path resolution
+try:
+    from lib.utils import get_project_root
+    _project_root = get_project_root()
+    if str(_project_root) not in sys.path:
+        sys.path.insert(0, str(_project_root))
+    from lib.config import load_strategy_params
+    _has_lib_config = True
+except ImportError:
+    # Fallback: Try to find project root manually if lib not available
     markers = ['pyproject.toml', '.git', 'config/settings.yaml', 'CLAUDE.md']
     current = Path(__file__).resolve().parent
     while current != current.parent:
         for marker in markers:
             if (current / marker).exists():
-                return current
-        current = current.parent
-    raise RuntimeError("Could not find project root. Missing marker files.")
-
-_project_root = _find_project_root()
-if str(_project_root) not in sys.path:
-    sys.path.insert(0, str(_project_root))
-
-try:
-    from lib.config import load_strategy_params
-    _has_lib_config = True
-except ImportError:
-    # Fallback to direct YAML loading if lib not available
-    import yaml
-    _has_lib_config = False
+                _project_root = current
+                if str(_project_root) not in sys.path:
+                    sys.path.insert(0, str(_project_root))
+                break
+        else:
+            current = current.parent
+            continue
+        break
+    else:
+        raise RuntimeError("Could not find project root. Missing marker files.")
+    
+    # Try to import lib.config after adding to path
+    try:
+        from lib.config import load_strategy_params
+        _has_lib_config = True
+    except ImportError:
+        import yaml
+        _has_lib_config = False
 
 
 def load_params():
@@ -305,12 +315,21 @@ def initialize(context):
         error_msg="Missing required parameter 'strategy.asset_symbol' in parameters.yaml. "
                   "Example: asset_symbol: SPY (for equities), BTC-USD (for crypto), EURUSD=X (for forex)"
     )
+    
+    # Validate asset symbol is not a placeholder
+    if asset_symbol in ['SPY', 'PLACEHOLDER', '']:
+        import warnings
+        warnings.warn(
+            f"Asset symbol '{asset_symbol}' appears to be a placeholder. "
+            "Please update strategy.asset_symbol in parameters.yaml with your actual trading symbol."
+        )
+    
     context.asset = symbol(asset_symbol)
     
     # Initialize strategy state
     context.in_position = False
     context.entry_price = 0.0
-    context.highest_price = 0.0  # For trailing stop tracking
+    context.highest_price = 0.0  # For trailing stop tracking (initialized here)
     context.day_count = 0  # For explicit warmup tracking
     
     # Set benchmark
@@ -319,7 +338,25 @@ def initialize(context):
     # Attach Pipeline only if use_pipeline is enabled (and Pipeline is available)
     context.pipeline_data = None
     context.pipeline_universe = []
-    context.use_pipeline = params['strategy'].get('use_pipeline', False)
+    context.use_pipeline = params.get('strategy', {}).get('use_pipeline', False)
+    
+    # Validate pipeline configuration
+    asset_class = params.get('strategy', {}).get('asset_class', 'equities')
+    if context.use_pipeline:
+        if not _PIPELINE_AVAILABLE:
+            import warnings
+            warnings.warn(
+                "Pipeline API not available in this Zipline version. "
+                "Setting use_pipeline to False. Pipeline is primarily designed for US equities."
+            )
+            context.use_pipeline = False
+        elif asset_class != 'equities':
+            import warnings
+            warnings.warn(
+                f"Pipeline API is primarily designed for US equities, but asset_class is '{asset_class}'. "
+                "Consider setting use_pipeline: false for crypto/forex strategies."
+            )
+    
     if context.use_pipeline and _PIPELINE_AVAILABLE:
         pipeline = make_pipeline()
         if pipeline is not None:
@@ -344,29 +381,42 @@ def initialize(context):
     )
     
     # Schedule main trading function
-    rebalance_frequency = params['strategy'].get('rebalance_frequency', 'daily')
+    rebalance_frequency = params.get('strategy', {}).get('rebalance_frequency', 'daily')
+    
+    # Validate rebalance frequency
+    valid_frequencies = ['daily', 'weekly', 'monthly']
+    if rebalance_frequency not in valid_frequencies:
+        import warnings
+        warnings.warn(
+            f"Invalid rebalance_frequency '{rebalance_frequency}'. "
+            f"Must be one of: {valid_frequencies}. Defaulting to 'daily'."
+        )
+        rebalance_frequency = 'daily'
     
     if rebalance_frequency == 'daily':
         schedule_function(
             rebalance,
             date_rule=date_rules.every_day(),
-            time_rule=time_rules.market_open(minutes=params['strategy'].get('minutes_after_open', 30))
+            time_rule=time_rules.market_open(minutes=params.get('strategy', {}).get('minutes_after_open', 30))
         )
     elif rebalance_frequency == 'weekly':
         schedule_function(
             rebalance,
             date_rule=date_rules.week_start(days_offset=0),
-            time_rule=time_rules.market_open(minutes=params['strategy'].get('minutes_after_open', 30))
+            time_rule=time_rules.market_open(minutes=params.get('strategy', {}).get('minutes_after_open', 30))
         )
     elif rebalance_frequency == 'monthly':
         schedule_function(
             rebalance,
             date_rule=date_rules.month_start(days_offset=0),
-            time_rule=time_rules.market_open(minutes=params['strategy'].get('minutes_after_open', 30))
+            time_rule=time_rules.market_open(minutes=params.get('strategy', {}).get('minutes_after_open', 30))
         )
     
     # Schedule risk management checks if enabled
-    if params.get('risk', {}).get('use_stop_loss', False) or params.get('risk', {}).get('use_trailing_stop', False):
+    risk_params = params.get('risk', {})
+    if (risk_params.get('use_stop_loss', False) or 
+        risk_params.get('use_trailing_stop', False) or 
+        risk_params.get('use_take_profit', False)):
         schedule_function(
             check_stop_loss,
             date_rule=date_rules.every_day(),
@@ -418,27 +468,51 @@ def compute_signals(context, data):
         signal: 1 for buy, -1 for sell, 0 for hold
         additional_data: dict of values to record
     """
-    # TODO: Implement your strategy logic here, utilizing pipeline data
-    # Example structure:
-    # 1. Get pipeline data for universe/factors
-    # 2. Filter/select assets based on pipeline output
-    # 3. Generate signal based on conditions
-    # 4. Return signal and any metrics to record
-    
+    # TODO: Implement your strategy logic here
+    # 
+    # EXAMPLE PATTERNS:
+    #
+    # Pattern 1: Pipeline-based strategy (if use_pipeline: true)
+    #   if context.use_pipeline and context.pipeline_data is not None:
+    #       if context.asset in context.pipeline_universe:
+    #           factor_value = context.pipeline_data.loc[context.asset]['factor_name']
+    #           current_price = data.current(context.asset, 'price')
+    #           # Generate signal based on factor
+    #
+    # Pattern 2: Direct price/indicator strategy (if use_pipeline: false)
+    #   current_price = data.current(context.asset, 'price')
+    #   prices = data.history(context.asset, 'price', lookback_period, '1d')
+    #   sma = prices.mean()
+    #   # Generate signal based on price vs SMA
+    #
+    # Pattern 3: Multi-asset strategy
+    #   for asset in context.pipeline_universe:
+    #       # Evaluate each asset and select best
+    #
     signal = 0
     additional_data = {}
 
-    # Example: Use pipeline data for a simple signal
-    if context.asset in context.pipeline_universe:
-        sma_value = context.pipeline_data.loc[context.asset]['sma_30']
-        current_price = data.current(context.asset, 'price')
-
-        if current_price > sma_value:
-            signal = 1  # Buy if current price is above SMA_30
-        elif current_price < sma_value:
-            signal = -1  # Sell if current price is below SMA_30
-        
-        additional_data['sma_30'] = sma_value
+    # Example: Simple price-based signal (works for all asset classes)
+    if not data.can_trade(context.asset):
+        return 0, additional_data
+    
+    current_price = data.current(context.asset, 'price')
+    
+    # Example: Simple momentum signal (replace with your logic)
+    # This is a placeholder - implement your actual strategy here
+    lookback = context.params.get('strategy', {}).get('lookback_period', 30)
+    try:
+        prices = data.history(context.asset, 'price', lookback, '1d')
+        if len(prices) >= lookback:
+            sma = prices.mean()
+            if current_price > sma * 1.02:  # 2% above SMA
+                signal = 1
+            elif current_price < sma * 0.98:  # 2% below SMA
+                signal = -1
+            additional_data['sma'] = sma
+    except Exception:
+        # If history fails, return neutral signal
+        pass
 
     return signal, additional_data
 
@@ -501,11 +575,12 @@ def rebalance(context, data):
 
 def check_stop_loss(context, data):
     """
-    Check and execute stop loss orders.
+    Check and execute stop loss, trailing stop, and take profit orders.
 
-    Supports both fixed and trailing stop losses:
+    Supports:
     - Fixed stop: exits when price drops below entry_price * (1 - stop_loss_pct)
     - Trailing stop: exits when price drops below highest_price * (1 - trailing_stop_pct)
+    - Take profit: exits when price rises above entry_price * (1 + take_profit_pct)
 
     Called separately from rebalance to check stops more frequently.
     """
@@ -521,37 +596,54 @@ def check_stop_loss(context, data):
     # Update highest price for trailing stop tracking
     if context.highest_price > 0:
         context.highest_price = max(context.highest_price, current_price)
+    else:
+        # Initialize if not set (shouldn't happen, but defensive)
+        context.highest_price = current_price
 
-    should_stop = False
-    stop_type = None
+    should_exit = False
+    exit_type = None
 
-    # Check trailing stop first (takes precedence if both enabled)
-    if risk_params.get('use_trailing_stop', False):
+    # Check take profit first (highest priority - lock in gains)
+    if risk_params.get('use_take_profit', False):
+        take_profit_pct = risk_params.get('take_profit_pct', 0.10)
+        if context.entry_price > 0:
+            profit_price = context.entry_price * (1 + take_profit_pct)
+            if current_price >= profit_price:
+                should_exit = True
+                exit_type = 'take_profit'
+
+    # Check trailing stop (takes precedence over fixed stop if both enabled)
+    if not should_exit and risk_params.get('use_trailing_stop', False):
         trailing_stop_pct = risk_params.get('trailing_stop_pct', 0.08)
         if context.highest_price > 0:
             stop_price = context.highest_price * (1 - trailing_stop_pct)
             if current_price <= stop_price:
-                should_stop = True
-                stop_type = 'trailing'
+                should_exit = True
+                exit_type = 'trailing'
 
     # Check fixed stop if trailing not triggered
-    if not should_stop and risk_params.get('use_stop_loss', False):
+    if not should_exit and risk_params.get('use_stop_loss', False):
         stop_loss_pct = risk_params.get('stop_loss_pct', 0.05)
         if context.entry_price > 0:
             stop_price = context.entry_price * (1 - stop_loss_pct)
             if current_price <= stop_price:
-                should_stop = True
-                stop_type = 'fixed'
+                should_exit = True
+                exit_type = 'fixed'
 
-    if should_stop:
+    if should_exit:
         order_target_percent(context.asset, 0)
         context.in_position = False
         context.entry_price = 0.0
         context.highest_price = 0.0
-        # Record stop type as numeric hash for charting
-        record(stop_triggered=1, stop_type=1 if stop_type == 'fixed' else 2)
+        # Record exit type as numeric hash for charting
+        exit_type_map = {'fixed': 1, 'trailing': 2, 'take_profit': 3}
+        record(
+            stop_triggered=1 if exit_type != 'take_profit' else 0,
+            take_profit_triggered=1 if exit_type == 'take_profit' else 0,
+            exit_type=exit_type_map.get(exit_type, 0)
+        )
     else:
-        record(stop_triggered=0)
+        record(stop_triggered=0, take_profit_triggered=0)
 
 
 def handle_data(context, data):
