@@ -600,6 +600,61 @@ class ValidationConfig:
             timeframe=timeframe
         )
 
+    @classmethod
+    def for_equity(cls, timeframe: Optional[str] = None) -> 'ValidationConfig':
+        """
+        Create validation config optimized for equity data.
+        
+        Profile:
+        - Enables all standard checks
+        - Expects zero volume on holidays (handled by calendar checks)
+        - Enables price jump detection (for split detection)
+        """
+        return cls(
+            timeframe=timeframe,
+            asset_type='equity',
+            check_zero_volume=True,
+            check_price_jumps=True,
+            check_sunday_bars=False,  # Not relevant for equity
+            check_weekend_gaps=False  # Not relevant for equity
+        )
+
+    @classmethod
+    def for_forex(cls, timeframe: Optional[str] = None) -> 'ValidationConfig':
+        """
+        Create validation config optimized for FOREX data.
+        
+        Profile:
+        - Enables Sunday bar detection
+        - Enables weekend gap integrity checks
+        - Disables volume validation (unreliable for FOREX)
+        """
+        return cls(
+            timeframe=timeframe,
+            asset_type='forex',
+            check_zero_volume=False,  # Volume unreliable for FOREX
+            check_sunday_bars=True,
+            check_weekend_gaps=True
+        )
+
+    @classmethod
+    def for_crypto(cls, timeframe: Optional[str] = None) -> 'ValidationConfig':
+        """
+        Create validation config optimized for crypto data.
+        
+        Profile:
+        - Enables 24/7 continuity checks
+        - No session gaps expected
+        - Standard validation otherwise
+        """
+        return cls(
+            timeframe=timeframe,
+            asset_type='crypto',
+            check_gaps=True,  # Should be continuous
+            check_sunday_bars=False,  # 24/7 markets don't have Sunday bars
+            check_weekend_gaps=False  # No weekends in 24/7 markets
+        )
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         return {
@@ -2612,3 +2667,4 @@ def load_validation_report(report_path: Union[str, Path]) -> ValidationResult:
             pass
     
     return result
+
