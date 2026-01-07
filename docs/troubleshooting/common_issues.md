@@ -201,4 +201,5 @@ python -m pytest tests/test_multi_timeframe.py -v
 
 - [Data Ingestion Troubleshooting](data_ingestion.md)
 - [Backtesting Troubleshooting](backtesting.md)
+- [Auto-Repair Removal](auto_repair_removal.md) - Understanding validation behavior changes
 - [API Reference](../api/README.md)
