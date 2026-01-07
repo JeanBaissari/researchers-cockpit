@@ -11,6 +11,14 @@ v1.0.4 Fixes Applied:
 - Fixed recovery time calculation to handle edge cases properly
 - Added input validation for all public functions
 - Improved error handling with graceful degradation
+
+v1.0.7 Fixes Applied:
+- Fixed alpha() to use daily risk-free rate instead of annual
+- Added profit factor cap (MAX_PROFIT_FACTOR = 999.0) for wins with no losses
+- Fixed trade extraction to handle pyramiding with weighted average entry price
+- Added convert_to_percentages parameter to calculate_metrics()
+- Fixed calculate_rolling_metrics() to use raw decimal values
+- Added as_percentages parameter to calculate_trade_metrics()
 """
 
 # Standard library imports
@@ -26,6 +34,10 @@ try:
     EMPYRICAL_AVAILABLE = True
 except ImportError:
     EMPYRICAL_AVAILABLE = False
+
+
+# v1.0.7: Maximum profit factor when there are profits but no losses
+MAX_PROFIT_FACTOR = 999.0
 
 
 def _sanitize_value(value: float, default: float = 0.0) -> float:
@@ -44,6 +56,23 @@ def _sanitize_value(value: float, default: float = 0.0) -> float:
     if value is None or np.isnan(value) or np.isinf(value):
         return default
     return float(value)
+
+
+def _get_daily_rf(annual_rf: float, trading_days: int = 252) -> float:
+    """
+    Convert annual risk-free rate to daily rate.
+    
+    v1.0.7: Helper to standardize risk-free rate conversion.
+    All public functions expect ANNUAL rates; this converts to daily for empyrical.
+    
+    Args:
+        annual_rf: Annual risk-free rate (e.g., 0.04 for 4%)
+        trading_days: Trading days per year (default: 252)
+        
+    Returns:
+        Daily risk-free rate
+    """
+    return annual_rf / trading_days
 
 
 # v1.0.7: Metrics that should be displayed as percentages (multiply by 100)
@@ -116,7 +145,8 @@ def calculate_metrics(
     transactions: Optional[pd.DataFrame] = None,
     benchmark_returns: Optional[pd.Series] = None,
     risk_free_rate: float = 0.04,
-    trading_days_per_year: int = 252
+    trading_days_per_year: int = 252,
+    convert_to_percentages: bool = True
 ) -> Dict[str, float]:
     """
     Calculate comprehensive performance metrics from returns.
@@ -131,12 +161,17 @@ def calculate_metrics(
     - Added NaN/Inf sanitization for all output values
     - Improved error handling with graceful degradation
     
+    v1.0.7 Fixes:
+    - Added convert_to_percentages parameter for API consistency
+    - Fixed alpha() to use daily risk-free rate
+    
     Args:
         returns: Series of daily returns (timezone-naive index)
         transactions: Optional DataFrame of transactions for trade-level metrics
         benchmark_returns: Optional Series of benchmark daily returns for alpha/beta
         risk_free_rate: Annual risk-free rate (default: 0.04)
         trading_days_per_year: Trading days per year (default: 252)
+        convert_to_percentages: If True, convert decimal metrics to percentages (default: True)
         
     Returns:
         Dictionary of calculated metrics (all values guaranteed to be valid floats)
@@ -158,8 +193,8 @@ def calculate_metrics(
     
     metrics = {}
     
-    # Convert annual risk-free rate to daily
-    daily_risk_free_rate = risk_free_rate / trading_days_per_year
+    # v1.0.7: Use helper for daily risk-free rate conversion
+    daily_risk_free_rate = _get_daily_rf(risk_free_rate, trading_days_per_year)
     
     # Basic return metrics
     total_return = float((1 + returns).prod() - 1)
@@ -200,12 +235,10 @@ def calculate_metrics(
         sharpe = 0.0
     elif EMPYRICAL_AVAILABLE:
         try:
-            # empyrical expects DAILY risk-free rate, so convert from annual
-            # risk_free_rate=0.04 annual -> 0.04/252 ≈ 0.000159 daily
-            daily_rf = risk_free_rate / trading_days_per_year
+            # v1.0.7: empyrical expects DAILY risk-free rate
             sharpe = float(ep.sharpe_ratio(
                 returns,
-                risk_free=daily_rf,
+                risk_free=daily_risk_free_rate,
                 period='daily',
                 annualization=trading_days_per_year
             ))
@@ -285,10 +318,11 @@ def calculate_metrics(
                 aligned_benchmark = aligned_benchmark.dropna()
                 
                 if len(aligned_returns) >= MIN_PERIODS_FOR_SHARPE and len(aligned_benchmark) >= MIN_PERIODS_FOR_SHARPE:
+                    # v1.0.7: Fixed - alpha() expects DAILY risk-free rate, not annual
                     alpha = float(ep.alpha(
                         aligned_returns, 
                         aligned_benchmark, 
-                        risk_free=risk_free_rate, 
+                        risk_free=daily_risk_free_rate,  # v1.0.7: Use daily rate
                         period='daily', 
                         annualization=trading_days_per_year
                     ))
@@ -364,7 +398,8 @@ def calculate_metrics(
     if transactions is not None:
         if len(transactions) > 0:
             try:
-                trade_metrics = calculate_trade_metrics(transactions)
+                # v1.0.7: Don't convert to percentages here - we'll do it at the end
+                trade_metrics = calculate_trade_metrics(transactions, as_percentages=False)
                 metrics.update(trade_metrics)
             except Exception:
                 # v1.0.4: If trade metrics fail, add empty trade metrics
@@ -385,9 +420,10 @@ def calculate_metrics(
             # v1.0.6: Empty transactions DataFrame - still include trade_count: 0
             metrics['trade_count'] = 0
 
-    # v1.0.7: Convert decimal metrics to percentages for human readability
-    # e.g., win_rate 0.8 → 80.0, total_return 0.15 → 15.0
-    return _convert_to_percentages(metrics)
+    # v1.0.7: Only convert to percentages if requested (default: True for backward compatibility)
+    if convert_to_percentages:
+        return _convert_to_percentages(metrics)
+    return metrics
 
 
 def _calculate_sortino_manual(
@@ -464,7 +500,10 @@ def _calculate_max_drawdown_manual(returns: pd.Series) -> float:
         return 0.0
 
 
-def calculate_trade_metrics(transactions: pd.DataFrame) -> Dict[str, float]:
+def calculate_trade_metrics(
+    transactions: pd.DataFrame,
+    as_percentages: bool = False
+) -> Dict[str, float]:
     """
     Calculate trade-level metrics from transactions DataFrame.
     
@@ -473,8 +512,13 @@ def calculate_trade_metrics(transactions: pd.DataFrame) -> Dict[str, float]:
     - Added NaN/Inf sanitization for all output values
     - Improved error handling
     
+    v1.0.7 Fixes:
+    - Added as_percentages parameter for API consistency
+    - Fixed profit factor to return MAX_PROFIT_FACTOR when profits but no losses
+    
     Args:
         transactions: DataFrame with columns: date, sid, amount, price, commission
+        as_percentages: If True, convert decimal metrics to percentages (default: False)
         
     Returns:
         Dictionary of trade-level metrics (all values guaranteed to be valid)
@@ -555,14 +599,17 @@ def calculate_trade_metrics(transactions: pd.DataFrame) -> Dict[str, float]:
     wins = trade_returns > 0
     win_rate = _sanitize_value(float(np.mean(wins))) if len(wins) > 0 else 0.0
     
-    # Profit factor
+    # v1.0.7: Fixed profit factor edge case
     gross_profit = trade_returns[trade_returns > 0].sum()
     gross_loss = abs(trade_returns[trade_returns < 0].sum())
     if gross_loss > 1e-10:
         profit_factor = _sanitize_value(float(gross_profit / gross_loss))
+    elif gross_profit > 0:
+        # v1.0.7: Profits but no losses - cap at MAX_PROFIT_FACTOR
+        profit_factor = MAX_PROFIT_FACTOR
     else:
-        # v1.0.4: If no losses, profit factor is undefined - use 0 or cap it
-        profit_factor = 0.0 if gross_profit == 0 else 0.0  # Could also use a large number
+        # No profits and no losses
+        profit_factor = 0.0
     
     # Average trade return
     avg_trade_return = _sanitize_value(float(np.mean(trade_returns)))
@@ -597,9 +644,7 @@ def calculate_trade_metrics(transactions: pd.DataFrame) -> Dict[str, float]:
         except Exception:
             trades_per_month = 0.0
     
-    # Note: Percentage conversion is done in calculate_metrics() after merging
-    # Do NOT convert here to avoid double conversion when called from calculate_metrics()
-    return {
+    result = {
         'trade_count': len(trades),
         'win_rate': win_rate,
         'profit_factor': profit_factor,
@@ -612,20 +657,35 @@ def calculate_trade_metrics(transactions: pd.DataFrame) -> Dict[str, float]:
         'avg_trade_duration': avg_trade_duration,
         'trades_per_month': trades_per_month,
     }
+    
+    # v1.0.7: Convert to percentages if requested
+    if as_percentages:
+        return _convert_to_percentages(result)
+    return result
 
 
 def _extract_trades(transactions: pd.DataFrame) -> List[Dict[str, Any]]:
     """
     Extract individual trades from transactions DataFrame.
     
-    Assumes transactions are ordered by date and groups buy/sell pairs.
+    v1.0.7: Enhanced to handle pyramiding with weighted average entry price.
+    Tracks cumulative position and creates trade record only on full position close.
+    Handles partial closes proportionally.
     
     v1.0.4 Fixes:
     - Added validation for transaction data
     - Improved error handling for malformed data
     """
     trades = []
-    current_position = None
+    
+    # v1.0.7: Track cumulative position with weighted average entry
+    current_position = {
+        'quantity': 0.0,
+        'weighted_avg_price': 0.0,
+        'total_cost': 0.0,
+        'entry_date': None,
+        'direction': None,
+    }
     
     for idx, row in transactions.iterrows():
         try:
@@ -648,39 +708,74 @@ def _extract_trades(transactions: pd.DataFrame) -> List[Dict[str, Any]]:
                 date_val = row.get('date', idx) if isinstance(row, dict) else row.get('date', idx)
                 date = pd.Timestamp(date_val) if date_val is not None else pd.Timestamp(idx)
             
-            if current_position is None:
+            # v1.0.7: Determine if this is opening, adding to, or closing position
+            if current_position['quantity'] == 0:
                 # Starting a new position
-                if amount > 0:  # Buy
-                    current_position = {
-                        'entry_date': date,
-                        'entry_price': price,
-                        'entry_amount': amount,
-                        'direction': 'long',
-                    }
-                elif amount < 0:  # Short
-                    current_position = {
-                        'entry_date': date,
-                        'entry_price': price,
-                        'entry_amount': abs(amount),
-                        'direction': 'short',
-                    }
+                current_position = {
+                    'quantity': abs(amount),
+                    'weighted_avg_price': price,
+                    'total_cost': abs(amount) * price,
+                    'entry_date': date,
+                    'direction': 'long' if amount > 0 else 'short',
+                }
+            elif (current_position['direction'] == 'long' and amount > 0) or \
+                 (current_position['direction'] == 'short' and amount < 0):
+                # v1.0.7: Adding to position (pyramiding) - update weighted average
+                new_quantity = current_position['quantity'] + abs(amount)
+                new_total_cost = current_position['total_cost'] + abs(amount) * price
+                current_position['weighted_avg_price'] = new_total_cost / new_quantity
+                current_position['quantity'] = new_quantity
+                current_position['total_cost'] = new_total_cost
             else:
-                # Closing or modifying position
-                if ((current_position['direction'] == 'long' and amount < 0) or 
-                   (current_position['direction'] == 'short' and amount > 0)):
-                    # Closing position
-                    current_position['exit_date'] = date
-                    current_position['exit_price'] = price
-                    trades.append(current_position)
-                    current_position = None
+                # Closing or reducing position
+                close_quantity = abs(amount)
+                
+                if close_quantity >= current_position['quantity']:
+                    # v1.0.7: Full close - create trade record
+                    trades.append({
+                        'entry_date': current_position['entry_date'],
+                        'entry_price': current_position['weighted_avg_price'],
+                        'entry_amount': current_position['quantity'],
+                        'exit_date': date,
+                        'exit_price': price,
+                        'direction': current_position['direction'],
+                    })
+                    
+                    # Check if there's excess that starts a new position
+                    excess = close_quantity - current_position['quantity']
+                    if excess > 1e-10:
+                        # Start new position in opposite direction
+                        current_position = {
+                            'quantity': excess,
+                            'weighted_avg_price': price,
+                            'total_cost': excess * price,
+                            'entry_date': date,
+                            'direction': 'short' if current_position['direction'] == 'long' else 'long',
+                        }
+                    else:
+                        # Reset position
+                        current_position = {
+                            'quantity': 0.0,
+                            'weighted_avg_price': 0.0,
+                            'total_cost': 0.0,
+                            'entry_date': None,
+                            'direction': None,
+                        }
                 else:
-                    # Adding to position (pyramiding) - treat as new entry
-                    current_position = {
-                        'entry_date': date,
-                        'entry_price': price,
-                        'entry_amount': abs(amount),
-                        'direction': 'long' if amount > 0 else 'short',
-                    }
+                    # v1.0.7: Partial close - create proportional trade record
+                    trades.append({
+                        'entry_date': current_position['entry_date'],
+                        'entry_price': current_position['weighted_avg_price'],
+                        'entry_amount': close_quantity,
+                        'exit_date': date,
+                        'exit_price': price,
+                        'direction': current_position['direction'],
+                    })
+                    
+                    # Reduce position (weighted avg price stays the same)
+                    current_position['quantity'] -= close_quantity
+                    current_position['total_cost'] = current_position['quantity'] * current_position['weighted_avg_price']
+                    
         except Exception:
             # v1.0.4: Skip malformed transactions
             continue
@@ -724,6 +819,9 @@ def calculate_rolling_metrics(
     - Added input validation
     - Added error handling for edge cases
     
+    v1.0.7 Fixes:
+    - Uses raw decimal values (convert_to_percentages=False) for time-series analysis
+    
     Args:
         returns: Series of daily returns
         window: Rolling window size in days (default: 63 = ~3 months)
@@ -754,8 +852,12 @@ def calculate_rolling_metrics(
             if len(window_returns) == 0:
                 continue
             
-            # Calculate metrics for this window
-            window_metrics = calculate_metrics(window_returns, risk_free_rate=risk_free_rate)
+            # v1.0.7: Use raw decimal values for rolling metrics (no percentage conversion)
+            window_metrics = calculate_metrics(
+                window_returns, 
+                risk_free_rate=risk_free_rate,
+                convert_to_percentages=False  # v1.0.7: Keep as decimals for time-series
+            )
             
             rolling_data.append({
                 'date': returns.index[i-1],

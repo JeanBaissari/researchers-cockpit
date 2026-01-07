@@ -7,7 +7,6 @@ numpy>=1.24.0
 pyarrow>=14.0.0
 
 # Metrics & Analysis
-empyrical>=0.5.5
 scipy>=1.11.0
 
 # Visualization
