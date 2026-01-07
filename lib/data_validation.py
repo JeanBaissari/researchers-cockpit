@@ -33,7 +33,7 @@ from enum import Enum
 from pathlib import Path
 from typing import (
     List, Tuple, Optional, Dict, Any, Union, Callable,
-    TypeVar, Set, FrozenSet
+    TypeVar, Set, FrozenSet, Literal
 )
 import json
 import hashlib
@@ -76,6 +76,7 @@ DEFAULT_OUTLIER_THRESHOLD_SIGMA: float = 5.0
 DEFAULT_STALE_THRESHOLD_DAYS: int = 7
 DEFAULT_ZERO_VOLUME_THRESHOLD_PCT: float = 10.0
 DEFAULT_PRICE_JUMP_THRESHOLD_PCT: float = 50.0
+DEFAULT_VOLUME_SPIKE_THRESHOLD_SIGMA: float = 5.0
 DEFAULT_MIN_ROWS_DAILY: int = 20
 DEFAULT_MIN_ROWS_INTRADAY: int = 100
 
@@ -514,6 +515,8 @@ class ValidationConfig:
     # Volume checks
     check_zero_volume: bool = True
     zero_volume_threshold_pct: float = DEFAULT_ZERO_VOLUME_THRESHOLD_PCT
+    check_volume_spikes: bool = True
+    volume_spike_threshold_sigma: float = DEFAULT_VOLUME_SPIKE_THRESHOLD_SIGMA
 
     # Price jump detection
     check_price_jumps: bool = True
@@ -610,6 +613,61 @@ class ValidationConfig:
             timeframe=timeframe
         )
 
+    @classmethod
+    def for_equity(cls, timeframe: Optional[str] = None) -> 'ValidationConfig':
+        """
+        Create validation config optimized for equity data.
+        
+        Profile:
+        - Enables all standard checks
+        - Expects zero volume on holidays (handled by calendar checks)
+        - Enables price jump detection (for split detection)
+        """
+        return cls(
+            timeframe=timeframe,
+            asset_type='equity',
+            check_zero_volume=True,
+            check_price_jumps=True,
+            check_sunday_bars=False,  # Not relevant for equity
+            check_weekend_gaps=False  # Not relevant for equity
+        )
+
+    @classmethod
+    def for_forex(cls, timeframe: Optional[str] = None) -> 'ValidationConfig':
+        """
+        Create validation config optimized for FOREX data.
+        
+        Profile:
+        - Enables Sunday bar detection
+        - Enables weekend gap integrity checks
+        - Disables volume validation (unreliable for FOREX)
+        """
+        return cls(
+            timeframe=timeframe,
+            asset_type='forex',
+            check_zero_volume=False,  # Volume unreliable for FOREX
+            check_sunday_bars=True,
+            check_weekend_gaps=True
+        )
+
+    @classmethod
+    def for_crypto(cls, timeframe: Optional[str] = None) -> 'ValidationConfig':
+        """
+        Create validation config optimized for crypto data.
+        
+        Profile:
+        - Enables 24/7 continuity checks
+        - No session gaps expected
+        - Standard validation otherwise
+        """
+        return cls(
+            timeframe=timeframe,
+            asset_type='crypto',
+            check_gaps=True,  # Should be continuous
+            check_sunday_bars=False,  # 24/7 markets don't have Sunday bars
+            check_weekend_gaps=False  # No weekends in 24/7 markets
+        )
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         return {
@@ -624,13 +682,20 @@ class ValidationConfig:
             'stale_threshold_days': self.stale_threshold_days,
             'check_zero_volume': self.check_zero_volume,
             'zero_volume_threshold_pct': self.zero_volume_threshold_pct,
+            'check_volume_spikes': self.check_volume_spikes,
+            'volume_spike_threshold_sigma': self.volume_spike_threshold_sigma,
             'check_price_jumps': self.check_price_jumps,
             'price_jump_threshold_pct': self.price_jump_threshold_pct,
+            'check_adjustments': self.check_adjustments,
             'check_sorted_index': self.check_sorted_index,
             'min_rows_daily': self.min_rows_daily,
             'min_rows_intraday': self.min_rows_intraday,
             'strict_mode': self.strict_mode,
             'timeframe': self.timeframe,
+            'asset_type': self.asset_type,
+            'calendar_name': self.calendar_name,
+            'check_sunday_bars': self.check_sunday_bars,
+            'check_weekend_gaps': self.check_weekend_gaps,
         }
 
 
@@ -985,7 +1050,8 @@ class DataValidator(BaseValidator):
         calendar: Optional[Any] = None,
         asset_name: str = "unknown",
         calendar_name: Optional[str] = None,
-        asset_type: Optional[Literal['equity', 'forex', 'crypto']] = None
+        asset_type: Optional[Literal['equity', 'forex', 'crypto']] = None,
+        suggest_fixes: Optional[bool] = None
     ) -> ValidationResult:
         """
         Validate OHLCV DataFrame.
@@ -996,23 +1062,26 @@ class DataValidator(BaseValidator):
             asset_name: Asset name for logging
             calendar_name: Calendar name (e.g., 'XNYS', '24/7')
             asset_type: Asset type ('equity', 'forex', 'crypto') for context-aware validation
+            suggest_fixes: If True, add fix suggestions to result metadata (overrides config)
 
         Returns:
             ValidationResult with all check outcomes
         """
-        # Store asset_type and calendar_name in config for use by checks
+        # Update config with provided values if not already set
         if asset_type is not None:
             self.config.asset_type = asset_type
         if calendar_name is not None:
             self.config.calendar_name = calendar_name
+        if suggest_fixes is not None:
+            self.config.suggest_fixes = suggest_fixes
 
         result = self._create_result()
 
         # Add metadata
         result.add_metadata('asset_name', asset_name)
         result.add_metadata('timeframe', self.config.timeframe)
-        result.add_metadata('calendar_name', calendar_name)
-        result.add_metadata('asset_type', asset_type)
+        result.add_metadata('calendar_name', self.config.calendar_name)
+        result.add_metadata('asset_type', self.config.asset_type)
         result.add_metadata('row_count', len(df))
 
         # Handle empty DataFrame
@@ -1065,7 +1134,9 @@ class DataValidator(BaseValidator):
         df: pd.DataFrame,
         calendar: Optional[Any] = None,
         asset_name: str = "unknown",
-        calendar_name: Optional[str] = None
+        calendar_name: Optional[str] = None,
+        asset_type: Optional[Literal['equity', 'forex', 'crypto']] = None,
+        suggest_fixes: Optional[bool] = None
     ) -> Tuple[ValidationResult, pd.DataFrame]:
         """
         Validate OHLCV DataFrame and return result with optional fix suggestions.
@@ -1078,6 +1149,8 @@ class DataValidator(BaseValidator):
             calendar: Optional trading calendar for gap detection
             asset_name: Asset name for logging
             calendar_name: Calendar name (e.g., 'XNYS', '24/7')
+            asset_type: Asset type ('equity', 'forex', 'crypto') for context-aware validation
+            suggest_fixes: If True, add fix suggestions to result metadata (overrides config)
             
         Returns:
             Tuple of (ValidationResult, pd.DataFrame):
@@ -1096,9 +1169,88 @@ class DataValidator(BaseValidator):
             df=df,
             calendar=calendar,
             asset_name=asset_name,
-            calendar_name=calendar_name
+            calendar_name=calendar_name,
+            asset_type=asset_type,
+            suggest_fixes=suggest_fixes
         )
         return result, df
+
+    def _run_continuity_checks(
+        self,
+        df: pd.DataFrame,
+        calendar: Optional[Any],
+        result: ValidationResult,
+        asset_name: str,
+        calendar_name: Optional[str]
+    ) -> ValidationResult:
+        """Run date/bar continuity checks based on available calendar."""
+        if calendar is not None:
+            return self._run_check(
+                result,
+                self._check_date_continuity,
+                df, calendar, asset_name, calendar_name
+            )
+        elif self.config.is_intraday:
+            return self._run_check(
+                result,
+                self._check_intraday_continuity,
+                df, asset_name
+            )
+        return result
+
+    def _is_continuous_calendar(
+        self,
+        calendar: Optional[Any],
+        calendar_name: Optional[str]
+    ) -> bool:
+        """
+        Detect 24/7 calendars using calendar properties, fallback to string matching.
+        
+        Checks calendar properties first (if available), then falls back to
+        checking calendar_name against CONTINUOUS_CALENDARS set.
+        
+        Args:
+            calendar: Calendar object (may have properties like weekmask, session_length)
+            calendar_name: Calendar name string (e.g., 'CRYPTO', 'FOREX', '24/7')
+            
+        Returns:
+            True if calendar is continuous/24/7, False otherwise
+        """
+        # First, try to detect using calendar object properties
+        if calendar is not None:
+            # Check if calendar has weekmask that includes all days (24/7)
+            if hasattr(calendar, 'weekmask'):
+                weekmask = calendar.weekmask
+                # Check if all 7 days are included (continuous trading)
+                if isinstance(weekmask, str):
+                    # Check if all weekdays are present
+                    all_days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+                    if all(day in weekmask for day in all_days):
+                        return True
+            
+            # Check if calendar has a name attribute that matches continuous calendars
+            if hasattr(calendar, 'name'):
+                cal_name = str(calendar.name).upper()
+                if cal_name in CONTINUOUS_CALENDARS:
+                    return True
+            
+            # Check session length - if it's close to 24 hours, likely continuous
+            # This is a heuristic: if session is > 23 hours, consider it continuous
+            if hasattr(calendar, 'session_length'):
+                try:
+                    session_length = calendar.session_length
+                    if hasattr(session_length, 'total_seconds'):
+                        hours = session_length.total_seconds() / 3600
+                        if hours >= 23.0:
+                            return True
+                except (AttributeError, TypeError):
+                    pass
+        
+        # Fallback to string matching on calendar_name
+        if calendar_name:
+            return calendar_name.upper() in CONTINUOUS_CALENDARS
+        
+        return False
 
     def _add_fix_suggestions(
         self,
@@ -1195,83 +1347,6 @@ class DataValidator(BaseValidator):
         
         return result
 
-    def _run_continuity_checks(
-        self,
-        df: pd.DataFrame,
-        calendar: Optional[Any],
-        result: ValidationResult,
-        asset_name: str,
-        calendar_name: Optional[str]
-    ) -> ValidationResult:
-        """Run date/bar continuity checks based on available calendar."""
-        if calendar is not None:
-            return self._run_check(
-                result,
-                self._check_date_continuity,
-                df, calendar, asset_name, calendar_name
-            )
-        elif self.config.is_intraday:
-            return self._run_check(
-                result,
-                self._check_intraday_continuity,
-                df, asset_name
-            )
-        return result
-
-    def _is_continuous_calendar(
-        self,
-        calendar: Optional[Any],
-        calendar_name: Optional[str]
-    ) -> bool:
-        """
-        Detect 24/7 calendars using calendar properties, fallback to string matching.
-        
-        Checks calendar properties first (if available), then falls back to
-        checking calendar_name against CONTINUOUS_CALENDARS set.
-        
-        Args:
-            calendar: Calendar object (may have properties like weekmask, session_length)
-            calendar_name: Calendar name string (e.g., 'CRYPTO', 'FOREX', '24/7')
-            
-        Returns:
-            True if calendar is continuous/24/7, False otherwise
-        """
-        # First, try to detect using calendar object properties
-        if calendar is not None:
-            # Check if calendar has weekmask that includes all days (24/7)
-            if hasattr(calendar, 'weekmask'):
-                weekmask = calendar.weekmask
-                # Check if all 7 days are included (continuous trading)
-                if isinstance(weekmask, str):
-                    # Check if all weekdays are present
-                    all_days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-                    if all(day in weekmask for day in all_days):
-                        return True
-            
-            # Check if calendar has a name attribute that matches continuous calendars
-            if hasattr(calendar, 'name'):
-                cal_name = str(calendar.name).upper()
-                if cal_name in CONTINUOUS_CALENDARS:
-                    return True
-            
-            # Check session length - if it's close to 24 hours, likely continuous
-            # This is a heuristic: if session is > 23 hours, consider it continuous
-            if hasattr(calendar, 'session_length'):
-                try:
-                    session_length = calendar.session_length
-                    if hasattr(session_length, 'total_seconds'):
-                        hours = session_length.total_seconds() / 3600
-                        if hours >= 23.0:
-                            return True
-                except (AttributeError, TypeError):
-                    pass
-        
-        # Fallback to string matching on calendar_name
-        if calendar_name:
-            return calendar_name.upper() in CONTINUOUS_CALENDARS
-        
-        return False
-
     # =========================================================================
     # Individual Check Methods
     # =========================================================================
@@ -1313,6 +1388,14 @@ class DataValidator(BaseValidator):
         """Check for null values in OHLCV columns."""
         actual_cols = col_map.all_columns
 
+        # Edge case: Check for all-NaN columns
+        for col in actual_cols:
+            if df[col].isna().all():
+                result.add_error(
+                    f"Column '{col}' in {asset_name} is entirely NaN. "
+                    f"All values are missing. Check data source."
+                )
+
         null_counts = df[actual_cols].isnull().sum()
         total_nulls = null_counts.sum()
 
@@ -1323,10 +1406,29 @@ class DataValidator(BaseValidator):
                 if count > 0
             }
             null_pct = safe_divide(total_nulls, len(df) * len(actual_cols)) * 100
-            msg = f"Found {total_nulls} null values ({null_pct:.2f}%) in {asset_name}"
+            
+            # Find sample dates with null values
+            null_dates = []
+            for col in actual_cols:
+                if null_counts[col] > 0:
+                    col_null_mask = df[col].isnull()
+                    col_null_dates = df.index[col_null_mask][:3]  # First 3 dates
+                    null_dates.extend([str(d) for d in col_null_dates])
+                    if len(null_dates) >= 3:
+                        break
+            
+            msg = (
+                f"Found {total_nulls} null values ({null_pct:.2f}%) in {asset_name}. "
+                f"Use df.fillna(method='ffill') or df.interpolate() to forward-fill, "
+                f"or df.dropna() to remove rows with nulls."
+            )
             result.add_check(
                 'no_nulls', False, msg,
-                {'null_counts': null_details, 'null_pct': null_pct}
+                {
+                    'null_counts': null_details,
+                    'null_pct': null_pct,
+                    'sample_dates': null_dates[:3]
+                }
             )
         else:
             result.add_check('no_nulls', True, "No null values found")
@@ -1345,6 +1447,15 @@ class DataValidator(BaseValidator):
         if not all([o, h, l, c]):
             return result
 
+        # Edge case: Check for non-numeric OHLCV values
+        for col_name, col_key in [('open', o), ('high', h), ('low', l), ('close', c)]:
+            if col_key and not pd.api.types.is_numeric_dtype(df[col_key]):
+                result.add_error(
+                    f"Column '{col_key}' ({col_name}) in {asset_name} is not numeric. "
+                    f"OHLCV columns must be numeric. Found dtype: {df[col_key].dtype}"
+                )
+                return result
+
         # High >= Low
         high_low_violations = int((df[h] < df[l]).sum())
 
@@ -1358,7 +1469,16 @@ class DataValidator(BaseValidator):
 
         if total_violations > 0:
             violation_pct = safe_divide(total_violations, len(df)) * 100
-            msg = f"Found {total_violations} OHLC consistency violations ({violation_pct:.2f}%) in {asset_name}"
+            
+            # Find sample dates with violations
+            violation_mask = (df[h] < df[l]) | (df[h] < df[o]) | (df[h] < df[c]) | (df[l] > df[o]) | (df[l] > df[c])
+            violation_dates = df.index[violation_mask][:3].tolist()
+            
+            msg = (
+                f"Found {total_violations} OHLC consistency violations ({violation_pct:.2f}%) in {asset_name}. "
+                f"OHLC relationships must satisfy: High >= Low, High >= Open/Close, Low <= Open/Close. "
+                f"Review data source for errors or use df.clip() to constrain values."
+            )
             result.add_check(
                 'ohlc_consistency', False, msg,
                 {
@@ -1366,7 +1486,8 @@ class DataValidator(BaseValidator):
                     'high_violations': high_violations,
                     'low_violations': low_violations,
                     'total_violations': total_violations,
-                    'violation_pct': violation_pct
+                    'violation_pct': violation_pct,
+                    'sample_dates': [str(d) for d in violation_dates]
                 }
             )
         else:
@@ -1390,12 +1511,29 @@ class DataValidator(BaseValidator):
         total_negatives = negative_prices + negative_volumes
 
         if total_negatives > 0:
-            msg = f"Found {total_negatives} negative values in {asset_name}"
+            # Find sample dates with negative values
+            negative_dates = []
+            for col in price_cols:
+                if (df[col] < 0).any():
+                    neg_mask = df[col] < 0
+                    neg_dates = df.index[neg_mask][:2]
+                    negative_dates.extend([f"{str(d)} ({col})" for d in neg_dates])
+            if volume_col and (df[volume_col] < 0).any():
+                vol_neg_mask = df[volume_col] < 0
+                vol_neg_dates = df.index[vol_neg_mask][:2]
+                negative_dates.extend([f"{str(d)} (volume)" for d in vol_neg_dates])
+            
+            msg = (
+                f"Found {total_negatives} negative values in {asset_name}. "
+                f"Prices and volumes must be non-negative. Use df[df < 0] = 0 or "
+                f"df.clip(lower=0) to fix negative values."
+            )
             result.add_check(
                 'no_negative_values', False, msg,
                 {
                     'negative_prices': negative_prices,
-                    'negative_volumes': negative_volumes
+                    'negative_volumes': negative_volumes,
+                    'sample_dates': negative_dates[:3]
                 }
             )
         else:
@@ -1416,10 +1554,18 @@ class DataValidator(BaseValidator):
         future_dates = int((index > today).sum())
 
         if future_dates > 0:
-            msg = f"Found {future_dates} future dates in {asset_name}"
+            future_date_list = index[index > today][:3].tolist()
+            msg = (
+                f"Found {future_dates} future date(s) in {asset_name}. "
+                f"Data should not contain dates beyond today. "
+                f"Use df[df.index <= pd.Timestamp.now(tz='UTC')] to filter out future dates."
+            )
             result.add_check(
                 'no_future_dates', False, msg,
-                {'future_date_count': future_dates}
+                {
+                    'future_date_count': future_dates,
+                    'sample_dates': [str(d.date()) for d in future_date_list]
+                }
             )
         else:
             result.add_check('no_future_dates', True, "No future dates found")
@@ -1437,10 +1583,22 @@ class DataValidator(BaseValidator):
 
         if duplicates > 0:
             dup_pct = safe_divide(duplicates, len(df)) * 100
-            msg = f"Found {duplicates} duplicate dates ({dup_pct:.2f}%) in {asset_name}"
+            # Find sample duplicate dates
+            dup_mask = df.index.duplicated(keep=False)
+            dup_dates = df.index[dup_mask].unique()[:3].tolist()
+            
+            msg = (
+                f"Found {duplicates} duplicate dates ({dup_pct:.2f}%) in {asset_name}. "
+                f"Each date should appear only once. Use df[~df.index.duplicated(keep='first')] "
+                f"to keep first occurrence, or df.groupby(df.index).last() to aggregate duplicates."
+            )
             result.add_check(
                 'no_duplicate_dates', False, msg,
-                {'duplicate_count': duplicates, 'duplicate_pct': dup_pct}
+                {
+                    'duplicate_count': duplicates,
+                    'duplicate_pct': dup_pct,
+                    'sample_dates': [str(d) for d in dup_dates]
+                }
             )
         else:
             result.add_check('no_duplicate_dates', True, "No duplicate dates found")
@@ -1458,14 +1616,31 @@ class DataValidator(BaseValidator):
         is_descending = df.index.is_monotonic_decreasing
 
         if not is_ascending:
+            # Find sample unsorted pairs
+            sample_issues = []
+            if len(df) >= 2:
+                for i in range(min(3, len(df) - 1)):
+                    if df.index[i] > df.index[i + 1]:
+                        sample_issues.append(f"{df.index[i]} > {df.index[i + 1]}")
+            
             if is_descending:
-                msg = f"Index is sorted descending for {asset_name}, should be ascending"
+                msg = (
+                    f"Index is sorted descending for {asset_name}, should be ascending. "
+                    f"Use df.sort_index() to fix."
+                )
             else:
-                msg = f"Index is not sorted for {asset_name}"
+                msg = (
+                    f"Index is not sorted for {asset_name}. "
+                    f"Use df.sort_index() to sort in ascending order."
+                )
 
             result.add_check(
                 'sorted_index', False, msg,
-                {'is_ascending': is_ascending, 'is_descending': is_descending},
+                {
+                    'is_ascending': is_ascending,
+                    'is_descending': is_descending,
+                    'sample_issues': sample_issues
+                },
                 severity=self.config.get_severity()
             )
         else:
@@ -1489,10 +1664,22 @@ class DataValidator(BaseValidator):
         zero_pct = safe_divide(zero_count, len(df)) * 100
 
         if zero_pct > self.config.zero_volume_threshold_pct:
-            msg = f"Found {zero_count} ({zero_pct:.1f}%) zero volume bars in {asset_name}"
+            # Find sample dates with zero volume
+            zero_vol_mask = df[volume_col] == 0
+            zero_vol_dates = df.index[zero_vol_mask][:3].tolist()
+            
+            msg = (
+                f"Found {zero_count} ({zero_pct:.1f}%) zero volume bars in {asset_name}. "
+                f"High zero volume may indicate data quality issues or market closures. "
+                f"Review data source or filter using df[df['{volume_col}'] > 0]."
+            )
             result.add_check(
                 'zero_volume', False, msg,
-                {'zero_volume_count': zero_count, 'zero_volume_pct': zero_pct},
+                {
+                    'zero_volume_count': zero_count,
+                    'zero_volume_pct': zero_pct,
+                    'sample_dates': [str(d) for d in zero_vol_dates]
+                },
                 severity=self.config.get_severity()
             )
         else:
@@ -1513,7 +1700,15 @@ class DataValidator(BaseValidator):
         """Check for sudden large price jumps."""
         close_col = col_map.close
 
-        if not close_col or len(df) < 2:
+        if not close_col:
+            return result
+
+        # Edge case: Single-row DataFrame
+        if len(df) < 2:
+            result.add_check(
+                'price_jumps', True,
+                "Insufficient data for price jump check (need at least 2 rows)"
+            )
             return result
 
         pct_changes = df[close_col].pct_change().abs() * 100
@@ -1522,14 +1717,22 @@ class DataValidator(BaseValidator):
 
         if len(large_jumps) > 0:
             jump_pct = safe_divide(len(large_jumps), len(df)) * 100
-            msg = f"Found {len(large_jumps)} price jumps >{threshold}% in {asset_name}"
+            jump_dates_list = large_jumps.index[:5].tolist()
+            jump_values = [f"{pct:.2f}%" for pct in large_jumps[:5].values]
+            
+            msg = (
+                f"Found {len(large_jumps)} price jumps >{threshold}% in {asset_name}. "
+                f"Large price jumps may indicate data errors, splits, or significant events. "
+                f"Review these dates for data quality issues or verify if splits/adjustments are needed."
+            )
             result.add_check(
                 'price_jumps', False, msg,
                 {
                     'jump_count': len(large_jumps),
                     'jump_pct': jump_pct,
                     'max_jump_pct': float(pct_changes.max()),
-                    'jump_dates': [str(d) for d in large_jumps.index[:5].tolist()]
+                    'jump_dates': [str(d) for d in jump_dates_list],
+                    'jump_values': jump_values
                 },
                 severity=self.config.get_severity()
             )
@@ -1548,21 +1751,25 @@ class DataValidator(BaseValidator):
         if len(df) == 0:
             return result
 
-        last_date = pd.Timestamp(df.index.max())
+        # Use ensure_timezone() helper for consistent timezone handling
+        df_index = ensure_timezone(pd.DatetimeIndex(df.index))
+        last_date = df_index.max()
         now = pd.Timestamp.now(tz='UTC')
-
-        if last_date.tz is None:
-            last_date = last_date.tz_localize('UTC')
-        else:
-            last_date = last_date.tz_convert('UTC')
 
         days_since = (now - last_date).days
 
         if days_since > self.config.stale_threshold_days:
-            msg = f"Data for {asset_name} is {days_since} days old (last: {last_date.date()})"
+            msg = (
+                f"Data for {asset_name} is {days_since} days old (last: {last_date.date()}). "
+                f"Data may be stale. Update data source or check if data feed is still active."
+            )
             result.add_check(
                 'stale_data', False, msg,
-                {'days_since_last': days_since, 'last_date': str(last_date.date())},
+                {
+                    'days_since_last': days_since,
+                    'last_date': str(last_date.date()),
+                    'threshold_days': self.config.stale_threshold_days
+                },
                 severity=ValidationSeverity.WARNING
             )
         else:
@@ -1570,6 +1777,165 @@ class DataValidator(BaseValidator):
                 'stale_data', True,
                 f"Data is current (last: {last_date.date()})",
                 {'days_since_last': days_since}
+            )
+        return result
+
+    def _check_sunday_bars(
+        self,
+        result: ValidationResult,
+        df: pd.DataFrame,
+        col_map: ColumnMapping,
+        asset_name: str
+    ) -> ValidationResult:
+        """Check for Sunday bars in FOREX/24/7 data."""
+        # Only check for FOREX/24/7 calendars or forex asset_type
+        if not self.config.check_sunday_bars:
+            return result
+
+        # Check if this is FOREX or 24/7 data
+        is_forex = self.config.asset_type == 'forex'
+        is_continuous = self._is_continuous_calendar(
+            calendar=None,  # Calendar not available in this method
+            calendar_name=self.config.calendar_name
+        )
+
+        if not (is_forex or is_continuous):
+            return result
+
+        if len(df) == 0:
+            return result
+
+        # Check for Sunday bars (dayofweek == 6)
+        df_index = ensure_timezone(pd.DatetimeIndex(df.index))
+        sunday_mask = df_index.dayofweek == 6
+        sunday_count = int(sunday_mask.sum())
+
+        if sunday_count > 0:
+            sunday_dates = df_index[sunday_mask].normalize().tolist()
+            msg = (
+                f"Found {sunday_count} Sunday bar(s) in {asset_name}. "
+                f"Consider consolidating to Friday using "
+                f"lib.utils.consolidate_sunday_to_friday()"
+            )
+            result.add_check(
+                'sunday_bars', False, msg,
+                {
+                    'sunday_count': sunday_count,
+                    'sunday_dates': [str(d.date()) for d in sunday_dates[:10]]  # First 10
+                },
+                severity=ValidationSeverity.WARNING
+            )
+        else:
+            result.add_check('sunday_bars', True, "No Sunday bars detected")
+        return result
+
+    def _check_weekend_gap_integrity(
+        self,
+        result: ValidationResult,
+        df: pd.DataFrame,
+        col_map: ColumnMapping,
+        asset_name: str
+    ) -> ValidationResult:
+        """Validate FOREX weekend gap semantics (Friday-Sunday-Monday relationships)."""
+        # Only check for FOREX data
+        if not self.config.check_weekend_gaps:
+            return result
+
+        if self.config.asset_type != 'forex':
+            return result
+
+        if len(df) < 2:
+            return result
+
+        df_index = ensure_timezone(pd.DatetimeIndex(df.index))
+        close_col = col_map.close
+
+        if not close_col:
+            return result
+
+        # Normalize dates to midnight for day-of-week checks
+        df_index_norm = df_index.normalize()
+
+        # Find all Fridays, Sundays, and Mondays
+        fridays = df_index_norm[df_index_norm.dayofweek == 4]  # Friday = 4
+        sundays = df_index_norm[df_index_norm.dayofweek == 6]  # Sunday = 6
+        mondays = df_index_norm[df_index_norm.dayofweek == 0]  # Monday = 0
+
+        issues = []
+        details = {
+            'friday_count': len(fridays),
+            'sunday_count': len(sundays),
+            'monday_count': len(mondays)
+        }
+
+        # Check for Friday-Sunday pairs (potential duplication)
+        for sunday_date in sundays:
+            friday_date = sunday_date - pd.Timedelta(days=2)
+            if friday_date in fridays:
+                issues.append(
+                    f"Both Friday {friday_date.date()} and Sunday {sunday_date.date()} "
+                    f"bars exist (potential duplication)"
+                )
+
+        # Check for Sunday-Monday pairs (should have weekend gap)
+        for sunday_date in sundays:
+            monday_date = sunday_date + pd.Timedelta(days=1)
+            if monday_date in mondays:
+                sunday_data = df.loc[df_index_norm == sunday_date, close_col]
+                monday_data = df.loc[df_index_norm == monday_date, col_map.open] if col_map.open else pd.Series(dtype=float)
+
+                if len(sunday_data) > 0 and len(monday_data) > 0:
+                    sunday_close = sunday_data.iloc[0]
+                    monday_open = monday_data.iloc[0]
+
+                    if pd.notna(sunday_close) and pd.notna(monday_open):
+                        gap_pct = abs((monday_open - sunday_close) / sunday_close * 100) if sunday_close != 0 else 0
+                        if gap_pct < 0.01:  # Less than 0.01% gap might indicate missing weekend movement
+                            issues.append(
+                                f"Sunday {sunday_date.date()} to Monday {monday_date.date()} "
+                                f"gap is very small ({gap_pct:.4f}%), may indicate missing weekend data"
+                            )
+
+        # Check for Friday-Monday pairs without Sunday (expected for consolidated data)
+        for friday_date in fridays:
+            monday_date = friday_date + pd.Timedelta(days=3)
+            if monday_date in mondays:
+                # Check if Sunday exists between them
+                sunday_date = friday_date + pd.Timedelta(days=2)
+                if sunday_date not in sundays:
+                    # This is expected if Sunday was consolidated into Friday
+                    # Check if gap is reasonable
+                    friday_data = df.loc[df_index_norm == friday_date, close_col]
+                    monday_data = df.loc[df_index_norm == monday_date, col_map.open] if col_map.open else pd.Series(dtype=float)
+
+                    if len(friday_data) > 0 and len(monday_data) > 0:
+                        friday_close = friday_data.iloc[0]
+                        monday_open = monday_data.iloc[0]
+
+                        if pd.notna(friday_close) and pd.notna(monday_open):
+                            gap_pct = abs((monday_open - friday_close) / friday_close * 100) if friday_close != 0 else 0
+                            if gap_pct > 10:  # Large gap might indicate missing data
+                                issues.append(
+                                    f"Large gap ({gap_pct:.2f}%) from Friday {friday_date.date()} "
+                                    f"to Monday {monday_date.date()} (no Sunday bar found)"
+                                )
+
+        if issues:
+            msg = (
+                f"Weekend gap integrity issues detected in {asset_name}: "
+                f"{len(issues)} issue(s) found"
+            )
+            details['issues'] = issues[:5]  # First 5 issues
+            result.add_check(
+                'weekend_gap_integrity', False, msg,
+                details,
+                severity=ValidationSeverity.WARNING
+            )
+        else:
+            result.add_check(
+                'weekend_gap_integrity', True,
+                "Weekend gap semantics are valid",
+                details
             )
         return result
 
@@ -1585,10 +1951,18 @@ class DataValidator(BaseValidator):
         row_count = len(df)
 
         if row_count < min_required:
-            msg = f"Insufficient data for {asset_name}: {row_count} rows (minimum: {min_required})"
+            msg = (
+                f"Insufficient data for {asset_name}: {row_count} rows (minimum: {min_required}). "
+                f"More data is needed for meaningful analysis. Check data source date range or "
+                f"adjust min_rows_daily/min_rows_intraday in ValidationConfig if appropriate."
+            )
             result.add_check(
                 'data_sufficiency', False, msg,
-                {'row_count': row_count, 'minimum_required': min_required},
+                {
+                    'row_count': row_count,
+                    'minimum_required': min_required,
+                    'timeframe': self.config.timeframe
+                },
                 severity=ValidationSeverity.WARNING
             )
         else:
@@ -1609,12 +1983,24 @@ class DataValidator(BaseValidator):
         """Check for price outliers using z-score analysis."""
         close_col = col_map.close
 
-        if not close_col or len(df) < 3:
+        if not close_col:
+            return result
+
+        # Edge case: Single-row or insufficient data
+        if len(df) < 3:
+            result.add_check(
+                'price_outliers', True,
+                "Insufficient data for outlier check (need at least 3 rows)"
+            )
             return result
 
         returns = df[close_col].pct_change().dropna()
 
         if len(returns) < 2:
+            result.add_check(
+                'price_outliers', True,
+                "Insufficient data for outlier check (need at least 2 returns)"
+            )
             return result
 
         z_scores = calculate_z_scores(returns)
@@ -1623,22 +2009,99 @@ class DataValidator(BaseValidator):
 
         if outliers > 0:
             outlier_pct = safe_divide(outliers, len(returns)) * 100
-            msg = f"Found {outliers} price outliers (>{threshold} sigma) in {asset_name}"
+            # Find sample outlier dates
+            outlier_mask = z_scores > threshold
+            outlier_dates = z_scores[outlier_mask].index[:3].tolist()
+            outlier_z_values = [float(z_scores[d]) for d in outlier_dates]
+            
+            msg = (
+                f"Found {outliers} price outliers (>{threshold} sigma) in {asset_name}. "
+                f"Outliers may indicate data errors or significant market events. "
+                f"Review these dates for accuracy."
+            )
 
             if self.config.strict_mode:
                 result.add_check(
                     'price_outliers', False, msg,
-                    {'outlier_count': outliers, 'outlier_pct': outlier_pct}
+                    {
+                        'outlier_count': outliers,
+                        'outlier_pct': outlier_pct,
+                        'sample_dates': [str(d) for d in outlier_dates],
+                        'sample_z_scores': outlier_z_values
+                    }
                 )
             else:
                 result.add_warning(msg)
                 result.add_check(
                     'price_outliers', True,
                     "Outliers found but within tolerance",
-                    {'outlier_count': outliers, 'outlier_pct': outlier_pct}
+                    {
+                        'outlier_count': outliers,
+                        'outlier_pct': outlier_pct,
+                        'sample_dates': [str(d) for d in outlier_dates]
+                    }
                 )
         else:
             result.add_check('price_outliers', True, "No significant price outliers")
+        return result
+
+    def _check_volume_spikes(
+        self,
+        result: ValidationResult,
+        df: pd.DataFrame,
+        col_map: ColumnMapping,
+        asset_name: str
+    ) -> ValidationResult:
+        """Check for volume spikes using z-score analysis."""
+        volume_col = col_map.volume
+
+        if not volume_col:
+            return result
+
+        # Edge case: Single-row or insufficient data
+        if len(df) < 3:
+            result.add_check(
+                'volume_spikes', True,
+                "Insufficient data for volume spike check (need at least 3 rows)"
+            )
+            return result
+
+        # Skip volume checks for FOREX assets (volume is unreliable)
+        if self.config.asset_type == 'forex':
+            result.add_check(
+                'volume_spikes', True,
+                "Volume spike check skipped for FOREX data (volume unreliable)"
+            )
+            return result
+
+        # Calculate z-scores for volume
+        volume_series = df[volume_col]
+        z_scores = calculate_z_scores(volume_series)
+        threshold = self.config.volume_spike_threshold_sigma
+        spikes = int((z_scores > threshold).sum())
+
+        if spikes > 0:
+            spike_pct = safe_divide(spikes, len(df)) * 100
+            spike_dates = z_scores[z_scores > threshold].index
+            max_spike_z = float(z_scores.max())
+            
+            msg = (
+                f"Found {spikes} volume spikes (>{threshold} sigma) in {asset_name}. "
+                f"Consider investigating these dates for data quality issues or significant events."
+            )
+            
+            result.add_check(
+                'volume_spikes', False, msg,
+                {
+                    'spike_count': spikes,
+                    'spike_pct': spike_pct,
+                    'max_spike_z': max_spike_z,
+                    'spike_dates': [str(d) for d in spike_dates[:5].tolist()]
+                },
+                severity=ValidationSeverity.WARNING
+            )
+        else:
+            result.add_check('volume_spikes', True, "No significant volume spikes detected")
         return result
 
     def _check_potential_splits(
@@ -1658,7 +2121,15 @@ class DataValidator(BaseValidator):
         close_col = col_map.close
         volume_col = col_map.volume
 
-        if not close_col or len(df) < 2:
+        if not close_col:
+            return result
+
+        # Edge case: Single-row DataFrame
+        if len(df) < 2:
+            result.add_check(
+                'potential_splits', True,
+                "Insufficient data for split detection (need at least 2 rows)"
+            )
             return result
 
         # Only check for equity assets
@@ -1809,17 +2280,31 @@ class DataValidator(BaseValidator):
                 msg = f"Found {missing_count} missing calendar dates ({missing_pct:.1f}%) in {asset_name}"
 
                 if missing_count > self.config.gap_tolerance_days:
+                    missing_dates_list = sorted(list(missing))[:5]  # First 5 missing dates
+                    msg_with_guidance = (
+                        f"{msg} Missing dates may indicate data gaps or market closures. "
+                        f"Review data source or use gap filling techniques if appropriate."
+                    )
+                    
                     if self.config.strict_mode:
                         result.add_check(
-                            'date_continuity', False, msg,
-                            {'missing_count': missing_count, 'missing_pct': missing_pct}
+                            'date_continuity', False, msg_with_guidance,
+                            {
+                                'missing_count': missing_count,
+                                'missing_pct': missing_pct,
+                                'sample_missing_dates': [str(d.date()) for d in missing_dates_list]
+                            }
                         )
                     else:
-                        result.add_warning(msg)
+                        result.add_warning(msg_with_guidance)
                         result.add_check(
                             'date_continuity', True,
                             "Gaps within tolerance",
-                            {'missing_count': missing_count, 'missing_pct': missing_pct}
+                            {
+                                'missing_count': missing_count,
+                                'missing_pct': missing_pct,
+                                'sample_missing_dates': [str(d.date()) for d in missing_dates_list]
+                            }
                         )
                 else:
                     result.add_check(
@@ -1915,6 +2400,14 @@ class DataValidator(BaseValidator):
         asset_name: str
     ) -> ValidationResult:
         """Check intraday data for excessive gaps between bars."""
+        # Edge case: Single-row DataFrame
+        if len(df) < 2:
+            result.add_check(
+                'intraday_continuity', True,
+                "Insufficient data for continuity check (need at least 2 rows)"
+            )
+            return result
+
         try:
             if len(df) < 2:
                 result.add_check(
@@ -1998,10 +2491,20 @@ class BundleValidator(BaseValidator):
         
         Args:
             config: ValidationConfig object (uses default if None)
-            bundle_path_resolver: Optional callable that takes bundle_name and returns Path
+            bundle_path_resolver: Optional callable that takes bundle_name and returns Path.
+                If None, attempts to use get_bundle_path from data_loader with lazy import.
+                Falls back to None if data_loader is unavailable (graceful degradation).
         """
         super().__init__(config)
-        self.bundle_path_resolver = bundle_path_resolver
+        if bundle_path_resolver is None:
+            # Lazy import to avoid circular dependency
+            try:
+                from .data_loader import get_bundle_path
+                self.bundle_path_resolver = get_bundle_path
+            except ImportError:
+                self.bundle_path_resolver = None
+        else:
+            self.bundle_path_resolver = bundle_path_resolver
 
     def _register_checks(self) -> None:
         """Register bundle validation checks."""
@@ -2657,7 +3160,9 @@ def validate_before_ingest(
     timeframe: Optional[str] = None,
     calendar: Optional[Any] = None,
     calendar_name: Optional[str] = None,
+    asset_type: Optional[Literal['equity', 'forex', 'crypto']] = None,
     strict_mode: bool = False,
+    suggest_fixes: bool = False,
     config: Optional[ValidationConfig] = None
 ) -> ValidationResult:
     """
@@ -2671,7 +3176,9 @@ def validate_before_ingest(
         timeframe: Data timeframe (e.g., '1m', '1h', '1d')
         calendar: Optional trading calendar
         calendar_name: Calendar name for context-aware validation
+        asset_type: Asset type ('equity', 'forex', 'crypto') for context-aware validation
         strict_mode: If True, warnings become errors
+        suggest_fixes: If True, add fix suggestions to result metadata
         config: Optional ValidationConfig (overrides other params)
 
     Returns:
@@ -2685,15 +3192,28 @@ def validate_before_ingest(
     if config is None:
         config = ValidationConfig(
             timeframe=timeframe,
-            strict_mode=strict_mode
+            strict_mode=strict_mode,
+            asset_type=asset_type,
+            calendar_name=calendar_name,
+            suggest_fixes=suggest_fixes
         )
+    else:
+        # Update config with provided values if not already set
+        if asset_type is not None:
+            config.asset_type = asset_type
+        if calendar_name is not None:
+            config.calendar_name = calendar_name
+        if suggest_fixes:
+            config.suggest_fixes = suggest_fixes
 
     validator = DataValidator(config=config)
     return validator.validate(
         df=df,
         calendar=calendar,
         asset_name=asset_name,
-        calendar_name=calendar_name
+        calendar_name=calendar_name,
+        asset_type=asset_type,
+        suggest_fixes=suggest_fixes
     )
 
 
@@ -2707,12 +3227,14 @@ def validate_bundle(
 
     Args:
         bundle_name: Name of the bundle to validate
-        bundle_path: Optional path to bundle directory
+        bundle_path: Optional path to bundle directory. If None, uses default resolver
+            from data_loader.get_bundle_path (with graceful degradation if unavailable)
         config: Optional ValidationConfig
 
     Returns:
         ValidationResult
     """
+    # BundleValidator will use get_bundle_path as default resolver if bundle_path_resolver is None
     validator = BundleValidator(config=config)
     return validator.validate(bundle_name, bundle_path)
 
