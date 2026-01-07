@@ -531,6 +531,7 @@ class ValidationConfig:
 
     # Mode
     strict_mode: bool = False
+    suggest_fixes: bool = False
 
     # Context
     timeframe: Optional[str] = None
