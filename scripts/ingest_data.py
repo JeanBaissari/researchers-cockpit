@@ -43,8 +43,8 @@ def format_timeframe_help():
 
 
 @click.command()
-@click.option('--source', default=None, type=click.Choice(['yahoo', 'binance', 'oanda']),
-              help='Data source name')
+@click.option('--source', default=None, type=click.Choice(['yahoo', 'binance', 'oanda', 'csv']),
+              help='Data source name (e.g., yahoo, binance, oanda, local_csv)')
 @click.option('--assets', default=None, type=click.Choice(['crypto', 'forex', 'equities']),
               help='Asset class')
 @click.option('--symbols', default=None, help='Comma-separated list of symbols (e.g., SPY,AAPL)')
@@ -58,8 +58,11 @@ def format_timeframe_help():
 @click.option('--timeframe', '-t', default='daily',
               type=click.Choice(VALID_TIMEFRAMES, case_sensitive=False),
               help='Data timeframe. Use --list-timeframes to see options with limits.')
+@click.option('--ingest-daily', is_flag=True, help='Ingest daily data bundle')
+@click.option('--ingest-minute', is_flag=True, help='Ingest minute data bundle')
+@click.option('--force', is_flag=True, help='Force re-ingestion of the bundle, even if already registered')
 @click.option('--list-timeframes', is_flag=True, help='Show available timeframes and their data limits')
-def main(source, assets, symbols, bundle_name, start_date, end_date, calendar, timeframe, list_timeframes):
+def main(source, assets, symbols, bundle_name, start_date, end_date, calendar, timeframe, force, list_timeframes, ingest_daily, ingest_minute):
     """
     Ingest market data into a Zipline bundle.
 
@@ -101,32 +104,71 @@ def main(source, assets, symbols, bundle_name, start_date, end_date, calendar, t
     limit = TIMEFRAME_DATA_LIMITS.get(timeframe.lower())
     limit_info = f" ({limit} days max)" if limit else " (unlimited)"
 
-    click.echo(f"Ingesting {timeframe} data from {source} for {len(symbol_list)} symbols{limit_info}...")
-    click.echo(f"Symbols: {', '.join(symbol_list)}")
+    bundles_to_ingest = []
+    if ingest_daily:
+        bundles_to_ingest.append({'timeframe': 'daily', 'bundle_suffix': '_daily'})
+    if ingest_minute:
+        # Use the original timeframe provided for minute data
+        bundles_to_ingest.append({'timeframe': timeframe.lower(), 'bundle_suffix': f'_{timeframe}'})
 
-    try:
-        bundle = ingest_bundle(
-            source=source,
-            assets=[assets],
-            bundle_name=bundle_name,
-            symbols=symbol_list,
-            start_date=start_date,
-            end_date=end_date,
-            calendar_name=calendar,
-            timeframe=timeframe.lower(),
-        )
+    # If neither --ingest-daily nor --ingest-minute is specified, default to the provided timeframe
+    if not bundles_to_ingest:
+        bundles_to_ingest.append({'timeframe': timeframe.lower(), 'bundle_suffix': ''}) # No suffix if it's the only one and already matches the given timeframe
 
-        click.echo(f"\n✓ Successfully ingested bundle: {bundle}")
-        click.echo(f"Bundle is ready for backtesting.")
 
-        # Show helpful next steps
-        click.echo(f"\nNext steps:")
-        click.echo(f"  1. Run backtest: python scripts/run_backtest.py --strategy <name> --bundle {bundle}")
-        click.echo(f"  2. Check bundle registry: cat ~/.zipline/bundle_registry.json | python -m json.tool")
+    ingested_bundles = []
+    for bundle_info in bundles_to_ingest:
+        current_timeframe = bundle_info['timeframe']
+        current_bundle_suffix = bundle_info['bundle_suffix']
 
-    except Exception as e:
-        click.echo(f"✗ Error: {e}", err=True)
-        sys.exit(1)
+        # Determine the bundle name based on whether a custom name was provided
+        if bundle_name:
+            # If a base bundle_name is provided, append the suffix
+            current_bundle_name = f"{bundle_name}{current_bundle_suffix}"
+        else:
+            # Auto-generate bundle name including source, asset class, and timeframe
+            # Ensure asset class is a string for f-string
+            asset_class_str = assets
+            current_bundle_name = f"{source}_{asset_class_str}{current_bundle_suffix}"
+        
+        # Get data limit info for the current timeframe (for display purposes)
+        limit = TIMEFRAME_DATA_LIMITS.get(current_timeframe)
+        limit_info = f" ({limit} days max)" if limit else " (unlimited)"
+
+        click.echo(f"Ingesting {current_timeframe} data from {source} for {len(symbol_list)} symbols{limit_info}...")
+        click.echo(f"Symbols: {', '.join(symbol_list)}")
+        
+        try:
+            bundle = ingest_bundle(
+                source=source,
+                assets=[assets],
+                bundle_name=current_bundle_name,
+                symbols=symbol_list,
+                start_date=start_date,
+                end_date=end_date,
+                calendar_name=calendar,
+                timeframe=current_timeframe,
+                force=force
+            )
+            ingested_bundles.append(bundle)
+            click.echo(f"
+✓ Successfully ingested bundle: {bundle}")
+        except Exception as e:
+            click.echo(f"✗ Error ingesting {current_timeframe} bundle {current_bundle_name}: {e}", err=True)
+            sys.exit(1)
+
+    click.echo(f"
+All specified bundles successfully ingested:")
+    for b in ingested_bundles:
+        click.echo(f"  - {b}")
+    click.echo(f"Bundles are ready for backtesting.")
+
+    # Show helpful next steps
+    click.echo(f"
+Next steps:")
+    for b in ingested_bundles:
+        click.echo(f"  1. Run backtest: python scripts/run_backtest.py --strategy <name> --bundle {b}")
+    click.echo(f"  2. Check bundle registry: cat ~/.zipline/bundle_registry.json | python -m json.tool")
 
 
 if __name__ == '__main__':
