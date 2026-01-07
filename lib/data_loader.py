@@ -743,6 +743,7 @@ def _register_csv_bundle(
     closure_end_date = end_date
     closure_timeframe = timeframe
     closure_calendar_name = calendar_name
+    closure_asset_class = asset_class
 
     def make_csv_ingest(symbols_list):
         mpd = get_minutes_per_day(closure_calendar_name)
@@ -764,7 +765,20 @@ def _register_csv_bundle(
                 print(f"Ingesting {closure_timeframe} data for {len(symbols_list)} symbols from local CSVs...")
 
             # Initialize data validator for CSV data quality checks
-            config = ValidationConfig(timeframe=closure_timeframe)
+            # Map asset_class to asset_type for validation
+            asset_type_map = {
+                'equities': 'equity',
+                'equity': 'equity',
+                'forex': 'forex',
+                'crypto': 'crypto',
+                'cryptocurrencies': 'crypto'
+            }
+            asset_type = asset_type_map.get(closure_asset_class.lower(), None)
+            config = ValidationConfig(
+                timeframe=closure_timeframe,
+                asset_type=asset_type,
+                calendar_name=closure_calendar_name
+            )
             data_validator = DataValidator(config=config)
 
             # Get Zipline data frequency from timeframe info
@@ -820,7 +834,12 @@ def _register_csv_bundle(
                         if show_progress:
                             print(f"  Validating data for {symbol}...")
                         
-                        validation_result = data_validator.validate(df, asset_name=symbol)
+                        validation_result = data_validator.validate(
+                            df,
+                            asset_name=symbol,
+                            asset_type=asset_type,
+                            calendar_name=closure_calendar_name
+                        )
                         
                         if not validation_result.passed:
                             # Log validation errors
