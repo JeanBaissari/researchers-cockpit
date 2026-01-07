@@ -218,6 +218,7 @@ def ensure_project_dirs() -> None:
         'data',
         'data/bundles',
         'data/cache',
+        'data/processed',  # Staging area for CSV files before bundle ingestion
         'data/exports',
         'config',
         'logs',
