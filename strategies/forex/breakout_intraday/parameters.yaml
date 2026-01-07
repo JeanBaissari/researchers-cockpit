@@ -1,0 +1,149 @@
+# Strategy Parameters
+# ==============================================================================
+# All tunable parameters for this strategy.
+# NO hardcoded parameters in strategy.py - everything comes from here.
+#
+# IMPORTANT: Copy this entire _template/ directory to create a new strategy.
+# Then customize these parameters for your specific trading hypothesis.
+# ==============================================================================
+
+# Strategy Configuration
+strategy:
+  asset_symbol: EURUSD         # Asset to trade (e.g., EURUSD=X)
+  asset_class: forex             # 'equities', 'crypto', 'forex'
+  rebalance_frequency: daily     # 'daily', 'weekly', 'monthly' (using 'daily' with minutes_after_open = 0 for intraday)
+  minutes_after_open: 1          # Minutes after market open to trade (Zipline requires >= 1 for minute data)
+
+  # Pipeline Configuration
+  use_pipeline: false
+
+  # Strategy-specific parameters
+  # ==============================================================================
+  # Breakout Intraday Strategy Parameters
+  # ==============================================================================
+  TRAIL_ACTIVATION_PIPS: 10      # Pips profit to activate trailing stop (Fixed: 10)
+  TRAIL_DISTANCE_PIPS: 10        # Pips distance for trailing stop (Fixed: 10)
+  MAX_DAILY_TRADES: 2            # Maximum trades per day (Fixed: 2)
+
+  # Session Settings
+  # ==============================================================================
+  preferred_session: london      # 'london', 'new_york', 'asian', 'overlap'
+  london_only_mode: false        # Restrict trading to London and London/NY overlap sessions
+  eod_exit_hour: 23              # End-of-day exit hour in UTC (Range: 21-23)
+
+  # Range Detection Settings (Phase 11 Enhancement)
+  # ==============================================================================
+  enable_range_detection: false  # Enable ATR-based range detection filter
+  atr_period: 14                 # ATR lookback period (Range: 7-28)
+  range_detection_threshold: 1.5 # Range ratio threshold for consolidation (Range: 1.0-2.5)
+
+# Position Sizing
+# ==============================================================================
+# Controls how much capital to allocate per trade.
+# method options:
+#   - 'fixed': Use max_position_pct directly
+#   - 'volatility_scaled': Scale position to target volatility
+#   - 'kelly': Use Kelly Criterion with fractional sizing
+# ==============================================================================
+position_sizing:
+  max_position_pct: 0.95         # Maximum portfolio allocation (Range: 0.10-1.00)
+  min_position_pct: 0.10         # Minimum position size (Range: 0.05-0.30)
+  method: volatility_scaled      # 'fixed', 'volatility_scaled', 'kelly'
+
+  # Volatility Scaling (if method = 'volatility_scaled')
+  # ==============================================================================
+  # Scales position size inversely with volatility to target a specific vol level.
+  # Formula: position = volatility_target / current_volatility
+  # ==============================================================================
+  volatility_lookback: 20        # Days for volatility calculation (Range: 10-60)
+  volatility_target: 0.15        # Target annualized volatility (Range: 0.05-0.30)
+
+  # Kelly Criterion (if method = 'kelly') - Not used in this strategy, but kept for consistency
+  # ==============================================================================
+  # Kelly formula: f* = (bp - q) / b
+  # where: b = avg_win/avg_loss ratio, p = win rate, q = 1 - p
+  #
+  # NOTE: Full Kelly can be aggressive. Fractional Kelly (0.25-0.50) is recommended.
+  # These parameters should be estimated from backtest results or paper trading.
+  # ==============================================================================
+  kelly:
+    win_rate_estimate: 0.55      # Estimated win rate from backtests (Range: 0.40-0.70)
+    avg_win_loss_ratio: 1.5      # Average win / average loss (Range: 1.0-3.0)
+    kelly_fraction: 0.25         # Fraction of full Kelly to use (Range: 0.10-0.50)
+    min_position_pct: 0.10       # Minimum position for Kelly (Range: 0.05-0.30)
+
+# Risk Management
+# ==============================================================================
+# Controls downside protection and profit taking.
+# Both fixed and trailing stops can be enabled simultaneously.
+# ==============================================================================
+risk:
+  use_stop_loss: true            # Enable fixed stop loss
+  stop_loss_pct: 0.05            # Fixed stop loss percentage (Range: 0.01-0.15)
+
+  use_trailing_stop: true        # Enable trailing stop (tracks highest price)
+  trailing_stop_pct: 0.08        # Trailing stop percentage from peak (Range: 0.03-0.20)
+
+  use_take_profit: false         # Enable take profit (Not implemented in this strategy)
+  take_profit_pct: 0.10          # Take profit percentage (Range: 0.05-0.30)
+
+# Costs (override defaults from config/settings.yaml if needed)
+# ==============================================================================
+# Realistic cost assumptions are critical for valid backtests.
+# ==============================================================================
+costs:
+  commission:
+    per_share: 0.00002           # Commission per share (adjust for forex, e.g., 0.2 pips)
+    min_cost: 0.0                # Minimum commission per trade (0 for typical forex brokers)
+
+  slippage:
+    volume_limit: 0.025          # Max % of bar volume (Range: 0.01-0.10)
+    price_impact: 0.1            # Price impact coefficient (Range: 0.05-0.30)
+
+# Backtest Configuration
+# ==============================================================================
+# Controls backtest execution and metric calculation.
+# ==============================================================================
+backtest:
+  data_frequency: minute         # Data frequency: 'daily' or 'minute'
+
+  # Warmup Period
+  # ==============================================================================
+  # Number of days needed before the strategy can generate signals.
+  # Should be >= max(all indicator periods used in the strategy).
+   # Example: For a 50/200 SMA crossover, warmup_days should be at least 200.
+  # If set to null, calculated dynamically from strategy parameters.
+  # ==============================================================================
+  warmup_days: null              # Days before first signal (Range: 10-252, null=auto)
+  validate_warmup: true          # Enable pre-flight warmup validation
+
+  # Performance Metrics Configuration
+  # ==============================================================================
+  # Used for Sharpe ratio and other risk-adjusted metrics in analyze().
+  # ==============================================================================
+  risk_free_rate: 0.04           # Annual risk-free rate (Range: 0.00-0.10)
+
+  # Trading Days Per Year (for annualization)
+  # ==============================================================================
+  # - equities: 252 (standard US market days)
+  # - forex: 260 (5-day weeks, no holidays)
+  # - crypto: 365 (24/7 trading)
+  # ==============================================================================
+  trading_days_per_year: 260     # Annualization factor (Range: 252-365)
+
+# Notes
+# ==============================================================================
+notes: |
+  Edit these parameters to customize the Breakout Intraday strategy.
+  All values here override defaults from config/settings.yaml.
+
+  WORKFLOW:
+  1. Copy _template/ to strategies/{asset_class}/{strategy_name}/
+  2. Edit hypothesis.md with your trading rationale
+  3. Configure these parameters
+  4. Implement compute_signals() in strategy.py
+  5. Run backtest: python scripts/run_backtest.py --strategy {name}
+
+  OPTIMIZATION:
+  When optimizing, modify parameter ranges in lib/optimize.py, not individual values here.
+  See hypothesis.md for recommended optimization bounds.
