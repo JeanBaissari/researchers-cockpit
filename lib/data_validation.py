@@ -972,6 +972,8 @@ class DataValidator(BaseValidator):
             self._check_stale_data,
             self._check_data_sufficiency,
             self._check_price_outliers,
+            self._check_volume_spikes,
+            self._check_potential_splits,
         ]
 
     def validate(
@@ -979,7 +981,8 @@ class DataValidator(BaseValidator):
         df: pd.DataFrame,
         calendar: Optional[Any] = None,
         asset_name: str = "unknown",
-        calendar_name: Optional[str] = None
+        calendar_name: Optional[str] = None,
+        asset_type: Optional[Literal['equity', 'forex', 'crypto']] = None
     ) -> ValidationResult:
         """
         Validate OHLCV DataFrame.
@@ -989,16 +992,24 @@ class DataValidator(BaseValidator):
             calendar: Optional trading calendar for gap detection
             asset_name: Asset name for logging
             calendar_name: Calendar name (e.g., 'XNYS', '24/7')
+            asset_type: Asset type ('equity', 'forex', 'crypto') for context-aware validation
 
         Returns:
             ValidationResult with all check outcomes
         """
+        # Store asset_type and calendar_name in config for use by checks
+        if asset_type is not None:
+            self.config.asset_type = asset_type
+        if calendar_name is not None:
+            self.config.calendar_name = calendar_name
+
         result = self._create_result()
 
         # Add metadata
         result.add_metadata('asset_name', asset_name)
         result.add_metadata('timeframe', self.config.timeframe)
         result.add_metadata('calendar_name', calendar_name)
+        result.add_metadata('asset_type', asset_type)
         result.add_metadata('row_count', len(df))
 
         # Handle empty DataFrame
