@@ -494,6 +494,10 @@ class ValidationConfig:
         min_rows_intraday: Minimum rows for intraday data
         strict_mode: If True, warnings become errors
         timeframe: Data timeframe for context-aware validation
+        asset_type: Asset type ('equity', 'forex', 'crypto') for context-aware validation
+        calendar_name: Calendar name (e.g., 'XNYS', '24/7', 'FOREX') for context-aware validation
+        check_sunday_bars: Whether to check for Sunday bars in FOREX/24/7 data
+        check_weekend_gaps: Whether to check weekend gap integrity for FOREX data
     """
     # Gap checking
     check_gaps: bool = True
@@ -964,9 +968,16 @@ class BaseValidator(ABC):
             '_check_stale_data': self.config.check_stale_data,
             '_check_price_outliers': self.config.check_outliers,
             '_check_sorted_index': self.config.check_sorted_index,
+            '_check_sunday_bars': self.config.check_sunday_bars,
+            '_check_weekend_gap_integrity': self.config.check_weekend_gaps,
             '_check_volume_spikes': self.config.check_volume_spikes,
             '_check_potential_splits': self.config.check_adjustments,
         }
+        
+        # Skip volume checks for FOREX (volume is unreliable)
+        if check_name == '_check_zero_volume' and self.config.asset_type == 'forex':
+            return True
+        
         return not config_map.get(check_name, True)
 
 
@@ -1038,6 +1049,8 @@ class DataValidator(BaseValidator):
             self._check_zero_volume,
             self._check_price_jumps,
             self._check_stale_data,
+            self._check_sunday_bars,
+            self._check_weekend_gap_integrity,
             self._check_data_sufficiency,
             self._check_price_outliers,
             self._check_volume_spikes,
