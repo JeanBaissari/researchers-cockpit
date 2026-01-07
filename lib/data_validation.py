@@ -519,6 +519,9 @@ class ValidationConfig:
     check_price_jumps: bool = True
     price_jump_threshold_pct: float = DEFAULT_PRICE_JUMP_THRESHOLD_PCT
 
+    # Adjustment detection
+    check_adjustments: bool = True
+
     # Index checks
     check_sorted_index: bool = True
 
@@ -531,6 +534,12 @@ class ValidationConfig:
 
     # Context
     timeframe: Optional[str] = None
+    asset_type: Optional[Literal['equity', 'forex', 'crypto']] = None
+    calendar_name: Optional[str] = None
+
+    # FOREX-specific checks
+    check_sunday_bars: bool = True
+    check_weekend_gaps: bool = True
 
     def __post_init__(self) -> None:
         """Normalize timeframe after initialization."""
@@ -598,61 +607,6 @@ class ValidationConfig:
             check_zero_volume=False,
             check_price_jumps=False,
             timeframe=timeframe
-        )
-
-    @classmethod
-    def for_equity(cls, timeframe: Optional[str] = None) -> 'ValidationConfig':
-        """
-        Create validation config optimized for equity data.
-        
-        Profile:
-        - Enables all standard checks
-        - Expects zero volume on holidays (handled by calendar checks)
-        - Enables price jump detection (for split detection)
-        """
-        return cls(
-            timeframe=timeframe,
-            asset_type='equity',
-            check_zero_volume=True,
-            check_price_jumps=True,
-            check_sunday_bars=False,  # Not relevant for equity
-            check_weekend_gaps=False  # Not relevant for equity
-        )
-
-    @classmethod
-    def for_forex(cls, timeframe: Optional[str] = None) -> 'ValidationConfig':
-        """
-        Create validation config optimized for FOREX data.
-        
-        Profile:
-        - Enables Sunday bar detection
-        - Enables weekend gap integrity checks
-        - Disables volume validation (unreliable for FOREX)
-        """
-        return cls(
-            timeframe=timeframe,
-            asset_type='forex',
-            check_zero_volume=False,  # Volume unreliable for FOREX
-            check_sunday_bars=True,
-            check_weekend_gaps=True
-        )
-
-    @classmethod
-    def for_crypto(cls, timeframe: Optional[str] = None) -> 'ValidationConfig':
-        """
-        Create validation config optimized for crypto data.
-        
-        Profile:
-        - Enables 24/7 continuity checks
-        - No session gaps expected
-        - Standard validation otherwise
-        """
-        return cls(
-            timeframe=timeframe,
-            asset_type='crypto',
-            check_gaps=True,  # Should be continuous
-            check_sunday_bars=False,  # 24/7 markets don't have Sunday bars
-            check_weekend_gaps=False  # No weekends in 24/7 markets
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -942,6 +896,8 @@ class BaseValidator(ABC):
             '_check_stale_data': self.config.check_stale_data,
             '_check_price_outliers': self.config.check_outliers,
             '_check_sorted_index': self.config.check_sorted_index,
+            '_check_volume_spikes': self.config.check_volume_spikes,
+            '_check_potential_splits': self.config.check_adjustments,
         }
         return not config_map.get(check_name, True)
 
@@ -1108,6 +1064,60 @@ class DataValidator(BaseValidator):
                 df, asset_name
             )
         return result
+
+    def _is_continuous_calendar(
+        self,
+        calendar: Optional[Any],
+        calendar_name: Optional[str]
+    ) -> bool:
+        """
+        Detect 24/7 calendars using calendar properties, fallback to string matching.
+        
+        Checks calendar properties first (if available), then falls back to
+        checking calendar_name against CONTINUOUS_CALENDARS set.
+        
+        Args:
+            calendar: Calendar object (may have properties like weekmask, session_length)
+            calendar_name: Calendar name string (e.g., 'CRYPTO', 'FOREX', '24/7')
+            
+        Returns:
+            True if calendar is continuous/24/7, False otherwise
+        """
+        # First, try to detect using calendar object properties
+        if calendar is not None:
+            # Check if calendar has weekmask that includes all days (24/7)
+            if hasattr(calendar, 'weekmask'):
+                weekmask = calendar.weekmask
+                # Check if all 7 days are included (continuous trading)
+                if isinstance(weekmask, str):
+                    # Check if all weekdays are present
+                    all_days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+                    if all(day in weekmask for day in all_days):
+                        return True
+            
+            # Check if calendar has a name attribute that matches continuous calendars
+            if hasattr(calendar, 'name'):
+                cal_name = str(calendar.name).upper()
+                if cal_name in CONTINUOUS_CALENDARS:
+                    return True
+            
+            # Check session length - if it's close to 24 hours, likely continuous
+            # This is a heuristic: if session is > 23 hours, consider it continuous
+            if hasattr(calendar, 'session_length'):
+                try:
+                    session_length = calendar.session_length
+                    if hasattr(session_length, 'total_seconds'):
+                        hours = session_length.total_seconds() / 3600
+                        if hours >= 23.0:
+                            return True
+                except (AttributeError, TypeError):
+                    pass
+        
+        # Fallback to string matching on calendar_name
+        if calendar_name:
+            return calendar_name.upper() in CONTINUOUS_CALENDARS
+        
+        return False
 
     # =========================================================================
     # Individual Check Methods
@@ -1478,6 +1488,131 @@ class DataValidator(BaseValidator):
             result.add_check('price_outliers', True, "No significant price outliers")
         return result
 
+    def _check_potential_splits(
+        self,
+        result: ValidationResult,
+        df: pd.DataFrame,
+        col_map: ColumnMapping,
+        asset_name: str
+    ) -> ValidationResult:
+        """
+        Detect potential unadjusted stock splits via price drops and volume spikes.
+        
+        Checks for common split ratios (2:1, 3:1, 4:1) and reverse splits (1:2, 1:3)
+        by detecting price movements that match split patterns, cross-referenced with
+        volume spikes on the same day.
+        """
+        close_col = col_map.close
+        volume_col = col_map.volume
+
+        if not close_col or len(df) < 2:
+            return result
+
+        # Only check for equity assets
+        if self.config.asset_type != 'equity':
+            result.add_check(
+                'potential_splits', True,
+                f"Split detection skipped for {self.config.asset_type or 'unknown'} asset type"
+            )
+            return result
+
+        # Common split ratios: 2:1 (50% drop), 3:1 (66.7% drop), 4:1 (75% drop)
+        # Also check 3:2 (33% drop) and 5:4 (25% drop) as mentioned in plan
+        # Reverse splits: 1:2 (100% increase), 1:3 (200% increase)
+        split_ratios = [
+            (0.25, 0.28, "5:4"),      # 25% drop ±3% tolerance
+            (0.33, 0.36, "3:2"),      # 33% drop ±3% tolerance
+            (0.50, 0.55, "2:1"),      # 50% drop ±5% tolerance
+            (0.667, 0.70, "3:1"),     # 66.7% drop ±3.3% tolerance
+            (0.75, 0.78, "4:1"),      # 75% drop ±3% tolerance
+            (1.00, 1.10, "1:2 reverse"),  # 100% increase ±10% tolerance
+            (2.00, 2.20, "1:3 reverse"),  # 200% increase ±20% tolerance
+        ]
+
+        # Calculate price changes
+        price_changes = df[close_col].pct_change().dropna()
+        
+        if len(price_changes) < 1:
+            return result
+
+        # Pre-calculate volume z-scores once for efficiency
+        volume_z_scores = None
+        volume_spike_threshold = self.config.volume_spike_threshold_sigma
+        if volume_col and len(df[volume_col]) >= 3:
+            try:
+                volume_z_scores = calculate_z_scores(df[volume_col])
+            except Exception:
+                # If volume z-score calculation fails, continue without volume check
+                volume_z_scores = None
+
+        potential_splits = []
+        
+        for date, pct_change in price_changes.items():
+            # Check for downward price drops (forward splits)
+            if pct_change < 0:
+                abs_change = abs(pct_change)
+                for min_ratio, max_ratio, ratio_name in split_ratios[:5]:  # Forward splits only
+                    if min_ratio <= abs_change <= max_ratio:
+                        # Check if there's a volume spike on the same day
+                        volume_z = None
+                        has_volume_spike = False
+                        
+                        if volume_z_scores is not None and date in volume_z_scores.index:
+                            volume_z = float(volume_z_scores[date])
+                            has_volume_spike = volume_z > volume_spike_threshold
+                        
+                        # Flag if price drop matches split pattern (with or without volume spike)
+                        # Volume spike strengthens the signal but isn't required
+                        if has_volume_spike or volume_z_scores is None:
+                            potential_splits.append({
+                                'date': str(date),
+                                'price_change_pct': float(pct_change * 100),
+                                'split_ratio': ratio_name,
+                                'volume_z_score': volume_z,
+                                'has_volume_spike': has_volume_spike
+                            })
+                        break
+            
+            # Check for upward price jumps (reverse splits)
+            elif pct_change > 0:
+                for min_ratio, max_ratio, ratio_name in split_ratios[5:]:  # Reverse splits only
+                    if min_ratio <= pct_change <= max_ratio:
+                        volume_z = None
+                        has_volume_spike = False
+                        
+                        if volume_z_scores is not None and date in volume_z_scores.index:
+                            volume_z = float(volume_z_scores[date])
+                            has_volume_spike = volume_z > volume_spike_threshold
+                        
+                        if has_volume_spike or volume_z_scores is None:
+                            potential_splits.append({
+                                'date': str(date),
+                                'price_change_pct': float(pct_change * 100),
+                                'split_ratio': ratio_name,
+                                'volume_z_score': volume_z,
+                                'has_volume_spike': has_volume_spike
+                            })
+                        break
+
+        if potential_splits:
+            msg = (
+                f"Found {len(potential_splits)} potential unadjusted split(s) in {asset_name}. "
+                f"Consider using adjusted close data or verifying split adjustments. "
+                f"Sample dates: {', '.join([s['date'] for s in potential_splits[:3]])}"
+            )
+            
+            result.add_check(
+                'potential_splits', False, msg,
+                {
+                    'potential_split_count': len(potential_splits),
+                    'potential_splits': potential_splits[:10]  # Limit to first 10
+                },
+                severity=ValidationSeverity.WARNING
+            )
+        else:
+            result.add_check('potential_splits', True, "No potential unadjusted splits detected")
+        return result
+
     def _check_date_continuity(
         self,
         result: ValidationResult,
@@ -1571,7 +1706,7 @@ class DataValidator(BaseValidator):
                 return result
 
             # For 24/7 calendars, skip session-based checks
-            if calendar_name in CONTINUOUS_CALENDARS:
+            if self._is_continuous_calendar(calendar=calendar, calendar_name=calendar_name):
                 return self._check_intraday_continuity(result, df, asset_name)
 
             # Check session coverage
@@ -2667,4 +2802,3 @@ def load_validation_report(report_path: Union[str, Path]) -> ValidationResult:
             pass
     
     return result
-
