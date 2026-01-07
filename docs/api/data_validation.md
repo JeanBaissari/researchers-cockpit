@@ -34,7 +34,9 @@ class DataValidator(BaseValidator):
         df: pd.DataFrame,
         calendar: Optional[Any] = None,
         asset_name: str = "unknown",
-        calendar_name: Optional[str] = None
+        calendar_name: Optional[str] = None,
+        asset_type: Optional[Literal['equity', 'forex', 'crypto']] = None,
+        suggest_fixes: bool = False
     ) -> ValidationResult
 ```
 
@@ -47,6 +49,8 @@ class DataValidator(BaseValidator):
 | `calendar` | Any | None | Optional trading calendar for gap detection |
 | `asset_name` | str | "unknown" | Asset name for logging and error messages |
 | `calendar_name` | str | None | Calendar name (e.g., 'XNYS', 'CRYPTO', '24/7') |
+| `asset_type` | Literal['equity', 'forex', 'crypto'] | None | Asset type for context-aware validation |
+| `suggest_fixes` | bool | False | If True, add fix suggestions to result metadata |
 
 **Returns:** `ValidationResult` - Validation results with all check outcomes
 
@@ -84,6 +88,10 @@ if not result.passed:
 11. **Data sufficiency** - Ensures minimum row count for analysis
 12. **Price outliers** - Detects statistical outliers using z-scores
 13. **Date/bar continuity** - Checks for gaps using trading calendar (if provided)
+14. **Sunday bars** - Detects Sunday bars in FOREX/24/7 data (asset-type aware)
+15. **Weekend gap integrity** - Validates FOREX weekend gap semantics (Friday-Sunday-Monday relationships)
+16. **Volume spikes** - Detects unusual volume spikes using z-score analysis
+17. **Potential splits** - Detects potential unadjusted stock splits via price drops and volume spikes (equity only)
 
 **Column Name Support:**
 
@@ -123,10 +131,15 @@ class ValidationConfig:
     # Volume checks
     check_zero_volume: bool = True
     zero_volume_threshold_pct: float = 10.0
+    check_volume_spikes: bool = True
+    volume_spike_threshold_sigma: float = 5.0
     
     # Price jump detection
     check_price_jumps: bool = True
     price_jump_threshold_pct: float = 50.0
+    
+    # Adjustment detection
+    check_adjustments: bool = True
     
     # Index checks
     check_sorted_index: bool = True
@@ -137,9 +150,16 @@ class ValidationConfig:
     
     # Mode
     strict_mode: bool = False
+    suggest_fixes: bool = False
     
     # Context
     timeframe: Optional[str] = None
+    asset_type: Optional[Literal['equity', 'forex', 'crypto']] = None
+    calendar_name: Optional[str] = None
+    
+    # FOREX-specific checks
+    check_sunday_bars: bool = True
+    check_weekend_gaps: bool = True
 ```
 
 **Factory Methods:**
@@ -156,6 +176,11 @@ config = ValidationConfig.lenient(timeframe='1h')
 
 # Minimal config (only essential checks)
 config = ValidationConfig.minimal(timeframe='1d')
+
+# Asset-type-specific configurations
+config = ValidationConfig.for_equity(timeframe='1d')    # Enables split detection, volume checks
+config = ValidationConfig.for_forex(timeframe='1d')     # Enables Sunday bar detection, disables volume checks
+config = ValidationConfig.for_crypto(timeframe='1h')    # Optimized for 24/7 markets
 ```
 
 **Example:**
@@ -294,7 +319,9 @@ def validate_before_ingest(
     timeframe: Optional[str] = None,
     calendar: Optional[Any] = None,
     calendar_name: Optional[str] = None,
+    asset_type: Optional[Literal['equity', 'forex', 'crypto']] = None,
     strict_mode: bool = False,
+    suggest_fixes: bool = False,
     config: Optional[ValidationConfig] = None
 ) -> ValidationResult
 ```
@@ -433,6 +460,158 @@ validator = DataValidator(config=config)
 result = validator.validate(df, asset_name='BTCUSD', calendar_name='CRYPTO')
 ```
 
+### Asset Type-Aware Validation
+
+The validator can adapt its checks based on asset type (equity, forex, crypto):
+
+```python
+from lib.data_validation import DataValidator, ValidationConfig
+
+# FOREX validation - enables Sunday bar detection, disables volume checks
+config = ValidationConfig.for_forex(timeframe='1d')
+validator = DataValidator(config=config)
+result = validator.validate(
+    df, 
+    asset_name='EURUSD',
+    asset_type='forex',
+    calendar_name='24/7'
+)
+
+# Equity validation - enables split detection, volume checks
+config = ValidationConfig.for_equity(timeframe='1d')
+validator = DataValidator(config=config)
+result = validator.validate(
+    df,
+    asset_name='AAPL',
+    asset_type='equity',
+    calendar_name='XNYS'
+)
+
+# Crypto validation - 24/7 continuity checks
+config = ValidationConfig.for_crypto(timeframe='1h')
+validator = DataValidator(config=config)
+result = validator.validate(
+    df,
+    asset_name='BTCUSD',
+    asset_type='crypto',
+    calendar_name='CRYPTO'
+)
+```
+
+### Sunday Bar Detection (FOREX)
+
+Detects Sunday bars in FOREX data that should be consolidated to Friday:
+
+```python
+from lib.data_validation import DataValidator, ValidationConfig
+
+config = ValidationConfig(
+    timeframe='1d',
+    asset_type='forex',
+    check_sunday_bars=True
+)
+validator = DataValidator(config=config)
+result = validator.validate(df, asset_name='EURUSD', asset_type='forex')
+
+if not result.passed:
+    for check in result.warning_checks:
+        if check.name == 'sunday_bars':
+            print(f"Found Sunday bars: {check.details['sunday_count']}")
+            print(f"Dates: {check.details['sunday_dates']}")
+            # Use lib.utils.consolidate_sunday_to_friday() to fix
+```
+
+### Volume Spike Detection
+
+Detects unusual volume spikes that may indicate data quality issues:
+
+```python
+from lib.data_validation import DataValidator, ValidationConfig
+
+config = ValidationConfig(
+    timeframe='1d',
+    check_volume_spikes=True,
+    volume_spike_threshold_sigma=5.0  # Default: 5 standard deviations
+)
+validator = DataValidator(config=config)
+result = validator.validate(df, asset_name='AAPL', asset_type='equity')
+
+if not result.passed:
+    for check in result.warning_checks:
+        if check.name == 'volume_spikes':
+            print(f"Volume spikes detected: {check.details['spike_count']}")
+            print(f"Spike dates: {check.details['spike_dates']}")
+```
+
+### Split Detection (Equity)
+
+Detects potential unadjusted stock splits:
+
+```python
+from lib.data_validation import DataValidator, ValidationConfig
+
+config = ValidationConfig(
+    timeframe='1d',
+    asset_type='equity',
+    check_adjustments=True
+)
+validator = DataValidator(config=config)
+result = validator.validate(df, asset_name='AAPL', asset_type='equity')
+
+if not result.passed:
+    for check in result.warning_checks:
+        if check.name == 'potential_splits':
+            print(f"Potential splits found: {check.details['potential_split_count']}")
+            for split in check.details['potential_splits']:
+                print(f"  Date: {split['date']}, Ratio: {split['split_ratio']}, "
+                      f"Change: {split['price_change_pct']:.2f}%")
+            # Consider using adjusted close data
+```
+
+### Weekend Gap Integrity (FOREX)
+
+Validates FOREX weekend gap semantics:
+
+```python
+from lib.data_validation import DataValidator, ValidationConfig
+
+config = ValidationConfig(
+    timeframe='1d',
+    asset_type='forex',
+    check_weekend_gaps=True
+)
+validator = DataValidator(config=config)
+result = validator.validate(df, asset_name='EURUSD', asset_type='forex')
+
+if not result.passed:
+    for check in result.warning_checks:
+        if check.name == 'weekend_gap_integrity':
+            print(f"Weekend gap issues: {check.details['issues']}")
+```
+
+### Fix Suggestions
+
+Enable fix suggestions to get actionable recommendations:
+
+```python
+from lib.data_validation import validate_before_ingest
+
+result = validate_before_ingest(
+    df,
+    asset_name='EURUSD',
+    timeframe='1d',
+    asset_type='forex',
+    suggest_fixes=True
+)
+
+if not result.passed:
+    fixes = result.metadata.get('suggested_fixes', [])
+    for fix in fixes:
+        print(f"Issue: {fix['issue']}")
+        print(f"Function: {fix['function']}")
+        print(f"Description: {fix['description']}")
+```
+
 ### Validation During Ingestion
 
 The data ingestion pipeline automatically validates data:
@@ -510,6 +689,108 @@ print(f"Date range: {result.metadata.get('date_range_start')} to {result.metadat
 
 ---
 
+## New Features
+
+### Asset Type Awareness
+
+The validator now supports asset-type-aware validation with three profiles:
+
+- **Equity**: Enables split detection, volume spike checks, and expects zero volume on holidays
+- **Forex**: Enables Sunday bar detection and weekend gap integrity checks, disables volume validation (unreliable)
+- **Crypto**: Optimized for 24/7 markets, no session gaps expected
+
+Asset type can be specified via:
+- `ValidationConfig.asset_type` parameter
+- `DataValidator.validate(asset_type=...)` parameter
+- Factory methods: `ValidationConfig.for_equity()`, `for_forex()`, `for_crypto()`
+
+### Sunday Bar Detection
+
+Detects Sunday bars in FOREX/24/7 data that should be consolidated to Friday. This check:
+- Only runs for FOREX assets or 24/7 calendars
+- Identifies all Sunday bars (dayofweek == 6)
+- Provides actionable fix suggestions using `lib.utils.consolidate_sunday_to_friday()`
+- Returns warning severity (non-blocking)
+
+**Configuration:**
+```python
+config = ValidationConfig(
+    check_sunday_bars=True,  # Default: True
+    asset_type='forex'
+)
+```
+
+### Weekend Gap Integrity
+
+Validates FOREX weekend gap semantics by checking:
+- Friday-Sunday pairs (potential duplication)
+- Sunday-Monday pairs (should reflect weekend movement)
+- Friday-Monday pairs without Sunday (expected for consolidated data)
+
+**Configuration:**
+```python
+config = ValidationConfig(
+    check_weekend_gaps=True,  # Default: True
+    asset_type='forex'
+)
+```
+
+### Volume Spike Detection
+
+Detects unusual volume spikes using z-score analysis:
+- Calculates z-scores for volume data
+- Flags spikes exceeding threshold (default: 5 sigma)
+- Automatically skipped for FOREX assets (volume unreliable)
+- Provides spike dates and statistics
+
+**Configuration:**
+```python
+config = ValidationConfig(
+    check_volume_spikes=True,  # Default: True
+    volume_spike_threshold_sigma=5.0  # Default: 5.0
+)
+```
+
+### Split/Dividend Adjustment Detection
+
+Detects potential unadjusted stock splits by:
+- Identifying price drops matching common split ratios (2:1, 3:1, 4:1, etc.)
+- Cross-referencing with volume spikes on same day
+- Detecting reverse splits (1:2, 1:3)
+- Only runs for equity assets
+
+**Supported Split Ratios:**
+- Forward splits: 5:4 (25% drop), 3:2 (33% drop), 2:1 (50% drop), 3:1 (67% drop), 4:1 (75% drop)
+- Reverse splits: 1:2 (100% increase), 1:3 (200% increase)
+
+**Configuration:**
+```python
+config = ValidationConfig(
+    check_adjustments=True,  # Default: True
+    asset_type='equity'  # Required for split detection
+)
+```
+
+### Fix Suggestions
+
+When `suggest_fixes=True`, the validator adds actionable fix suggestions to result metadata:
+
+```python
+result = validate_before_ingest(
+    df,
+    asset_name='EURUSD',
+    suggest_fixes=True
+)
+
+fixes = result.metadata.get('suggested_fixes', [])
+for fix in fixes:
+    print(f"Issue: {fix['issue']}")
+    print(f"Function: {fix['function']}")
+    print(f"Description: {fix['description']}")
+```
+
+---
+
 ## Integration with Data Ingestion
 
 The validation API is integrated into the data ingestion pipeline:
@@ -534,10 +815,14 @@ Validating data for INVALID...
 
 1. **Validate before ingestion**: Use `validate_before_ingest()` or `scripts/validate_csv_data.py` to check data quality
 2. **Use appropriate timeframes**: Set `timeframe` in config for context-aware validation
-3. **Review warnings**: Even if validation passes, review warnings for potential issues
-4. **Use strict mode for critical data**: Enable `strict_mode=True` for production data
-5. **Fix issues at source**: Correct data files rather than working around validation failures
-6. **Check validation reports**: Use `result.summary()` to understand all issues
+3. **Specify asset type**: Always provide `asset_type` parameter for context-aware validation (equity/forex/crypto)
+4. **Review warnings**: Even if validation passes, review warnings for potential issues
+5. **Use strict mode for critical data**: Enable `strict_mode=True` for production data
+6. **Fix issues at source**: Correct data files rather than working around validation failures
+7. **Check validation reports**: Use `result.summary()` to understand all issues
+8. **Enable fix suggestions**: Use `suggest_fixes=True` to get actionable recommendations
+9. **Asset-specific validation**: Use `ValidationConfig.for_equity()`, `for_forex()`, or `for_crypto()` for optimized validation profiles
+10. **Handle FOREX Sunday bars**: Use `lib.utils.consolidate_sunday_to_friday()` to fix Sunday bar issues in FOREX data
 
 ---
 
