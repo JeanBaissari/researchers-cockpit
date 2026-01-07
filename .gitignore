@@ -52,6 +52,8 @@ data/cache/*
 !data/cache/.gitkeep
 data/exports/*
 !data/exports/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
 
 # Results (keep structure, not content)
 results/*
