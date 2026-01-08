@@ -22,7 +22,7 @@ from lib.utils import create_strategy_from_template
 from lib.backtest import run_backtest, save_results
 from lib.metrics import compare_strategies
 from lib.config import load_strategy_params
-from lib.data_loader import list_bundles
+from lib.bundles import list_bundles
 
 
 @pytest.mark.integration

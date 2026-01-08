@@ -38,8 +38,8 @@ sys.path.insert(0, str(project_root))
 import click
 from typing import Optional, List, Dict, Any
 
-from lib.data_loader import (
-    _load_bundle_registry,
+from lib.bundles import (
+    load_bundle_registry as _load_bundle_registry,
     ingest_bundle,
     VALID_TIMEFRAMES,
 )

@@ -14,6 +14,10 @@ CRITICAL RULES:
 - Every strategy MUST have a hypothesis.md file
 - Use lib/config.py to load parameters
 - Follow naming conventions from .agent/conventions.md
+
+REQUIREMENTS:
+- This template requires v1.0.8 or later of The Researcher's Cockpit
+- The lib/ package must be properly installed and available
 ==============================================================================
 """
 
@@ -48,79 +52,34 @@ from pathlib import Path
 import sys
 
 # Add project root to path for lib imports
-# This allows strategies to import lib modules
-# Uses centralized utility for robust path resolution
-try:
-    from lib.utils import get_project_root
-    _project_root = get_project_root()
-    if str(_project_root) not in sys.path:
-        sys.path.insert(0, str(_project_root))
-    from lib.config import load_strategy_params
-    _has_lib_config = True
-except ImportError:
-    # Fallback: Try to find project root manually if lib not available
-    markers = ['pyproject.toml', '.git', 'config/settings.yaml', 'CLAUDE.md']
-    current = Path(__file__).resolve().parent
-    while current != current.parent:
-        for marker in markers:
-            if (current / marker).exists():
-                _project_root = current
-                if str(_project_root) not in sys.path:
-                    sys.path.insert(0, str(_project_root))
-                break
-        else:
-            current = current.parent
-            continue
-        break
-    else:
-        raise RuntimeError("Could not find project root. Missing marker files.")
-    
-    # Try to import lib.config after adding to path
-    try:
-        from lib.config import load_strategy_params
-        _has_lib_config = True
-    except ImportError:
-        import yaml
-        _has_lib_config = False
+# This allows strategies to import lib modules (requires v1.0.8+)
+from lib.paths import get_project_root
+from lib.config import load_strategy_params
+
+_project_root = get_project_root()
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
 
 
 def load_params():
     """
-    Load parameters from parameters.yaml file.
+    Load parameters from parameters.yaml file using lib.config.
     
-    Uses lib.config.load_strategy_params() if available, otherwise falls back
-    to direct YAML loading.
+    Requires v1.0.8+ with lib.config.load_strategy_params() available.
     
     Returns:
         dict: Strategy parameters
     """
-    if _has_lib_config:
-        # Use lib.config for centralized config loading
-        # Extract strategy name from path: strategies/{asset_class}/{name}/strategy.py
-        strategy_path = Path(__file__).parent
-        strategy_name = strategy_path.name
-        # Try to infer asset_class from parent directory
-        asset_class = strategy_path.parent.name
-        if asset_class == 'strategies':
-            asset_class = None  # Couldn't infer, will search all
-        
-        try:
-            return load_strategy_params(strategy_name, asset_class)
-        except Exception:
-            # Fallback to direct loading if lib.config fails
-            pass
+    # Extract strategy name from path: strategies/{asset_class}/{name}/strategy.py
+    strategy_path = Path(__file__).parent
+    strategy_name = strategy_path.name
     
-    # Fallback: Direct YAML loading
-    import yaml
-    params_path = Path(__file__).parent / 'parameters.yaml'
-    if not params_path.exists():
-        raise FileNotFoundError(
-            f"parameters.yaml not found at {params_path}. "
-            "Every strategy must have a parameters.yaml file."
-        )
+    # Try to infer asset_class from parent directory
+    asset_class = strategy_path.parent.name
+    if asset_class == 'strategies':
+        asset_class = None  # Couldn't infer, will search all
     
-    with open(params_path) as f:
-        return yaml.safe_load(f)
+    return load_strategy_params(strategy_name, asset_class)
 
 
 def _calculate_required_warmup(params: dict) -> int:

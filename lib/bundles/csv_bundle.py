@@ -13,7 +13,7 @@ import pandas as pd
 from zipline.utils.calendar_utils import get_calendar
 
 from ..utils import get_project_root, aggregate_ohlcv
-from ..data_validation import DataValidator, ValidationConfig
+from ..validation import DataValidator, ValidationConfig
 from ..data.filters import (
     filter_forex_presession_bars,
     consolidate_forex_sunday_to_friday,

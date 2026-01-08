@@ -27,7 +27,7 @@ class TestTimeframeConfiguration:
 
     def test_timeframe_to_yf_interval_mapping(self):
         """Verify timeframe to yfinance interval mapping is complete."""
-        from lib.data_loader import TIMEFRAME_TO_YF_INTERVAL
+        from lib.bundles import TIMEFRAME_TO_YF_INTERVAL
 
         # Check expected timeframes exist
         expected = ['1m', '5m', '15m', '30m', '1h', 'daily', '1d']
@@ -36,7 +36,7 @@ class TestTimeframeConfiguration:
 
     def test_timeframe_data_limits(self):
         """Verify data limits are set correctly for each timeframe."""
-        from lib.data_loader import TIMEFRAME_DATA_LIMITS
+        from lib.bundles import TIMEFRAME_DATA_LIMITS
 
         # Check intraday limits
         assert TIMEFRAME_DATA_LIMITS.get('1m') is not None
@@ -53,7 +53,7 @@ class TestTimeframeConfiguration:
 
     def test_calendar_minutes_per_day(self):
         """Verify minutes_per_day is set correctly for each calendar type."""
-        from lib.data_loader import CALENDAR_MINUTES_PER_DAY
+        from lib.bundles import CALENDAR_MINUTES_PER_DAY
 
         # Equities: 6.5 hours = 390 minutes
         assert CALENDAR_MINUTES_PER_DAY.get('XNYS') == 390
@@ -66,7 +66,7 @@ class TestTimeframeConfiguration:
 
     def test_get_timeframe_info(self):
         """Test get_timeframe_info returns complete information."""
-        from lib.data_loader import get_timeframe_info
+        from lib.bundles import get_timeframe_info
 
         # Test hourly
         info = get_timeframe_info('1h')
@@ -84,7 +84,7 @@ class TestTimeframeConfiguration:
 
     def test_get_timeframe_info_invalid(self):
         """Test get_timeframe_info raises error for invalid timeframe."""
-        from lib.data_loader import get_timeframe_info
+        from lib.bundles import get_timeframe_info
 
         with pytest.raises(ValueError) as exc_info:
             get_timeframe_info('invalid_tf')
@@ -92,7 +92,7 @@ class TestTimeframeConfiguration:
 
     def test_validate_timeframe_date_range(self):
         """Test date range validation for limited timeframes."""
-        from lib.data_loader import validate_timeframe_date_range
+        from lib.bundles import validate_timeframe_date_range
 
         # Test 5m with date too far back
         old_date = (datetime.now() - timedelta(days=100)).strftime('%Y-%m-%d')
@@ -104,7 +104,7 @@ class TestTimeframeConfiguration:
 
     def test_weekly_monthly_rejected(self):
         """Test that weekly/monthly timeframes are rejected."""
-        from lib.data_loader import ingest_bundle
+        from lib.bundles import ingest_bundle
 
         with pytest.raises(ValueError) as exc_info:
             ingest_bundle(
@@ -121,7 +121,7 @@ class TestBundleRegistry:
 
     def test_load_save_registry(self):
         """Test registry load/save operations."""
-        from lib.data_loader import _load_bundle_registry, _save_bundle_registry
+        from lib.bundles import _load_bundle_registry, _save_bundle_registry
 
         # Load current registry
         registry = _load_bundle_registry()
@@ -129,7 +129,7 @@ class TestBundleRegistry:
 
     def test_registry_metadata_structure(self):
         """Test that registry entries have required fields."""
-        from lib.data_loader import _load_bundle_registry
+        from lib.bundles import _load_bundle_registry
 
         registry = _load_bundle_registry()
 
@@ -141,7 +141,7 @@ class TestBundleRegistry:
 
     def test_registry_timeframe_preserved(self):
         """Test that timeframe is preserved in registry entries."""
-        from lib.data_loader import _load_bundle_registry
+        from lib.bundles import _load_bundle_registry
 
         registry = _load_bundle_registry()
 
@@ -234,7 +234,7 @@ class TestCryptoCalendar:
 
     def test_crypto_minutes_per_day(self):
         """Test CRYPTO calendar has 1440 minutes per day."""
-        from lib.data_loader import get_minutes_per_day
+        from lib.bundles import get_minutes_per_day
 
         mpd = get_minutes_per_day('CRYPTO')
         assert mpd == 1440
@@ -245,7 +245,7 @@ class TestBundleAutoDetection:
 
     def test_auto_detect_from_registry(self):
         """Test auto-detection reads frequency from registry."""
-        from lib.data_loader import _load_bundle_registry
+        from lib.bundles import _load_bundle_registry
 
         registry = _load_bundle_registry()
 
@@ -388,7 +388,7 @@ class TestEndToEndWorkflow:
 
     def test_daily_bundle_exists(self):
         """Verify daily bundles can be loaded."""
-        from lib.data_loader import load_bundle, _load_bundle_registry
+        from lib.bundles import load_bundle, _load_bundle_registry
 
         registry = _load_bundle_registry()
         daily_bundles = [b for b in registry if 'daily' in b]
@@ -403,7 +403,7 @@ class TestEndToEndWorkflow:
 
     def test_backtest_with_daily_bundle(self):
         """Test backtest execution with daily bundle."""
-        from lib.data_loader import _load_bundle_registry
+        from lib.bundles import _load_bundle_registry
 
         registry = _load_bundle_registry()
 
@@ -431,7 +431,7 @@ class TestIntradayBundleDailyBars:
         Bundles ingested before v1.0.6 fix may have NaT first_trading_day.
         This test warns but doesn't fail for old bundles that need re-ingestion.
         """
-        from lib.data_loader import load_bundle, _load_bundle_registry
+        from lib.bundles import load_bundle, _load_bundle_registry
         import warnings
 
         registry = _load_bundle_registry()
@@ -480,7 +480,7 @@ class TestIntradayBundleDailyBars:
         This test validates the NaT fix is working. Bundles ingested before
         the fix will be reported but won't cause test failure.
         """
-        from lib.data_loader import load_bundle, _load_bundle_registry
+        from lib.bundles import load_bundle, _load_bundle_registry
         import numpy as np
         import warnings
 
@@ -555,7 +555,7 @@ class TestSymbolValidation:
 
     def test_bundle_symbols_retrievable(self):
         """Test that bundle symbols can be retrieved from registry."""
-        from lib.data_loader import _load_bundle_registry
+        from lib.bundles import _load_bundle_registry
 
         registry = _load_bundle_registry()
 
@@ -566,7 +566,7 @@ class TestSymbolValidation:
 
     def test_symbol_lookup_in_bundle(self):
         """Test that symbols in bundle can be looked up via asset_finder."""
-        from lib.data_loader import load_bundle, _load_bundle_registry
+        from lib.bundles import load_bundle, _load_bundle_registry
 
         registry = _load_bundle_registry()
 
@@ -601,7 +601,7 @@ class TestBundleIntegrity:
         1. Daily reader has valid (non-NaT) first_trading_day after NaT fix
         2. Both readers exist and are accessible
         """
-        from lib.data_loader import load_bundle, _load_bundle_registry
+        from lib.bundles import load_bundle, _load_bundle_registry
         import warnings
 
         registry = _load_bundle_registry()
@@ -640,7 +640,7 @@ class TestBundleIntegrity:
 
     def test_calendar_consistency(self):
         """Test that bundle calendar matches registry calendar."""
-        from lib.data_loader import load_bundle, _load_bundle_registry
+        from lib.bundles import load_bundle, _load_bundle_registry
 
         registry = _load_bundle_registry()
 
@@ -667,7 +667,7 @@ class TestBacktestPrerequisites:
 
     def test_bundle_has_required_data_for_backtest(self):
         """Test that bundles have data required for backtesting."""
-        from lib.data_loader import load_bundle, _load_bundle_registry
+        from lib.bundles import load_bundle, _load_bundle_registry
 
         registry = _load_bundle_registry()
 
@@ -719,7 +719,7 @@ class TestErrorHandling:
 
     def test_invalid_bundle_name_handling(self):
         """Test that invalid bundle names are handled gracefully."""
-        from lib.data_loader import load_bundle
+        from lib.bundles import load_bundle
 
         with pytest.raises((FileNotFoundError, ValueError, KeyError)):
             load_bundle('nonexistent_bundle_xyz')
@@ -734,7 +734,7 @@ class TestErrorHandling:
 
     def test_invalid_timeframe_handling(self):
         """Test that invalid timeframes raise appropriate errors."""
-        from lib.data_loader import get_timeframe_info
+        from lib.bundles import get_timeframe_info
 
         invalid_timeframes = ['invalid', '3h', '2d', '']
         for tf in invalid_timeframes:
@@ -756,7 +756,7 @@ class TestSlowIntegration:
 
         Expected: Should complete in ~60s with network access.
         """
-        from lib.data_loader import ingest_bundle
+        from lib.bundles import ingest_bundle
 
         bundle_name = ingest_bundle(
             source='yahoo',
@@ -774,7 +774,7 @@ class TestSlowIntegration:
 
         Verifies FOREX session filtering works correctly.
         """
-        from lib.data_loader import ingest_bundle, _load_bundle_registry
+        from lib.bundles import ingest_bundle, _load_bundle_registry
 
         bundle_name = ingest_bundle(
             source='yahoo',
@@ -800,7 +800,7 @@ class TestSlowIntegration:
         Full end-to-end validation of intraday backtest execution.
         """
         from lib.backtest import run_backtest
-        from lib.data_loader import _load_bundle_registry
+        from lib.bundles import _load_bundle_registry
 
         registry = _load_bundle_registry()
         intraday_bundles = [b for b in registry if '1h' in b and 'equities' in b]

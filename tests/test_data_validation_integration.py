@@ -25,7 +25,8 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from lib.validation import DataValidator, ValidationConfig, ValidationResult
-from lib.data_loader import _register_csv_bundle, get_project_root
+from lib.bundles import _register_csv_bundle
+from lib.utils import get_project_root
 
 
 # =============================================================================
@@ -406,7 +407,7 @@ def test_validation_failure_prevents_ingestion(temp_data_dir, invalid_ohlcv_data
     df = pd.read_csv(csv_file, parse_dates=[0], index_col=0)
     
     # Normalize columns (as ingestion does)
-    from lib.data_loader import _normalize_csv_columns
+    from lib.bundles import _normalize_csv_columns
     try:
         df = _normalize_csv_columns(df)
     except ValueError:
@@ -442,7 +443,7 @@ def test_validation_with_real_csv_file():
     df = pd.read_csv(csv_file, parse_dates=[0], index_col=0)
     
     # Normalize columns
-    from lib.data_loader import _normalize_csv_columns
+    from lib.bundles import _normalize_csv_columns
     try:
         df = _normalize_csv_columns(df)
     except ValueError as e:
@@ -1106,7 +1107,7 @@ def test_suggest_fixes_disabled(forex_data_with_sunday_bars):
 
 def test_validate_before_ingest_with_asset_type(valid_ohlcv_data):
     """Test validate_before_ingest with asset_type parameter."""
-    from lib.data_validation import validate_before_ingest
+    from lib.validation import validate_before_ingest
     
     result = validate_before_ingest(
         df=valid_ohlcv_data,
@@ -1121,7 +1122,7 @@ def test_validate_before_ingest_with_asset_type(valid_ohlcv_data):
 
 def test_validate_before_ingest_with_suggest_fixes(forex_data_with_sunday_bars):
     """Test validate_before_ingest with suggest_fixes parameter."""
-    from lib.data_validation import validate_before_ingest
+    from lib.validation import validate_before_ingest
     
     result = validate_before_ingest(
         df=forex_data_with_sunday_bars,

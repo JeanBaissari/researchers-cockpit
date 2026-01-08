@@ -98,6 +98,21 @@ This project creates a zipline-reloaded based algorithmic trading research envir
 - FOREX Sunday session filtering
 - Automatic gap-filling (FOREX: 5 days, CRYPTO: 3 days)
 - Calendar validation warnings
+
+### ✅ v1.0.8 Complete Refactoring (2026-01-08)
+- **Removed all legacy wrapper files** (~558 lines deleted):
+  - Deleted `lib/data_loader.py`, `lib/data_validation.py`, `lib/data_integrity.py`
+  - Deleted `lib/logging_config.py`, `lib/optimize.py`, `lib/validate.py`
+- **Migrated all imports** to modern modular architecture:
+  - Scripts, tests, notebooks now use `lib.bundles`, `lib.validation`, etc.
+  - No backward-compatible fallbacks remain in `lib/__init__.py`
+- **Consolidated calendar system** into `lib/calendars/` package:
+  - CryptoCalendar, ForexCalendar, registry, and utilities
+  - `.zipline/extension.py` now thin loader pointing to `lib.calendars`
+- **Clean modular architecture** enforced:
+  - All packages under `lib/` follow 150-line-per-file guideline
+  - Zero duplicate functionality across codebase
+  - Direct imports only (no try/except fallbacks)
 - Enhanced ingestion CLI
 
 ### ✅ v1.0.6 Multi-Timeframe Data Ingestion (2025-12-28)

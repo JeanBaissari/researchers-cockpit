@@ -26,7 +26,7 @@ sys.path.insert(0, str(project_root))
 from lib.utils import create_strategy_from_template, get_strategy_path
 from lib.config import load_strategy_params, validate_strategy_params
 from lib.backtest import run_backtest, save_results
-from lib.data_loader import list_bundles
+from lib.bundles import list_bundles
 
 
 @pytest.mark.integration

@@ -27,7 +27,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 import click
-from lib.data_loader import ingest_bundle, VALID_TIMEFRAMES, TIMEFRAME_DATA_LIMITS
+from lib.bundles import ingest_bundle, VALID_TIMEFRAMES, TIMEFRAME_DATA_LIMITS
 
 
 def format_timeframe_help():

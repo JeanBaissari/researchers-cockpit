@@ -22,7 +22,7 @@ if str(project_root) not in sys.path:
 
 from lib.utils import normalize_to_calendar_timezone
 from lib.config import load_settings
-from lib.data_loader import list_bundles, load_bundle
+from lib.bundles import list_bundles, load_bundle
 
 
 class TestDateNormalization:
@@ -61,7 +61,7 @@ class TestCalendarConsistency:
     
     def test_calendar_codes_use_exchange_calendars_format(self):
         """Verify calendar codes use exchange_calendars format."""
-        from lib.data_loader import _register_yahoo_bundle
+        from lib.bundles import _register_yahoo_bundle
         
         # This should use XNYS, not NYSE
         # We can't easily test the registration without actual data,

@@ -80,8 +80,8 @@ def main(strategy, start, end, capital, bundle, asset_class, data_frequency, ski
 
         # Auto-detect data frequency from bundle registry if not specified
         if data_frequency is None:
-            from lib.data_loader import _load_bundle_registry
-            registry = _load_bundle_registry()
+            from lib.bundles import load_bundle_registry
+            registry = load_bundle_registry()
 
             # Determine which bundle to check
             bundle_to_check = bundle

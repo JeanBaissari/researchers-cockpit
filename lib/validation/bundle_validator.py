@@ -50,7 +50,7 @@ class BundleValidator(BaseValidator):
         if bundle_path_resolver is None:
             # Lazy import to avoid circular dependency
             try:
-                from ..data_loader import get_bundle_path
+                from ..bundles import get_bundle_path
                 self.bundle_path_resolver = get_bundle_path
             except ImportError:
                 self.bundle_path_resolver = None

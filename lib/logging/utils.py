@@ -118,7 +118,7 @@ def log_exception(
 
 def log_validation_result(
     logger: logging.Logger,
-    result: Any,  # ValidationResult from lib.data_validation
+    result: Any,  # ValidationResult from lib.validation
     include_details: bool = True,
 ) -> None:
     """
@@ -129,7 +129,7 @@ def log_validation_result(
     
     Args:
         logger: Logger instance to use.
-        result: ValidationResult object from lib.data_validation.
+        result: ValidationResult object from lib.validation.
         include_details: Whether to include detailed issue information.
     """
     # Determine overall status and log level

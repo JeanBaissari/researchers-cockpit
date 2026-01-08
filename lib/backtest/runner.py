@@ -11,7 +11,7 @@ import pandas as pd
 
 from ..config import load_strategy_params, validate_strategy_params
 from ..utils import normalize_to_utc
-from ..extension import register_custom_calendars, get_calendar_for_asset_class
+from ..calendars import register_custom_calendars, get_calendar_for_asset_class
 
 from .strategy import _load_strategy_module
 from .config import BacktestConfig, _prepare_backtest_config, _validate_warmup_period
@@ -61,7 +61,7 @@ def _validate_calendar_consistency(bundle: str, trading_calendar: Any) -> None:
     Logs:
         Warning if calendars don't match
     """
-    from ..data_loader import _load_bundle_registry
+    from ..bundles import _load_bundle_registry
 
     registry = _load_bundle_registry()
     if bundle not in registry:
@@ -110,7 +110,7 @@ def validate_strategy_symbols(
         >>> validate_strategy_symbols('spy_sma_cross', 'yahoo_equities_daily')
         # Raises ValueError if SPY not in bundle
     """
-    from ..data_loader import get_bundle_symbols
+    from ..bundles import get_bundle_symbols
 
     # Load strategy parameters
     try:
@@ -161,7 +161,7 @@ def _validate_bundle_date_range(
     """
     Validate bundle exists and covers requested date range.
     """
-    from ..data_loader import load_bundle
+    from ..bundles import load_bundle
 
     # Parse dates - Zipline expects timezone-naive UTC timestamps
     start_ts = normalize_to_utc(start_date)
@@ -169,7 +169,7 @@ def _validate_bundle_date_range(
 
     # If using yahoo bundle, ensure it's registered
     if bundle.startswith('yahoo_'):
-        from ..data_loader import _register_yahoo_bundle
+        from ..bundles import _register_yahoo_bundle
         if bundle == 'yahoo_equities_daily':
             _register_yahoo_bundle(bundle, ['SPY'], 'XNYS')
     
@@ -226,7 +226,7 @@ def _get_trading_calendar(bundle: str, asset_class: Optional[str] = None):
     Raises:
         ValueError: If calendar can't be extracted
     """
-    from ..data_loader import load_bundle
+    from ..bundles import load_bundle
     
     bundle_data = load_bundle(bundle)
     

@@ -26,11 +26,11 @@ sys.path.insert(0, str(project_root))
 import click
 from typing import Optional, Dict, Any
 
-from lib.data_loader import (
+from lib.bundles import (
     get_bundle_symbols,
     load_bundle,
     list_bundles,
-    _load_bundle_registry,
+    load_bundle_registry as _load_bundle_registry,
 )
 
 

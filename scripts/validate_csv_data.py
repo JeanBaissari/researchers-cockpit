@@ -5,7 +5,7 @@ CSV Data Validation Script for The Researcher's Cockpit.
 Validates CSV data files before ingestion into Zipline bundles.
 Checks filename format, column names, and data quality using DataValidator.
 
-This script uses canonical functions from lib.data_loader to ensure validation
+This script uses canonical functions from lib.bundles to ensure validation
 logic matches the actual ingestion pipeline behavior.
 
 Usage:
@@ -30,9 +30,9 @@ import pandas as pd
 # Add project root to path for imports
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from lib.data_loader import (
-    _normalize_csv_columns,
-    _parse_csv_filename,
+from lib.bundles import (
+    normalize_csv_columns as _normalize_csv_columns,
+    parse_csv_filename as _parse_csv_filename,
     VALID_TIMEFRAMES,
 )
 from lib.validation import DataValidator, ValidationConfig

@@ -20,7 +20,7 @@ sys.path.insert(0, str(project_root))
 from lib.backtest import run_backtest
 from lib.config import load_strategy_params, validate_strategy_params
 from lib.utils import check_and_fix_symlinks, get_strategy_path
-from lib.data_loader import list_bundles
+from lib.bundles import list_bundles
 
 
 def test_missing_strategy_error():

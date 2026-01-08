@@ -208,7 +208,7 @@ class TestMultiSymbolIngestion:
             sid_assignments = []
 
             # Import and patch the registration function
-            from lib.data_loader import _register_yahoo_bundle
+            from lib.bundles import _register_yahoo_bundle
 
             # The data_gen function yields (sid, df) tuples
             # We need to verify SIDs are sequential
@@ -218,7 +218,7 @@ class TestMultiSymbolIngestion:
 
     def test_multi_symbol_registry_persistence(self):
         """Test that all symbols are persisted to bundle registry."""
-        from lib.data_loader import (
+        from lib.bundles import (
             _register_bundle_metadata,
             _load_bundle_registry,
             _save_bundle_registry,
@@ -272,7 +272,7 @@ class TestMultiSymbolIngestion:
 
     def test_multi_symbol_ordering_preserved(self):
         """Test that symbol ordering is preserved in registry."""
-        from lib.data_loader import _register_bundle_metadata, _load_bundle_registry, _save_bundle_registry
+        from lib.bundles import _register_bundle_metadata, _load_bundle_registry, _save_bundle_registry
 
         # Specific order matters for reproducibility
         ordered_symbols = ['ZZZZ', 'AAAA', 'MMMM', 'BBBB']
@@ -294,7 +294,7 @@ class TestMultiSymbolIngestion:
 
     def test_multi_symbol_different_asset_classes(self):
         """Test multi-symbol ingestion with symbols from different exchanges."""
-        from lib.data_loader import _register_bundle_metadata, _load_bundle_registry, _save_bundle_registry
+        from lib.bundles import _register_bundle_metadata, _load_bundle_registry, _save_bundle_registry
 
         # Mix of equities with different characteristics
         mixed_symbols = ['SPY', 'QQQ', 'IWM', 'DIA', 'VTI']
@@ -493,7 +493,7 @@ class TestConcurrentIngestion:
 
     def test_concurrent_registry_writes(self):
         """Test thread-safety of bundle registry write operations."""
-        from lib.data_loader import (
+        from lib.bundles import (
             _load_bundle_registry,
             _save_bundle_registry,
             _register_bundle_metadata
@@ -535,7 +535,7 @@ class TestConcurrentIngestion:
 
     def test_concurrent_registry_reads(self):
         """Test thread-safety of bundle registry read operations."""
-        from lib.data_loader import _load_bundle_registry
+        from lib.bundles import _load_bundle_registry
 
         num_threads = 20
         results = []
@@ -592,7 +592,7 @@ class TestConcurrentIngestion:
 
     def test_concurrent_load_and_save(self):
         """Test interleaved load and save operations."""
-        from lib.data_loader import (
+        from lib.bundles import (
             _load_bundle_registry,
             _save_bundle_registry,
             _register_bundle_metadata
@@ -647,7 +647,7 @@ class TestLargeDateRanges:
 
     def test_validate_1m_timeframe_limit(self):
         """Test that 1-minute timeframe enforces 7-day limit."""
-        from lib.data_loader import validate_timeframe_date_range, TIMEFRAME_DATA_LIMITS
+        from lib.bundles import validate_timeframe_date_range, TIMEFRAME_DATA_LIMITS
 
         # Request 30 days of 1m data (should be auto-adjusted)
         old_start = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
@@ -668,7 +668,7 @@ class TestLargeDateRanges:
 
     def test_validate_5m_timeframe_limit(self):
         """Test that 5-minute timeframe enforces 60-day limit."""
-        from lib.data_loader import validate_timeframe_date_range, TIMEFRAME_DATA_LIMITS
+        from lib.bundles import validate_timeframe_date_range, TIMEFRAME_DATA_LIMITS
 
         old_start = (datetime.now() - timedelta(days=100)).strftime('%Y-%m-%d')
 
@@ -680,7 +680,7 @@ class TestLargeDateRanges:
 
     def test_validate_1h_timeframe_limit(self):
         """Test that 1-hour timeframe enforces 730-day limit."""
-        from lib.data_loader import validate_timeframe_date_range, TIMEFRAME_DATA_LIMITS
+        from lib.bundles import validate_timeframe_date_range, TIMEFRAME_DATA_LIMITS
 
         old_start = (datetime.now() - timedelta(days=1000)).strftime('%Y-%m-%d')
 
@@ -692,7 +692,7 @@ class TestLargeDateRanges:
 
     def test_validate_daily_unlimited(self):
         """Test that daily timeframe has no date limit."""
-        from lib.data_loader import validate_timeframe_date_range
+        from lib.bundles import validate_timeframe_date_range
 
         old_start = '2000-01-01'  # 25+ years of data
 
@@ -723,7 +723,7 @@ class TestLargeDateRanges:
 
     def test_date_range_boundary_conditions(self):
         """Test boundary conditions for date range validation."""
-        from lib.data_loader import validate_timeframe_date_range, TIMEFRAME_DATA_LIMITS
+        from lib.bundles import validate_timeframe_date_range, TIMEFRAME_DATA_LIMITS
 
         # Test exactly at the limit
         limit_days = TIMEFRAME_DATA_LIMITS['5m']
@@ -738,7 +738,7 @@ class TestLargeDateRanges:
 
     def test_future_end_date_handling(self):
         """Test handling of future end dates."""
-        from lib.data_loader import validate_timeframe_date_range
+        from lib.bundles import validate_timeframe_date_range
 
         future_date = (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')
 
@@ -766,7 +766,7 @@ class TestCorruptedBundleRecovery:
 
     def test_is_valid_date_string(self):
         """Test date string validation helper."""
-        from lib.data_loader import _is_valid_date_string
+        from lib.bundles import _is_valid_date_string
 
         # Valid dates
         assert _is_valid_date_string('2024-01-01') is True
@@ -782,7 +782,7 @@ class TestCorruptedBundleRecovery:
 
     def test_corrupted_end_date_detection(self, corrupted_registry_data):
         """Test detection of corrupted end_date field (timeframe stored as date)."""
-        from lib.data_loader import _is_valid_date_string
+        from lib.bundles import _is_valid_date_string
 
         corrupted_entry = corrupted_registry_data['corrupted_end_date']
 
@@ -810,7 +810,7 @@ class TestCorruptedBundleRecovery:
 
     def test_load_bundle_with_corrupted_registry(self, tmp_path):
         """Test load_bundle behavior with corrupted registry data."""
-        from lib.data_loader import (
+        from lib.bundles import (
             _load_bundle_registry,
             _save_bundle_registry,
             _is_valid_date_string
@@ -844,7 +844,7 @@ class TestCorruptedBundleRecovery:
 
     def test_extract_symbols_from_nonexistent_bundle(self):
         """Test symbol extraction from non-existent bundle returns empty list."""
-        from lib.data_loader import _extract_symbols_from_bundle
+        from lib.bundles import _extract_symbols_from_bundle
 
         symbols = _extract_symbols_from_bundle('nonexistent_bundle_xyz')
 
@@ -852,7 +852,7 @@ class TestCorruptedBundleRecovery:
 
     def test_get_bundle_symbols_fallback_chain(self):
         """Test get_bundle_symbols fallback from registry to SQLite."""
-        from lib.data_loader import (
+        from lib.bundles import (
             _load_bundle_registry,
             _save_bundle_registry,
             get_bundle_symbols
@@ -884,14 +884,14 @@ class TestCorruptedBundleRecovery:
         assert entry['end_date'] is None
 
         # Code should handle None dates gracefully
-        from lib.data_loader import _is_valid_date_string
+        from lib.bundles import _is_valid_date_string
 
         assert _is_valid_date_string(entry['start_date']) is False
         assert _is_valid_date_string(entry['end_date']) is False
 
     def test_auto_register_validates_dates(self):
         """Test that auto-registration validates dates before using them."""
-        from lib.data_loader import (
+        from lib.bundles import (
             _load_bundle_registry,
             _save_bundle_registry,
             _is_valid_date_string
@@ -925,7 +925,7 @@ class TestCorruptedBundleRecovery:
 
     def test_registry_json_decode_error_handling(self, tmp_path):
         """Test handling of corrupted JSON in registry file."""
-        from lib.data_loader import _get_bundle_registry_path
+        from lib.bundles import _get_bundle_registry_path
 
         # This test verifies the try/except in _load_bundle_registry handles JSON errors
         registry_path = _get_bundle_registry_path()
@@ -940,7 +940,7 @@ class TestCorruptedBundleRecovery:
             registry_path.write_text('{ invalid json }}}')
 
             # Should not raise, should return empty dict
-            from lib.data_loader import _load_bundle_registry
+            from lib.bundles import _load_bundle_registry
             registry = _load_bundle_registry()
 
             assert isinstance(registry, dict), "Should return dict on JSON error"
@@ -987,35 +987,35 @@ class TestUtilityFunctions:
 
     def test_get_minutes_per_day_crypto(self):
         """Test minutes per day for CRYPTO calendar."""
-        from lib.data_loader import get_minutes_per_day
+        from lib.bundles import get_minutes_per_day
 
         mpd = get_minutes_per_day('CRYPTO')
         assert mpd == 1440, "CRYPTO should have 1440 minutes per day (24/7)"
 
     def test_get_minutes_per_day_forex(self):
         """Test minutes per day for FOREX calendar."""
-        from lib.data_loader import get_minutes_per_day
+        from lib.bundles import get_minutes_per_day
 
         mpd = get_minutes_per_day('FOREX')
         assert mpd == 1440, "FOREX should have 1440 minutes per day"
 
     def test_get_minutes_per_day_equities(self):
         """Test minutes per day for equities (XNYS) calendar."""
-        from lib.data_loader import get_minutes_per_day
+        from lib.bundles import get_minutes_per_day
 
         mpd = get_minutes_per_day('XNYS')
         assert mpd == 390, "XNYS should have 390 minutes per day (6.5 hours)"
 
     def test_get_minutes_per_day_unknown_calendar(self):
         """Test minutes per day defaults to 390 for unknown calendars."""
-        from lib.data_loader import get_minutes_per_day
+        from lib.bundles import get_minutes_per_day
 
         mpd = get_minutes_per_day('UNKNOWN_CALENDAR')
         assert mpd == 390, "Unknown calendar should default to 390 minutes"
 
     def test_get_timeframe_info_all_timeframes(self):
         """Test get_timeframe_info for all supported timeframes."""
-        from lib.data_loader import get_timeframe_info, VALID_TIMEFRAMES
+        from lib.bundles import get_timeframe_info, VALID_TIMEFRAMES
 
         for tf in VALID_TIMEFRAMES:
             info = get_timeframe_info(tf)
@@ -1026,7 +1026,7 @@ class TestUtilityFunctions:
 
     def test_timeframe_data_limits_structure(self):
         """Test TIMEFRAME_DATA_LIMITS has correct structure."""
-        from lib.data_loader import TIMEFRAME_DATA_LIMITS
+        from lib.bundles import TIMEFRAME_DATA_LIMITS
 
         # Intraday should have limits
         assert TIMEFRAME_DATA_LIMITS['1m'] is not None

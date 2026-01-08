@@ -38,8 +38,8 @@ from datetime import datetime
 import exchange_calendars
 
 # Import shared constants from lib modules to ensure consistency
-from lib.data_loader import VALID_TIMEFRAMES, TIMEFRAME_DATA_LIMITS, VALID_SOURCES
-from lib.extension import register_custom_calendars, CUSTOM_CALENDARS
+from lib.bundles import VALID_TIMEFRAMES, TIMEFRAME_DATA_LIMITS, VALID_SOURCES
+from lib.calendars import register_custom_calendars, get_available_calendars
 
 # =============================================================================
 # CONSTANTS
@@ -51,7 +51,7 @@ STANDARD_CALENDARS = sorted(exchange_calendars.get_calendar_names())
 
 # Custom calendars registered by our extension module
 # These are defined in lib/extension.py
-CUSTOM_CALENDAR_NAMES = list(CUSTOM_CALENDARS.keys()) if CUSTOM_CALENDARS else []
+CUSTOM_CALENDAR_NAMES = get_available_calendars()
 
 # Combined valid calendars
 VALID_CALENDARS = STANDARD_CALENDARS + CUSTOM_CALENDAR_NAMES

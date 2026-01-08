@@ -255,7 +255,7 @@ class TestDataValidatorIntegration:
             mock_result.passed = False
             
             # Create mock error checks
-            from lib.data_validation import ValidationCheck, ValidationSeverity
+            from lib.validation import ValidationCheck, ValidationSeverity
             error_check = ValidationCheck(
                 name='test_error',
                 passed=False,
@@ -289,7 +289,7 @@ class TestDataValidatorIntegration:
             mock_result.passed = True
             
             # Create mock warning checks
-            from lib.data_validation import ValidationCheck, ValidationSeverity
+            from lib.validation import ValidationCheck, ValidationSeverity
             warning_check = ValidationCheck(
                 name='test_warning',
                 passed=False,

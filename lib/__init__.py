@@ -4,13 +4,20 @@ The Researcher's Cockpit - Core Library
 This package provides the foundational modules for running algorithmic trading
 research with Zipline-reloaded.
 
-Main exports:
-- config: Configuration loading and management
-- data_loader: Data bundle ingestion and management
-- utils: Utility functions for file operations, strategy creation
+Main packages (v1.0.8 modular architecture):
+- bundles: Data bundle ingestion and management
+- validation: Data integrity validation and quality checks
+- calendars: Trading calendars (CryptoCalendar, ForexCalendar)
 - backtest: Backtest execution and result saving
-- logging_config: Centralized logging configuration
-- data_validation: Data integrity validation
+- metrics: Performance metrics and analytics
+- config: Configuration loading and management
+- logging: Centralized logging configuration
+- optimize: Parameter optimization
+- validate: Walk-forward and Monte Carlo validation
+- report: Report generation
+- plots: Visualization utilities
+- data: Data processing utilities
+- utils: Core utility functions
 - paths: Robust project root resolution
 """
 
@@ -59,35 +66,35 @@ from .paths import (
     ProjectRootNotFoundError,
 )
 
-# Extension (custom calendars)
-from .extension import (
+# Calendars (custom trading calendars)
+from .calendars import (
     register_custom_calendars,
     get_calendar_for_asset_class,
     get_available_calendars,
     get_registered_calendars,
+    CryptoCalendar,
+    ForexCalendar,
 )
 
 # =============================================================================
 # LOGGING (auto-configure on import)
 # =============================================================================
 
-try:
-    from .logging_config import (
-        configure_logging,
-        get_logger,
-        LogContext,
-        log_with_context,
-        data_logger,
-        strategy_logger,
-        backtest_logger,
-        metrics_logger,
-        validation_logger,
-        report_logger,
-    )
-    # Configure with defaults - can be reconfigured later
-    _root_logger = configure_logging(level='INFO', console=False, file=False)
-except ImportError:
-    pass
+from .logging import (
+    configure_logging,
+    get_logger,
+    LogContext,
+    log_with_context,
+    data_logger,
+    strategy_logger,
+    backtest_logger,
+    metrics_logger,
+    validation_logger,
+    report_logger,
+)
+
+# Configure with defaults - can be reconfigured later
+_root_logger = configure_logging(level='INFO', console=False, file=False)
 
 # =============================================================================
 # OPTIONAL MODULES (may require additional dependencies)
@@ -142,69 +149,41 @@ except ImportError:
     pass
 
 # =============================================================================
-# DATA PACKAGES (with backward-compat fallbacks)
+# DATA PACKAGES (modern modular imports)
 # =============================================================================
 
 # Validation package
-try:
-    from .validation import (
-        DataValidator,
-        ValidationResult,
-        ValidationConfig,
-        ValidationSeverity,
-        ValidationCheck,
-        BundleValidator,
-        BacktestValidator,
-        SchemaValidator,
-        CompositeValidator,
-        validate_before_ingest,
-        validate_bundle,
-        validate_backtest_results,
-        verify_metrics_calculation,
-        verify_returns_calculation,
-        verify_positions_match_transactions,
-        save_validation_report,
-        load_validation_report,
-    )
-except ImportError:
-    try:
-        from .data_validation import (
-            DataValidator,
-            ValidationResult,
-            validate_bundle,
-            verify_metrics_calculation,
-            verify_returns_calculation,
-            verify_positions_match_transactions,
-            save_validation_report,
-        )
-    except ImportError:
-        pass
+from .validation import (
+    DataValidator,
+    ValidationResult,
+    ValidationConfig,
+    ValidationSeverity,
+    ValidationCheck,
+    BundleValidator,
+    BacktestValidator,
+    SchemaValidator,
+    CompositeValidator,
+    validate_before_ingest,
+    validate_bundle,
+    validate_backtest_results,
+    verify_metrics_calculation,
+    verify_returns_calculation,
+    verify_positions_match_transactions,
+    save_validation_report,
+    load_validation_report,
+)
 
 # Bundles package
-try:
-    from .bundles import (
-        ingest_bundle,
-        load_bundle,
-        list_bundles,
-        unregister_bundle,
-        get_bundle_symbols,
-        VALID_TIMEFRAMES,
-        TIMEFRAME_DATA_LIMITS,
-        VALID_SOURCES,
-    )
-except ImportError:
-    try:
-        from .data_loader import (
-            ingest_bundle,
-            load_bundle,
-            list_bundles,
-            unregister_bundle,
-            get_bundle_symbols,
-            VALID_TIMEFRAMES,
-            TIMEFRAME_DATA_LIMITS,
-        )
-    except ImportError:
-        pass
+from .bundles import (
+    ingest_bundle,
+    load_bundle,
+    list_bundles,
+    unregister_bundle,
+    get_bundle_symbols,
+    VALID_TIMEFRAMES,
+    TIMEFRAME_DATA_LIMITS,
+    VALID_SOURCES,
+)
 
 # =============================================================================
 # PUBLIC API
@@ -222,9 +201,10 @@ __all__ = [
     'get_strategies_dir', 'get_results_dir', 'get_data_dir', 'get_config_dir',
     'get_logs_dir', 'get_reports_dir', 'resolve_strategy_path',
     'validate_project_structure', 'ensure_project_dirs', 'ProjectRootNotFoundError',
-    # Extension
+    # Calendars
     'register_custom_calendars', 'get_calendar_for_asset_class',
     'get_available_calendars', 'get_registered_calendars',
+    'CryptoCalendar', 'ForexCalendar',
     # Logging
     'configure_logging', 'get_logger', 'LogContext', 'log_with_context',
     'data_logger', 'strategy_logger', 'backtest_logger', 'metrics_logger',
