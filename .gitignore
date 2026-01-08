@@ -91,3 +91,7 @@ htmlcov/
 *.swp
 
 tasks/
+
+# AI Agent Configuration (LOCAL ONLY)
+.agent/
+.claude/

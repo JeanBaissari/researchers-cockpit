@@ -2,6 +2,9 @@
 # ==============================================================================
 # API endpoints, authentication, and rate limits for data providers.
 # Store sensitive API keys in .env file, not here!
+#
+# Bundle Naming Convention: {source}_{asset}_{timeframe}
+# Examples: yahoo_equity_daily, yahoo_crypto_1h, binance_crypto_5m
 
 # Yahoo Finance
 yahoo:
@@ -9,6 +12,7 @@ yahoo:
   type: free
   enabled: true
   base_url: https://query1.finance.yahoo.com
+  bundle_prefix: yahoo_
 
   features:
     - daily_prices
@@ -16,6 +20,42 @@ yahoo:
     - crypto
     - forex
     - equities
+
+  # Asset class configurations with calendar and timeframe support
+  asset_classes:
+    equities:
+      calendar: NYSE
+      minutes_per_day: 390  # 6.5 hours
+      timeframes:
+        1m: 7           # 1-minute data - only 7 days available
+        2m: 60          # 2-minute data - 60 days
+        5m: 60          # 5-minute data - 60 days
+        15m: 60         # 15-minute data - 60 days
+        30m: 60         # 30-minute data - 60 days
+        1h: 730         # Hourly data - ~2 years
+        daily: null     # Daily data - unlimited history
+    crypto:
+      calendar: CRYPTO
+      minutes_per_day: 1440  # 24/7 trading
+      timeframes:
+        1m: 7
+        2m: 60
+        5m: 60
+        15m: 60
+        30m: 60
+        1h: 730
+        daily: null
+    forex:
+      calendar: FOREX
+      minutes_per_day: 1440  # 24/5 trading (Sun 5pm - Fri 5pm ET)
+      timeframes:
+        1m: 7
+        2m: 60
+        5m: 60
+        15m: 60
+        30m: 60
+        1h: 730
+        daily: null
 
   rate_limits:
     requests_per_hour: 2000
@@ -29,7 +69,9 @@ yahoo:
       method: ffill              # 'ffill' (forward-fill) or 'bfill' (backward-fill)
       max_gap_days: 5            # Warn if gaps exceed this many days
     crypto:
-      enabled: false             # Crypto trades 24/7, gaps indicate real missing data
+      enabled: true
+      method: ffill
+      max_gap_days: 3            # Crypto trades 24/7, small gaps may occur
     equities:
       enabled: false             # Equities have defined trading days, gaps are intentional
 
@@ -41,6 +83,8 @@ yahoo:
     Yahoo Finance is free but unofficial. Rate limits are approximate.
     Use yfinance library for easier access.
     FOREX data may have gaps that are filled during ingestion.
+    Weekly/monthly timeframes NOT compatible with Zipline bundles (use aggregation from daily).
+    4h requires aggregation from 1h (yfinance doesn't support 4h natively).
 
 # Binance (Crypto)
 binance:
@@ -48,21 +92,42 @@ binance:
   type: api_key_required
   enabled: false  # Enable when you have API credentials
   base_url: https://api.binance.com
-  
+  bundle_prefix: binance_
+
   features:
     - crypto_spot
     - real_time
     - minute_data
     - daily_data
-  
+
+  asset_classes:
+    crypto:
+      calendar: CRYPTO
+      minutes_per_day: 1440
+      timeframes:
+        1m: 1000        # ~16 months of 1m data
+        3m: 1000
+        5m: 1000
+        15m: 1000
+        30m: 1000
+        1h: null        # Unlimited
+        4h: null
+        daily: null
+
   authentication:
     api_key_env: BINANCE_API_KEY        # Set in .env
     api_secret_env: BINANCE_API_SECRET  # Set in .env
-  
+
   rate_limits:
     requests_per_minute: 1200
     weight_per_minute: 6000
-  
+
+  gap_fill:
+    crypto:
+      enabled: false   # Binance data is reliable, gaps indicate real missing data
+
+  volume_dtype: float64
+
   notes: |
     Requires free account at binance.com
     API key from account settings -> API Management
@@ -74,20 +139,42 @@ oanda:
   enabled: false  # Enable when you have API credentials
   base_url: https://api-fxtrade.oanda.com  # Live
   practice_url: https://api-fxpractice.oanda.com  # Practice
-  
+  bundle_prefix: oanda_
+
   features:
     - forex_pairs
     - minute_data
     - daily_data
     - real_time
-  
+
+  asset_classes:
+    forex:
+      calendar: FOREX
+      minutes_per_day: 1440
+      timeframes:
+        1m: 30          # ~30 days of 1m data
+        5m: 120
+        15m: 365
+        30m: 730
+        1h: null
+        4h: null
+        daily: null
+
   authentication:
     api_key_env: OANDA_API_KEY        # Set in .env
     account_id_env: OANDA_ACCOUNT_ID  # Set in .env
-  
+
   rate_limits:
     requests_per_second: 20
-  
+
+  gap_fill:
+    forex:
+      enabled: true
+      method: ffill
+      max_gap_days: 5
+
+  volume_dtype: float64  # Forex uses notional volume
+
   notes: |
     Practice account is free at oanda.com
     Use practice_url for testing, base_url for live data
@@ -98,20 +185,60 @@ alphavantage:
   type: api_key_required
   enabled: false
   base_url: https://www.alphavantage.co
-  
+  bundle_prefix: av_
+
   features:
     - equities
     - forex
     - crypto
     - technical_indicators
-  
+
+  asset_classes:
+    equities:
+      calendar: NYSE
+      minutes_per_day: 390
+      timeframes:
+        1m: 30
+        5m: 60
+        15m: 60
+        30m: 60
+        1h: null
+        daily: null
+    crypto:
+      calendar: CRYPTO
+      minutes_per_day: 1440
+      timeframes:
+        daily: null
+    forex:
+      calendar: FOREX
+      minutes_per_day: 1440
+      timeframes:
+        1m: 30
+        5m: 60
+        15m: 60
+        30m: 60
+        1h: null
+        daily: null
+
   authentication:
     api_key_env: ALPHAVANTAGE_API_KEY
-  
+
   rate_limits:
     requests_per_minute: 5   # Free tier
     requests_per_day: 500    # Free tier
-  
+
+  gap_fill:
+    forex:
+      enabled: true
+      method: ffill
+      max_gap_days: 5
+    crypto:
+      enabled: false
+    equities:
+      enabled: false
+
+  volume_dtype: int
+
   notes: |
     Free tier is very limited (5 calls/min, 500/day)
     Get free key at alphavantage.co/support/#api-key
@@ -122,10 +249,13 @@ quandl:
   type: api_key_optional
   enabled: false
   base_url: https://data.nasdaq.com
-  
+  bundle_prefix: quandl_
+
   features:
     - equities
     - historical_data
+
+  asset_classes:
   
   authentication:
     api_key_env: QUANDL_API_KEY  # Optional but increases rate limits
@@ -195,6 +325,43 @@ csv:
   features:
     - any_asset_class
     - custom_data
+
+  # Asset class configurations for local CSV bundles
+  # All timeframe limits are null (unlimited) since data is local
+  asset_classes:
+    equities:
+      calendar: NYSE
+      minutes_per_day: 390
+      timeframes:
+        1m: null
+        5m: null
+        15m: null
+        30m: null
+        1h: null
+        4h: null
+        daily: null
+    crypto:
+      calendar: CRYPTO
+      minutes_per_day: 1440
+      timeframes:
+        1m: null
+        5m: null
+        15m: null
+        30m: null
+        1h: null
+        4h: null
+        daily: null
+    forex:
+      calendar: FOREX
+      minutes_per_day: 1440
+      timeframes:
+        1m: null
+        5m: null
+        15m: null
+        30m: null
+        1h: null
+        4h: null
+        daily: null
   
   locations:
     - data/cache/
@@ -203,4 +370,5 @@ csv:
   notes: |
     For loading your own data files
     Use lib/data_loader.py to ingest
+    Supports 4h timeframe (aggregated from 1h or direct CSV import)
 
