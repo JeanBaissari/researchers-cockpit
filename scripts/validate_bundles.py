@@ -13,6 +13,7 @@ Usage:
 
 import sys
 from pathlib import Path
+import os
 
 
 def _find_project_root() -> Path:
@@ -34,48 +35,63 @@ sys.path.insert(0, str(project_root))
 import json
 import click
 from datetime import datetime
+import exchange_calendars
 
 # Import shared constants from lib modules to ensure consistency
-from lib.data_loader import VALID_TIMEFRAMES, TIMEFRAME_DATA_LIMITS
+from lib.data_loader import VALID_TIMEFRAMES, TIMEFRAME_DATA_LIMITS, VALID_SOURCES
 from lib.extension import register_custom_calendars, CUSTOM_CALENDARS
 
 # =============================================================================
 # CONSTANTS
 # =============================================================================
 
-# Valid calendars: standard exchange calendars + our custom calendars
-# Standard calendars from exchange_calendars package
-STANDARD_CALENDARS = ['XNYS', 'XNAS', 'XLON', 'XJPX', 'XHKG', 'XSHG', 'XSHE']
+# Valid calendars: dynamically fetch standard calendars from exchange_calendars
+# This ensures we stay in sync with the package
+STANDARD_CALENDARS = sorted(exchange_calendars.get_calendar_names())
 
 # Custom calendars registered by our extension module
 # These are defined in lib/extension.py
-CUSTOM_CALENDAR_NAMES = list(CUSTOM_CALENDARS.keys()) if CUSTOM_CALENDARS else ['CRYPTO', 'FOREX']
+CUSTOM_CALENDAR_NAMES = list(CUSTOM_CALENDARS.keys()) if CUSTOM_CALENDARS else []
 
 # Combined valid calendars
 VALID_CALENDARS = STANDARD_CALENDARS + CUSTOM_CALENDAR_NAMES
 
-# Valid data frequencies for Zipline
+# Valid data frequencies for Zipline (these are Zipline's actual accepted values)
 VALID_DATA_FREQUENCIES = ['daily', 'minute']
+
+# Valid asset classes (aligned with lib/backtest.py BacktestConfig)
+VALID_ASSET_CLASSES = ['equity', 'crypto', 'forex', None]
 
 
 # =============================================================================
 # PATH UTILITIES
 # =============================================================================
 
+def get_zipline_root() -> Path:
+    """
+    Get Zipline root directory, respecting ZIPLINE_ROOT environment variable.
+    
+    Zipline allows overriding the default ~/.zipline location via ZIPLINE_ROOT.
+    """
+    zipline_root = os.environ.get('ZIPLINE_ROOT')
+    if zipline_root:
+        return Path(zipline_root)
+    return Path.home() / '.zipline'
+
+
 def get_registry_path() -> Path:
     """Get path to bundle registry file."""
-    return Path.home() / '.zipline' / 'bundle_registry.json'
+    return get_zipline_root() / 'bundle_registry.json'
 
 
 def get_bundle_data_path(bundle_name: str) -> Path:
     """
     Get path to bundle data directory.
     
-    Zipline stores bundles in versioned subdirectories under ~/.zipline/bundles/{bundle_name}/
+    Zipline stores bundles in versioned subdirectories under {ZIPLINE_ROOT}/bundles/{bundle_name}/
     Each ingestion creates a new timestamp-based version directory.
     """
-    # Zipline's actual bundle storage location
-    return Path.home() / '.zipline' / 'bundles' / bundle_name
+    return get_zipline_root() / 'bundles' / bundle_name
 
 
 def check_bundle_data_exists(bundle_name: str) -> tuple:
@@ -240,6 +256,66 @@ def validate_timeframe_field(meta: dict, bundle_name: str) -> list:
     return issues
 
 
+def validate_asset_class_field(meta: dict, bundle_name: str) -> list:
+    """
+    Validate asset_class field.
+    
+    Returns:
+        List of (issue_type, message, fix_action) tuples
+    """
+    issues = []
+    
+    if 'asset_class' not in meta:
+        # asset_class is optional, but we can try to infer it
+        inferred_class = None
+        bundle_lower = bundle_name.lower()
+        
+        if 'crypto' in bundle_lower or 'btc' in bundle_lower or 'eth' in bundle_lower:
+            inferred_class = 'crypto'
+        elif 'forex' in bundle_lower or 'fx' in bundle_lower:
+            inferred_class = 'forex'
+        elif any(x in bundle_lower for x in ['spy', 'aapl', 'msft', 'equity']):
+            inferred_class = 'equity'
+        
+        if inferred_class:
+            issues.append((
+                'missing_field',
+                f"Missing 'asset_class' field (bundle name suggests '{inferred_class}')",
+                ('set_asset_class', inferred_class)
+            ))
+    else:
+        asset_class = meta['asset_class']
+        if asset_class is not None and asset_class not in VALID_ASSET_CLASSES:
+            issues.append((
+                'invalid_value',
+                f"Invalid asset_class: '{asset_class}'. Valid: {', '.join(str(x) for x in VALID_ASSET_CLASSES if x)}",
+                None
+            ))
+    
+    return issues
+
+
+def validate_source_field(meta: dict) -> list:
+    """
+    Validate source field.
+    
+    Returns:
+        List of (issue_type, message, fix_action) tuples
+    """
+    issues = []
+    
+    if 'source' in meta:
+        source = meta['source']
+        if source is not None and source not in VALID_SOURCES:
+            issues.append((
+                'invalid_value',
+                f"Invalid source: '{source}'. Valid: {', '.join(VALID_SOURCES)}",
+                None
+            ))
+    
+    return issues
+
+
 def validate_bundle_entry(bundle_name: str, meta: dict) -> list:
     """
     Validate a single bundle registry entry.
@@ -287,7 +363,7 @@ def validate_bundle_entry(bundle_name: str, meta: dict) -> list:
                 suggestion = " (did you mean 'FOREX'?)"
             elif 'nyse' in cal_lower or 'us' in cal_lower:
                 suggestion = " (did you mean 'XNYS'?)"
-            issues.append(('invalid_value', f"Unknown calendar: '{cal}'{suggestion}. Valid: {', '.join(VALID_CALENDARS)}", None))
+            issues.append(('invalid_value', f"Unknown calendar: '{cal}'{suggestion}. Valid: {', '.join(CUSTOM_CALENDAR_NAMES)} (custom) + standard exchange calendars", None))
 
     # Validate data_frequency
     if 'data_frequency' in meta:
@@ -319,6 +395,14 @@ def validate_bundle_entry(bundle_name: str, meta: dict) -> list:
     # Validate timeframe field and consistency
     timeframe_issues = validate_timeframe_field(meta, bundle_name)
     issues.extend(timeframe_issues)
+
+    # Validate asset_class field
+    asset_class_issues = validate_asset_class_field(meta, bundle_name)
+    issues.extend(asset_class_issues)
+
+    # Validate source field
+    source_issues = validate_source_field(meta)
+    issues.extend(source_issues)
 
     # Check if bundle data exists on disk
     exists, bundle_path, details = check_bundle_data_exists(bundle_name)
@@ -356,6 +440,10 @@ def apply_fix(meta: dict, fix_action: tuple) -> bool:
     elif action == 'set_frequency':
         value = fix_action[1]
         meta['data_frequency'] = value
+        return True
+    elif action == 'set_asset_class':
+        value = fix_action[1]
+        meta['asset_class'] = value
         return True
 
     return False
@@ -404,7 +492,9 @@ def main(fix, bundle, verbose, check_disk):
 
     click.echo(f"Validating {len(registry)} bundle(s)...")
     click.echo(f"Using {len(VALID_TIMEFRAMES)} valid timeframes: {', '.join(VALID_TIMEFRAMES)}")
-    click.echo(f"Using {len(VALID_CALENDARS)} valid calendars: {', '.join(VALID_CALENDARS)}")
+    click.echo(f"Using {len(CUSTOM_CALENDAR_NAMES)} custom calendars: {', '.join(CUSTOM_CALENDAR_NAMES)}")
+    click.echo(f"Using {len(STANDARD_CALENDARS)} standard exchange calendars")
+    click.echo(f"Zipline root: {get_zipline_root()}")
     click.echo()
 
     total_issues = 0
@@ -441,6 +531,8 @@ def main(fix, bundle, verbose, check_disk):
                 click.echo(f"    calendar: {meta.get('calendar_name')}")
                 click.echo(f"    frequency: {meta.get('data_frequency')}")
                 click.echo(f"    timeframe: {meta.get('timeframe')}")
+                click.echo(f"    asset_class: {meta.get('asset_class')}")
+                click.echo(f"    source: {meta.get('source')}")
                 if check_disk:
                     exists, path, details = check_bundle_data_exists(bundle_name)
                     click.echo(f"    disk: {details}")

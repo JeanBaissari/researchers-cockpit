@@ -29,21 +29,21 @@ def parse_param_range(param_str: str) -> list:
         'strategy.slow_period:30,50,100' -> [30, 50, 100]
     """
     parts = param_str.split(':')
-    if len(parts) != 2:
-        raise ValueError(f"Invalid parameter format: {param_str}. Expected 'name:range'")
+    if len(parts) < 2:
+        raise ValueError(f"Invalid parameter format: {param_str}. Expected 'name:range' or 'name:start:end:step'")
     
-    param_name, range_str = parts
+    param_name = parts[0]
+    range_parts = parts[1:]
     
-    # Check if comma-separated list
-    if ',' in range_str:
-        values = [float(x.strip()) for x in range_str.split(',')]
+    # Check if it's a comma-separated list (single part with commas)
+    if len(range_parts) == 1 and ',' in range_parts[0]:
+        values = [float(x.strip()) for x in range_parts[0].split(',')]
         # Convert to int if all are whole numbers
         if all(v.is_integer() for v in values):
             values = [int(v) for v in values]
         return param_name, values
     
     # Otherwise parse as start:end:step
-    range_parts = range_str.split(':')
     if len(range_parts) == 3:
         start, end, step = map(float, range_parts)
         values = list(np.arange(start, end + step, step))
@@ -52,7 +52,7 @@ def parse_param_range(param_str: str) -> list:
             values = [int(v) for v in values]
         return param_name, values
     else:
-        raise ValueError(f"Invalid range format: {range_str}. Expected 'start:end:step' or 'val1,val2,val3'")
+        raise ValueError(f"Invalid range format. Expected 'name:start:end:step' or 'name:val1,val2,val3'")
 
 
 @click.command()

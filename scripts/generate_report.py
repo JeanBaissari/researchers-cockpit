@@ -24,7 +24,7 @@ from lib.report import generate_report, update_catalog
 @click.option('--output', default=None, help='Output file path (default: reports/{strategy}_report_{date}.md)')
 @click.option('--asset-class', default=None, type=click.Choice(['crypto', 'forex', 'equities']),
               help='Asset class hint')
-@click.option('--update-catalog', is_flag=True, help='Update strategy catalog after generating report')
+@click.option('--update-catalog', 'update_catalog_flag', is_flag=True, help='Update strategy catalog after generating report')
 @click.option('--status', default='testing',
               type=click.Choice(['testing', 'validated', 'abandoned']),
               help='Strategy status for catalog (default: testing)')

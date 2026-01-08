@@ -35,7 +35,7 @@ from lib.data_loader import (
     _parse_csv_filename,
     VALID_TIMEFRAMES,
 )
-from lib.data_validation import DataValidator, ValidationConfig
+from lib.validation import DataValidator, ValidationConfig
 from lib.utils import get_project_root, normalize_to_utc
 
 # Configure logging
