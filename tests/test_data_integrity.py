@@ -19,15 +19,16 @@ import json
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from lib.data_integrity import (
-    verify_bundle_dates,
+from lib.validation import (
+    ValidationResult,
+    ValidationConfig,
     verify_returns_calculation,
     verify_positions_match_transactions,
     verify_metrics_calculation,
-    validate_csv_files_pre_ingestion
+    verify_bundle_dates,
+    validate_csv_files_pre_ingestion,
 )
-from lib.data_loader import list_bundles
-from lib.data_validation import ValidationResult, ValidationConfig
+from lib.bundles import list_bundles
 
 
 def test_verify_bundle_dates():

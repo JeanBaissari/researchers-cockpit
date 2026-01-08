@@ -34,7 +34,7 @@ from scripts.validate_csv_data import (
     ValidationIssue,
     ValidationSeverity,
 )
-from lib.data_validation import DataValidator, ValidationConfig, ValidationResult as DataValidationResult
+from lib.validation import DataValidator, ValidationConfig, ValidationResult as DataValidationResult
 from lib.utils import get_project_root
 
 

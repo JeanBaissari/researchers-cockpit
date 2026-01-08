@@ -13,7 +13,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 
-from lib.data_validation import (
+from lib.validation import (
     DataValidator,
     ValidationConfig,
     ValidationResult,

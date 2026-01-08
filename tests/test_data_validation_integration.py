@@ -24,7 +24,7 @@ import numpy as np
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from lib.data_validation import DataValidator, ValidationConfig, ValidationResult
+from lib.validation import DataValidator, ValidationConfig, ValidationResult
 from lib.data_loader import _register_csv_bundle, get_project_root
 
 
