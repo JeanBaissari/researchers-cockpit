@@ -112,7 +112,7 @@ if not result.passed:
     print(result.summary())
     
     # Check for blocking errors
-    if result.error_checks:
+    if result.error_checks:e
         print("\nBlocking errors found:")
         for check in result.error_checks:
             print(f"  - {check.name}: {check.message}")
@@ -391,7 +391,7 @@ positions = results['positions']
 positions.to_csv(results_dir / 'positions.csv')
 
 # Transactions
-transactions = results['transactions']
+transactions = results['transactions']e
 transactions.to_csv(results_dir / 'transactions.csv')
 ```
 
