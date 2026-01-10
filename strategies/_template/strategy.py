@@ -21,6 +21,14 @@ REQUIREMENTS:
 ==============================================================================
 """
 
+# Standard library imports
+import sys
+import warnings
+from pathlib import Path
+
+# Third-party imports
+import numpy as np
+import pandas as pd
 from zipline.api import (
     symbol, order_target_percent, record,
     schedule_function, date_rules, time_rules,
@@ -46,15 +54,13 @@ try:
     _PIPELINE_AVAILABLE = True
 except ImportError:
     pass
-import numpy as np
-import pandas as pd
-from pathlib import Path
-import sys
 
-# Add project root to path for lib imports
-# This allows strategies to import lib modules (requires v1.0.8+)
+# Local imports
 from lib.paths import get_project_root
-from lib.config import load_strategy_params
+from lib.config import load_strategy_params, get_warmup_days, validate_strategy_params
+from lib.position_sizing import compute_position_size
+from lib.risk_management import check_exit_conditions, get_exit_type_code
+from lib.pipeline_utils import setup_pipeline
 
 _project_root = get_project_root()
 if str(_project_root) not in sys.path:
@@ -69,6 +75,10 @@ def load_params():
     
     Returns:
         dict: Strategy parameters
+        
+    Raises:
+        FileNotFoundError: If parameters.yaml file is not found
+        ValueError: If asset_class cannot be inferred from path
     """
     # Extract strategy name from path: strategies/{asset_class}/{name}/strategy.py
     strategy_path = Path(__file__).parent
@@ -76,41 +86,22 @@ def load_params():
     
     # Try to infer asset_class from parent directory
     asset_class = strategy_path.parent.name
-    if asset_class == 'strategies':
-        asset_class = None  # Couldn't infer, will search all
     
-    return load_strategy_params(strategy_name, asset_class)
-
-
-def _calculate_required_warmup(params: dict) -> int:
-    """
-    Dynamically calculate required warmup days from strategy parameters.
-
-    Finds the maximum of all indicator period parameters to ensure
-    sufficient data for indicator initialization.
-
-    Args:
-        params: Strategy parameters dictionary
-
-    Returns:
-        int: Required warmup days
-    """
-    strategy_config = params.get('strategy', {})
-    period_values = []
-
-    # Collect all *_period parameters
-    for key, value in strategy_config.items():
-        if key.endswith('_period') and isinstance(value, (int, float)) and value > 0:
-            period_values.append(int(value))
-
-    # Also check common non-suffixed period params
-    for key in ['lookback', 'window', 'span']:
-        if key in strategy_config:
-            value = strategy_config[key]
-            if isinstance(value, (int, float)) and value > 0:
-                period_values.append(int(value))
-
-    return max(period_values) if period_values else 30
+    # Validate asset_class
+    if asset_class in ('strategies', '_template'):
+        raise ValueError(
+            f"Cannot infer asset_class from path {strategy_path}. "
+            "Strategy must be in strategies/{{asset_class}}/{{name}}/"
+        )
+    
+    try:
+        return load_strategy_params(strategy_name, asset_class)
+    except FileNotFoundError as e:
+        raise FileNotFoundError(
+            f"Failed to load parameters for strategy '{strategy_name}'. "
+            f"Ensure parameters.yaml exists. Original error: {e}"
+        ) from e
+    # Let other exceptions propagate (ImportError, etc.)
 
 
 def _get_required_param(params: dict, *keys, default=None, error_msg: str = None):
@@ -157,88 +148,6 @@ def _get_required_param(params: dict, *keys, default=None, error_msg: str = None
     return value
 
 
-def compute_position_size(context, data) -> float:
-    """
-    Calculate position size based on the configured method.
-
-    Supports three methods:
-    - 'fixed': Returns max_position_pct directly
-    - 'volatility_scaled': Scales position inversely with volatility to target vol
-    - 'kelly': Uses Kelly Criterion with fractional sizing for capital preservation
-
-    Args:
-        context: Zipline context object with params
-        data: Zipline data object for price history
-
-    Returns:
-        Position size as float (0.0 to max_position_pct)
-    """
-    params = context.params
-    pos_config = params.get('position_sizing', {})
-    method = pos_config.get('method', 'fixed')
-    max_position = pos_config.get('max_position_pct', 0.95)
-    min_position = pos_config.get('min_position_pct', 0.10)
-
-    if method == 'fixed':
-        return max_position
-
-    elif method == 'volatility_scaled':
-        vol_lookback = pos_config.get('volatility_lookback', 20)
-        vol_target = pos_config.get('volatility_target', 0.15)
-
-        if not data.can_trade(context.asset):
-            return max_position
-
-        try:
-            prices = data.history(context.asset, 'price', vol_lookback + 1, '1d')
-            if len(prices) < vol_lookback + 1:
-                return max_position
-
-            returns = prices.pct_change().dropna()
-            if len(returns) < vol_lookback:
-                return max_position
-
-            # Annualized volatility (252 trading days default)
-            asset_class = params.get('strategy', {}).get('asset_class', 'equities')
-            trading_days = {'equities': 252, 'forex': 260, 'crypto': 365}.get(asset_class, 252)
-            current_vol = returns.std() * np.sqrt(trading_days)
-
-            if current_vol > 0:
-                # Scale position to target volatility
-                size = vol_target / current_vol
-                return float(np.clip(size, min_position, max_position))
-
-            return max_position
-        except Exception:
-            return max_position
-
-    elif method == 'kelly':
-        # Kelly Criterion: f* = (bp - q) / b
-        # where b = avg_win/avg_loss ratio, p = win rate, q = 1 - p
-        kelly_config = pos_config.get('kelly', {})
-        win_rate = kelly_config.get('win_rate_estimate', 0.55)
-        win_loss_ratio = kelly_config.get('avg_win_loss_ratio', 1.5)
-        kelly_fraction = kelly_config.get('kelly_fraction', 0.25)
-        kelly_min = kelly_config.get('min_position_pct', min_position)
-
-        # Kelly formula
-        b = win_loss_ratio
-        p = win_rate
-        q = 1 - p
-
-        # Full Kelly (can be > 1 for high edge strategies)
-        full_kelly = (b * p - q) / b if b > 0 else 0
-
-        # Apply fractional Kelly for safety (typically 0.25-0.50 of full Kelly)
-        position_size = full_kelly * kelly_fraction
-
-        # Clamp to bounds
-        return float(np.clip(position_size, kelly_min, max_position))
-
-    # Fallback for unknown method
-    return max_position
-
-
 def initialize(context):
     """
     Set up the strategy.
@@ -248,21 +157,33 @@ def initialize(context):
     """
     # Load parameters from YAML
     params = load_params()
+    
+    # Extract strategy name for validation
+    strategy_path = Path(__file__).parent
+    strategy_name = strategy_path.name
+    
+    # Validate parameter structure
+    is_valid, errors = validate_strategy_params(params, strategy_name)
+    if not is_valid:
+        error_msg = f"Invalid parameters.yaml for strategy '{strategy_name}':\n"
+        error_msg += "\n".join(f"  - {e}" for e in errors)
+        raise ValueError(error_msg)
 
     # Store parameters in context for easy access
     context.params = params
 
-    # Calculate and store required warmup days
-    context.required_warmup_days = _calculate_required_warmup(params)
+    # Calculate and store required warmup days using lib function
+    context.required_warmup_days = get_warmup_days(params)
 
     # Validate warmup configuration
     configured_warmup = params.get('backtest', {}).get('warmup_days')
     if configured_warmup is not None and configured_warmup < context.required_warmup_days:
-        import warnings
         warnings.warn(
             f"Configured warmup_days ({configured_warmup}) is less than calculated "
             f"required warmup ({context.required_warmup_days}) based on indicator periods. "
-            f"Consider increasing warmup_days in parameters.yaml to avoid insufficient data."
+            f"Consider increasing warmup_days in parameters.yaml to avoid insufficient data.",
+            UserWarning,
+            stacklevel=2
         )
 
     # Get data frequency from parameters, default to 'daily'
@@ -277,10 +198,11 @@ def initialize(context):
     
     # Validate asset symbol is not a placeholder
     if asset_symbol in ['SPY', 'PLACEHOLDER', '']:
-        import warnings
         warnings.warn(
             f"Asset symbol '{asset_symbol}' appears to be a placeholder. "
-            "Please update strategy.asset_symbol in parameters.yaml with your actual trading symbol."
+            "Please update strategy.asset_symbol in parameters.yaml with your actual trading symbol.",
+            UserWarning,
+            stacklevel=2
         )
     
     context.asset = symbol(asset_symbol)
@@ -294,32 +216,8 @@ def initialize(context):
     # Set benchmark
     set_benchmark(context.asset)
 
-    # Attach Pipeline only if use_pipeline is enabled (and Pipeline is available)
-    context.pipeline_data = None
-    context.pipeline_universe = []
-    context.use_pipeline = params.get('strategy', {}).get('use_pipeline', False)
-    
-    # Validate pipeline configuration
-    asset_class = params.get('strategy', {}).get('asset_class', 'equities')
-    if context.use_pipeline:
-        if not _PIPELINE_AVAILABLE:
-            import warnings
-            warnings.warn(
-                "Pipeline API not available in this Zipline version. "
-                "Setting use_pipeline to False. Pipeline is primarily designed for US equities."
-            )
-            context.use_pipeline = False
-        elif asset_class != 'equities':
-            import warnings
-            warnings.warn(
-                f"Pipeline API is primarily designed for US equities, but asset_class is '{asset_class}'. "
-                "Consider setting use_pipeline: false for crypto/forex strategies."
-            )
-    
-    if context.use_pipeline and _PIPELINE_AVAILABLE:
-        pipeline = make_pipeline()
-        if pipeline is not None:
-            attach_pipeline(pipeline, 'my_pipeline')
+    # Set up pipeline using library function
+    context.use_pipeline = setup_pipeline(context, params, make_pipeline)
     
     # Configure commission model
     commission_config = params.get('costs', {}).get('commission', {})
@@ -345,10 +243,11 @@ def initialize(context):
     # Validate rebalance frequency
     valid_frequencies = ['daily', 'weekly', 'monthly']
     if rebalance_frequency not in valid_frequencies:
-        import warnings
         warnings.warn(
             f"Invalid rebalance_frequency '{rebalance_frequency}'. "
-            f"Must be one of: {valid_frequencies}. Defaulting to 'daily'."
+            f"Must be one of: {valid_frequencies}. Defaulting to 'daily'.",
+            UserWarning,
+            stacklevel=2
         )
         rebalance_frequency = 'daily'
     
@@ -392,11 +291,19 @@ def initialize(context):
 
 
 def make_pipeline():
-    """Create Pipeline with generic pricing data."""
+    """
+    Create Pipeline with generic pricing data.
+    
+    This is an example pipeline. Customize based on your strategy needs.
+    The window_length should be parameterized in your actual implementation.
+    """
     if not _PIPELINE_AVAILABLE or _PRICING_CLASS is None:
         return None
-    sma_30 = SimpleMovingAverage(inputs=[_PRICING_CLASS.close], window_length=30)
-    return Pipeline(columns={'sma_30': sma_30}, screen=sma_30.isfinite())
+    # Example: Use lookback_period from parameters (default to 30 if not specified)
+    # In your actual strategy, parameterize this based on your needs
+    window_length = 30  # Example value - parameterize this in your strategy
+    sma = SimpleMovingAverage(inputs=[_PRICING_CLASS.close], window_length=window_length)
+    return Pipeline(columns={'sma': sma}, screen=sma.isfinite())
 
 def before_trading_start(context, data):
     """
@@ -409,7 +316,9 @@ def before_trading_start(context, data):
             context.pipeline_data = pipeline_output('my_pipeline')
             # Example: Store the list of assets in our universe
             context.pipeline_universe = context.pipeline_data.index.tolist()
-        except Exception:
+        except (KeyError, AttributeError, ValueError) as e:
+            # Pipeline output may not be available yet or may have errors
+            # Log and continue with empty pipeline data
             context.pipeline_data = None
             context.pipeline_universe = []
 
@@ -419,13 +328,59 @@ def compute_signals(context, data):
     
     This is where you implement your trading hypothesis.
     
+    COMMON PATTERNS:
+    
+    1. Momentum (Trend Following):
+       - Price above/below moving average
+       - Breakout above resistance
+       - Rate of change indicators
+       Example: Buy when price > SMA(50) and price crosses above SMA(20)
+    
+    2. Mean Reversion:
+       - Price deviation from mean
+       - RSI oversold/overbought
+       - Bollinger Band extremes
+       Example: Buy when RSI < 30, sell when RSI > 70
+    
+    3. Multi-Asset (Pipeline-based):
+       - Use context.pipeline_data for factor-based selection
+       - Rank assets by factor values
+       - Select top/bottom N assets
+       Example: Rank by momentum factor, select top 5 assets
+    
+    ASSET CLASS EXAMPLES:
+    
+    Equities: Use Pipeline API for multi-asset strategies
+        - Access to fundamental data and factors
+        - Screen large universes efficiently
+        - Example: Select top 20 stocks by momentum factor
+    
+    Crypto: Direct price/indicator strategies (no Pipeline)
+        - Use data.history() for price data
+        - Calculate technical indicators directly
+        - Example: BTC/USD momentum using SMA crossover
+    
+    Forex: Direct price/indicator strategies (no Pipeline)
+        - Use data.history() for price data
+        - Consider session-based patterns
+        - Example: EUR/USD mean reversion using Bollinger Bands
+    
+    TROUBLESHOOTING:
+    
+    - If data.history() fails: Check that lookback period <= available data
+    - If pipeline_data is None: Ensure use_pipeline: true and pipeline is attached
+    - If signals are always 0: Verify indicator calculations and thresholds
+    
+    See docs/code_patterns/ for detailed examples and best practices.
+    
     Args:
-        context: Zipline context object
-        data: Zipline data object
+        context: Zipline context object with params attribute
+        data: Zipline data object for price history and current prices
         
     Returns:
-        signal: 1 for buy, -1 for sell, 0 for hold
-        additional_data: dict of values to record
+        tuple: (signal, additional_data)
+            - signal: 1 for buy, -1 for sell, 0 for hold
+            - additional_data: dict of values to record (e.g., {'sma': 100.5, 'rsi': 45.2})
     """
     # TODO: Implement your strategy logic here
     # 
@@ -460,18 +415,26 @@ def compute_signals(context, data):
     # Example: Simple momentum signal (replace with your logic)
     # This is a placeholder - implement your actual strategy here
     lookback = context.params.get('strategy', {}).get('lookback_period', 30)
+    threshold_pct = context.params.get('strategy', {}).get('signal_threshold_pct', 0.02)
+    
     try:
         prices = data.history(context.asset, 'price', lookback, '1d')
         if len(prices) >= lookback:
             sma = prices.mean()
-            if current_price > sma * 1.02:  # 2% above SMA
+            if current_price > sma * (1 + threshold_pct):
                 signal = 1
-            elif current_price < sma * 0.98:  # 2% below SMA
+            elif current_price < sma * (1 - threshold_pct):
                 signal = -1
             additional_data['sma'] = sma
-    except Exception:
-        # If history fails, return neutral signal
-        pass
+    except (KeyError, ValueError, AttributeError) as e:
+        # If history fails (insufficient data, invalid asset, etc.), return neutral signal
+        # Log error for debugging (using warnings since logging may not be configured)
+        warnings.warn(
+            f"Error computing signals for {context.asset}: {e}. "
+            "Returning neutral signal.",
+            UserWarning,
+            stacklevel=2
+        )
 
     return signal, additional_data
 
@@ -518,7 +481,7 @@ def rebalance(context, data):
     # Execute trades based on signal using dynamic position sizing
     if signal == 1 and not context.in_position:
         # Calculate position size based on configured method
-        position_size = compute_position_size(context, data)
+        position_size = compute_position_size(context, data, context.params)
         order_target_percent(context.asset, position_size)
         context.in_position = True
         context.entry_price = current_price
@@ -536,6 +499,9 @@ def check_stop_loss(context, data):
     """
     Check and execute stop loss, trailing stop, and take profit orders.
 
+    This function uses lib.risk_management to check exit conditions and
+    executes the exit if any condition is met.
+
     Supports:
     - Fixed stop: exits when price drops below entry_price * (1 - stop_loss_pct)
     - Trailing stop: exits when price drops below highest_price * (1 - trailing_stop_pct)
@@ -543,63 +509,22 @@ def check_stop_loss(context, data):
 
     Called separately from rebalance to check stops more frequently.
     """
-    if not context.in_position:
-        return
-
-    if not data.can_trade(context.asset):
-        return
-
-    current_price = data.current(context.asset, 'price')
-    risk_params = context.params.get('risk', {})
-
-    # Update highest price for trailing stop tracking
-    if context.highest_price > 0:
-        context.highest_price = max(context.highest_price, current_price)
-    else:
-        # Initialize if not set (shouldn't happen, but defensive)
-        context.highest_price = current_price
-
-    should_exit = False
-    exit_type = None
-
-    # Check take profit first (highest priority - lock in gains)
-    if risk_params.get('use_take_profit', False):
-        take_profit_pct = risk_params.get('take_profit_pct', 0.10)
-        if context.entry_price > 0:
-            profit_price = context.entry_price * (1 + take_profit_pct)
-            if current_price >= profit_price:
-                should_exit = True
-                exit_type = 'take_profit'
-
-    # Check trailing stop (takes precedence over fixed stop if both enabled)
-    if not should_exit and risk_params.get('use_trailing_stop', False):
-        trailing_stop_pct = risk_params.get('trailing_stop_pct', 0.08)
-        if context.highest_price > 0:
-            stop_price = context.highest_price * (1 - trailing_stop_pct)
-            if current_price <= stop_price:
-                should_exit = True
-                exit_type = 'trailing'
-
-    # Check fixed stop if trailing not triggered
-    if not should_exit and risk_params.get('use_stop_loss', False):
-        stop_loss_pct = risk_params.get('stop_loss_pct', 0.05)
-        if context.entry_price > 0:
-            stop_price = context.entry_price * (1 - stop_loss_pct)
-            if current_price <= stop_price:
-                should_exit = True
-                exit_type = 'fixed'
-
-    if should_exit:
+    # Use library function to check exit conditions
+    exit_type = check_exit_conditions(context, data, context.params.get('risk', {}))
+    
+    if exit_type:
+        # Execute exit
         order_target_percent(context.asset, 0)
         context.in_position = False
         context.entry_price = 0.0
         context.highest_price = 0.0
-        # Record exit type as numeric hash for charting
-        exit_type_map = {'fixed': 1, 'trailing': 2, 'take_profit': 3}
+        
+        # Record exit type using library helper
+        exit_type_code = get_exit_type_code(exit_type)
         record(
             stop_triggered=1 if exit_type != 'take_profit' else 0,
             take_profit_triggered=1 if exit_type == 'take_profit' else 0,
-            exit_type=exit_type_map.get(exit_type, 0)
+            exit_type=exit_type_code
         )
     else:
         record(stop_triggered=0, take_profit_triggered=0)

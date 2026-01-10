@@ -14,6 +14,10 @@ strategy:
   rebalance_frequency: daily     # 'daily', 'weekly', 'monthly'
   minutes_after_open: 30         # Minutes after market open to trade (Range: 0-60)
   lookback_period: 30            # Default lookback period for indicators (Range: 5-252)
+  
+  # Signal Generation Parameters
+  signal_threshold_pct: 0.02     # Threshold percentage for signal generation (Range: 0.01-0.10)
+                                 # Used in example compute_signals() implementation
 
   # Pipeline Configuration
   # NOTE: Pipeline API is primarily designed for US equities with proper metadata.
@@ -107,6 +111,31 @@ costs:
   slippage:
     volume_limit: 0.025          # Max % of bar volume (Range: 0.01-0.10)
     price_impact: 0.1            # Price impact coefficient (Range: 0.05-0.30)
+
+# Calendar Configuration
+# ==============================================================================
+# The backtest runner automatically selects the trading calendar based on asset_class:
+#   - equities: XNYS (NYSE calendar, 252 trading days/year)
+#     * Standard US market hours (9:30 AM - 4:00 PM ET)
+#     * Excludes weekends and US market holidays
+#   - crypto: CRYPTO (24/7 calendar, 365 trading days/year)
+#     * Continuous trading, no holidays
+#     * All days of the year are trading days
+#   - forex: FOREX (24/5 calendar, 260 trading days/year)
+#     * 24-hour trading Monday-Friday
+#     * Excludes weekends only
+# 
+# Calendar selection happens automatically in lib/backtest/runner.py via 
+# get_calendar_for_asset_class(). You do not need to specify the calendar manually.
+#
+# Timezone Handling:
+# - All timestamps are normalized to UTC internally by Zipline
+# - Dates in parameters.yaml should be timezone-naive (YYYY-MM-DD format)
+# - The backtest runner handles timezone conversion automatically
+# - Historical data is stored in UTC to ensure consistency
+#
+# For more details, see docs/workflow.md and lib/calendars/
+# ==============================================================================
 
 # Backtest Configuration
 # ==============================================================================
