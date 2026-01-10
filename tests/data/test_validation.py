@@ -10,7 +10,6 @@ from pathlib import Path
 
 # Third-party imports
 import pytest
-import pandas as pd
 
 # Local imports
 project_root = Path(__file__).parent.parent.parent
