@@ -1,0 +1,199 @@
+---
+description: Trading calendar patterns - custom calendar registration, calendar selection, CryptoCalendar, ForexCalendar
+globs: lib/calendars/**/*.py
+alwaysApply: false
+---
+
+# Trading Calendar Patterns
+
+## Purpose
+Define patterns for using trading calendars with `lib/calendars/` modules, including custom calendar registration, calendar selection, and CryptoCalendar/ForexCalendar usage.
+
+## Calendar Registration
+
+### Use register_custom_calendars() Function
+Always use `lib.calendars.register_custom_calendars()` to register calendars.
+
+```python
+# ✅ GOOD - Register custom calendars
+from lib.calendars import register_custom_calendars
+
+# Register calendars before use
+register_custom_calendars(['CRYPTO', 'FOREX'])
+
+# Now calendars available for use
+from zipline.utils.calendar_utils import get_calendar
+crypto_cal = get_calendar('CRYPTO')
+
+# ❌ BAD - Direct calendar registration
+from exchange_calendars.calendar_utils import global_calendar_dispatcher
+# Don't register directly!
+```
+
+### Calendar Registration Timing
+
+```python
+# ✅ GOOD - Register calendars early
+from lib.calendars import register_custom_calendars
+
+# Register before bundle ingestion or backtest
+register_custom_calendars(['CRYPTO'])
+
+# Now safe to use
+ingest_bundle(..., calendar_name='CRYPTO')
+
+# ❌ BAD - Register after use
+ingest_bundle(..., calendar_name='CRYPTO')  # Calendar not registered!
+register_custom_calendars(['CRYPTO'])
+```
+
+## Calendar Selection
+
+### Use get_calendar_for_asset_class() Function
+Use `get_calendar_for_asset_class()` to select appropriate calendar.
+
+```python
+# ✅ GOOD - Use get_calendar_for_asset_class()
+from lib.calendars import get_calendar_for_asset_class
+
+# Get calendar for asset class
+calendar_name = get_calendar_for_asset_class('crypto')  # Returns 'CRYPTO'
+calendar_name = get_calendar_for_asset_class('forex')   # Returns 'FOREX'
+calendar_name = get_calendar_for_asset_class('equities')  # Returns None (use default)
+
+# Use in bundle ingestion
+if calendar_name:
+    ingest_bundle(..., calendar_name=calendar_name)
+
+# ❌ BAD - Hardcode calendar names
+calendar_name = 'CRYPTO'  # Should use get_calendar_for_asset_class()!
+```
+
+## CryptoCalendar Usage
+
+### Use CryptoCalendar for Crypto Assets
+Always use CryptoCalendar (24/7 trading) for cryptocurrency assets.
+
+```python
+# ✅ GOOD - Use CryptoCalendar for crypto
+from lib.calendars import register_custom_calendars, CryptoCalendar
+
+# Register before use
+register_custom_calendars(['CRYPTO'])
+
+# Use in bundle ingestion
+ingest_bundle(
+    source='yahoo',
+    assets=['crypto'],
+    symbols=['BTC-USD'],
+    calendar_name='CRYPTO'  # 24/7 trading calendar
+)
+
+# ❌ BAD - Use standard calendar for crypto
+ingest_bundle(..., calendar_name='XNYS')  # Wrong calendar for crypto!
+```
+
+## ForexCalendar Usage
+
+### Use ForexCalendar for Forex Assets
+Always use ForexCalendar (24/5 trading) for forex assets.
+
+```python
+# ✅ GOOD - Use ForexCalendar for forex
+from lib.calendars import register_custom_calendars
+
+register_custom_calendars(['FOREX'])
+
+ingest_bundle(
+    source='yahoo',
+    assets=['forex'],
+    symbols=['EURUSD=X'],
+    calendar_name='FOREX'  # 24/5 trading calendar
+)
+
+# ❌ BAD - Use standard calendar for forex
+ingest_bundle(..., calendar_name='XNYS')  # Wrong calendar for forex!
+```
+
+## Calendar in Backtests
+
+### Calendar Auto-Selection
+Calendars automatically selected based on asset_class in backtests.
+
+```python
+# ✅ GOOD - Calendar auto-selected from asset_class
+from lib.backtest import run_backtest
+from lib.calendars import register_custom_calendars
+
+# Register calendars
+register_custom_calendars(['CRYPTO'])
+
+# Calendar automatically selected from asset_class
+perf, calendar = run_backtest(
+    strategy_name='btc_sma_cross',
+    asset_class='crypto'  # Automatically uses CRYPTO calendar
+)
+
+# ❌ BAD - Specify calendar manually in backtest
+perf, calendar = run_backtest(
+    strategy_name='btc_sma_cross',
+    calendar='CRYPTO'  # Not a parameter! Use asset_class instead
+)
+```
+
+## Calendar Registry
+
+### Check Available Calendars
+Use registry functions to check available calendars.
+
+```python
+# ✅ GOOD - Check available calendars
+from lib.calendars import get_available_calendars, get_calendar_registry
+
+# List available calendars
+calendars = get_available_calendars()
+print(f"Available calendars: {calendars}")
+
+# Get registry
+registry = get_calendar_registry()
+if 'CRYPTO' in registry:
+    print("CRYPTO calendar registered")
+
+# ❌ BAD - Assume calendar exists
+calendar = get_calendar('CRYPTO')  # May not be registered!
+```
+
+## Calendar Consistency
+
+### Ensure Calendar Consistency
+Ensure calendar matches between bundle and backtest.
+
+```python
+# ✅ GOOD - Calendar consistency handled automatically
+from lib.backtest import run_backtest
+from lib.calendars import register_custom_calendars
+
+register_custom_calendars(['CRYPTO'])
+
+# Bundle and backtest use same calendar
+ingest_bundle(..., calendar_name='CRYPTO', ...)
+perf, calendar = run_backtest(..., asset_class='crypto')
+# Calendar consistency validated automatically
+
+# ❌ BAD - Mismatched calendars
+ingest_bundle(..., calendar_name='CRYPTO')
+perf, calendar = run_backtest(..., asset_class='equities')  # Mismatch!
+```
+
+## Enforcement
+
+- **Code Review**: Verify calendar registration before use
+- **Calendar Selection**: Check get_calendar_for_asset_class() used
+- **Asset Class Match**: Verify calendar matches asset class
+- **Registration Timing**: Ensure calendars registered early
+
+## Related Agents
+
+- `.claude/agents/codebase-architect.md` - Calendar architecture
+- `.claude/agents/data-ingestor.md` - Calendar in bundles
+- `lib/calendars/` - Calendar module documentation

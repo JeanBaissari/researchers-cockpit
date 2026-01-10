@@ -1,0 +1,213 @@
+---
+description: Core library patterns - module organization, public API exports, import patterns, type hints
+globs: lib/**/*.py
+alwaysApply: false
+---
+
+# Core Library Patterns
+
+## Purpose
+Define module organization standards, public API exports via `__all__`, import patterns, type hints, and docstring requirements for `lib/` modules.
+
+## Module Organization
+
+### One Concern Per Module
+Each module should have a single, clear purpose.
+
+```python
+# ✅ GOOD - Single concern
+# lib/metrics/core.py - Only core metrics
+"""Core performance metrics calculation."""
+def calculate_sharpe_ratio(returns): pass
+def calculate_sortino_ratio(returns): pass
+
+# ❌ BAD - Multiple concerns
+# lib/metrics.py - Core + trade + rolling metrics (too many!)
+"""Metrics calculation."""  # Vague purpose
+def calculate_sharpe_ratio(returns): pass
+def calculate_trade_metrics(trades): pass
+def calculate_rolling_metrics(equity_curve): pass
+```
+
+### Module Size Limits
+Keep modules under 150 lines.
+
+```python
+# ✅ GOOD - Focused, small module
+# lib/metrics/core.py (120 lines)
+"""Core performance metrics."""
+# ... focused implementation
+
+# ❌ BAD - Monolithic module
+# lib/metrics.py (500+ lines)
+"""All metrics."""  # Too large, should split!
+```
+
+## Public API Exports
+
+### Use __all__ Lists
+Explicitly define public API in `__all__`.
+
+```python
+# ✅ GOOD - Explicit __all__ export
+# lib/metrics/core.py
+"""Core performance metrics calculation."""
+
+def calculate_sharpe_ratio(returns: pd.Series) -> float:
+    """Calculate Sharpe ratio."""
+    pass
+
+def _helper_function(data):  # Private function
+    pass
+
+__all__ = [
+    'calculate_sharpe_ratio',
+    'calculate_sortino_ratio',
+]
+
+# ❌ BAD - No __all__, everything is public
+# lib/metrics/core.py'
+def calculate_sharpe_ratio(returns): pass
+def _helper_function(data): pass  # Still accessible!
+# No clear public API
+```
+
+### Package-Level Exports
+
+```python
+# ✅ GOOD - Package __init__.py exports
+from .core import calculate_sharpe_ratio, calculate_sortino_ratio
+from .trade import calculate_trade_metrics
+
+__all__ = [
+    'calculate_sharpe_ratio',
+    'calculate_sortino_ratio',
+    'calculate_trade_metrics',
+]
+
+# ❌ BAD - Wildcard imports or no exports
+from .core import *  # Don't use wildcard imports!
+```
+
+## Import Patterns
+
+### Project Root Imports
+Use `lib.*` imports from project root.
+
+```python
+# ✅ GOOD - Project root imports
+from lib.config import load_settings
+from lib.metrics import calculate_sharpe_ratio
+from lib.paths import get_project_root
+
+# ❌ BAD - Relative imports or direct module access
+from .config import load_settings  # Relative - fragile!
+from lib.config.core import load_settings  # Too deep - use package!
+```
+
+### Optional Dependencies
+
+```python
+# ✅ GOOD - Optional dependency handling
+try:
+    import pandas as pd
+    HAS_PANDAS = True
+except ImportError:
+    HAS_PANDAS = False
+
+# ❌ BAD - Assume dependencies exist
+import pandas as pd  # Will fail if not installed!
+```
+
+### Import Organization
+
+```python
+# ✅ GOOD - Organized imports
+# Standard library
+import os
+from pathlib import Path
+from typing import Dict, Optional
+
+# Third-party
+import pandas as pd
+import yaml
+
+# Local
+from lib.utils import get_project_root
+from lib.config import load_settings
+
+# ❌ BAD - Mixed or unordered imports
+import pandas as pd
+from lib.utils import get_project_root
+import os
+from lib.config import load_settings
+# No organization - hard to read!
+```
+
+## Type Hints
+
+### Function Type Annotations
+
+```python
+# ✅ GOOD - Complete type hints
+from typing import Dict
+from pathlib import Path
+
+def load_config(config_path: Path, validate: bool = True) -> Dict[str, any]:
+    """Load configuration from YAML file."""
+    pass
+
+# ❌ BAD - No type hints
+def load_config(config_path, validate=True):
+    """Load configuration from YAML file."""
+    pass
+```
+
+### Return Type Annotations
+
+```python
+# ✅ GOOD - Explicit return types
+def get_project_root() -> Path:
+    """Get project root directory."""
+    return Path(__file__).parent.parent
+
+# ❌ BAD - Missing return types
+def get_project_root():  # What does it return?
+    return Path(__file__).parent.parent
+```
+
+## Docstrings
+
+```python
+# ✅ GOOD - Complete docstrings
+"""
+Core configuration loading and cache management.
+"""
+
+def load_settings() -> Dict[str, Any]:
+    """
+    Load global settings from config/settings.yaml.
+    
+    Returns:
+        dict: Settings dictionary
+    """
+    pass
+
+# ❌ BAD - Missing docstrings
+# No module docstring!
+def load_settings():
+    """Load settings."""  # Too brief!
+    pass
+```
+
+## Enforcement
+
+- **Module Size**: Check files are < 150 lines
+- **__all__ Lists**: Verify all modules define public API
+- **Type Hints**: Ensure all functions have type annotations
+- **Docstrings**: Check module and function documentation
+
+## Related Agents
+
+- `.claude/agents/codebase-architect.md` - Module organization
+- `.claude/agents/pattern-applier.md` - Pattern enforcement

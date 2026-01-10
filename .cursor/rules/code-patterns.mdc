@@ -1,0 +1,182 @@
+---
+description: Zipline-reloaded patterns - Pipeline API, UTC timezone, custom calendars
+globs: strategies/**/*.py,lib/**/*.py,notebooks/**/*.py
+alwaysApply: false
+---
+
+# Zipline-Reloaded Code Patterns
+
+## Purpose
+Ensure all code follows Zipline-reloaded 3.1.0 standards with UTC timezone standardization, generic Pipeline API patterns, and custom calendar system usage.
+
+## Pipeline API Patterns
+
+### Generic EquityPricing Usage
+Always use generic `EquityPricing` for all asset classes.
+
+```python
+# ✅ GOOD - Generic EquityPricing
+from zipline.pipeline import Pipeline
+from zipline.pipeline.data import EquityPricing
+
+def make_pipeline():
+    return Pipeline(
+        columns={
+            'close': EquityPricing.close.latest,
+            'volume': EquityPricing.volume.latest,
+        }
+    )
+
+# ❌ BAD - Asset-specific pricing (deprecated)
+from zipline.pipeline.data import USEquityPricing  # Don't use!
+```
+
+### Pipeline in Strategies
+
+```python
+# ✅ GOOD - Pipeline in before_trading_start
+def before_trading_start(context, data):
+    pipeline_output = data.pipeline_output('my_pipeline')
+    context.pipeline_universe = pipeline_output.index.tolist()
+
+def initialize(context):
+    attach_pipeline(make_pipeline(), 'my_pipeline')
+```
+
+## UTC Timezone Standardization
+
+### Always Normalize to UTC
+All datetime operations must normalize to UTC.
+
+```python
+# ✅ GOOD - Normalize to UTC
+from lib.data.normalization import normalize_to_utc
+
+df = pd.read_csv('data.csv', parse_dates=['timestamp'])
+df['timestamp'] = normalize_to_utc(df['timestamp'])
+df = df.set_index('timestamp').tz_convert(None)  # Remove timezone for Zipline
+
+# ❌ BAD - Mixed timezones or no normalization
+df = pd.read_csv('data.csv', parse_dates=['timestamp'])
+# No timezone handling - will cause issues!
+```
+
+### Timezone Conversion Pattern
+
+```python
+# ✅ GOOD - Standard pattern
+df['timestamp'] = pd.to_datetime(df['timestamp'])
+df['timestamp'] = normalize_to_utc(df['timestamp'])
+df = df.set_index('timestamp').tz_convert(None)
+
+# ❌ BAD - Inconsistent timezone handling
+df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
+# Missing normalize_to_utc() call
+```
+
+## Custom Calendar System
+
+### Calendar Selection
+Use `get_calendar_for_asset_class()` to select appropriate calendar.
+
+```python
+# ✅ GOOD - Use calendar registry
+from lib.calendars.registry import get_calendar_for_asset_class
+
+calendar = get_calendar_for_asset_class('CRYPTO')
+# Returns CryptoCalendar instance
+
+# ❌ BAD - Hardcoded calendar names
+calendar = TradingCalendar('CRYPTO')  # Don't hardcode!
+```
+
+### Calendar Registration
+
+```python
+# ✅ GOOD - Register custom calendars
+from zipline.utils.calendars import register_calendar
+from lib.calendars.crypto import CryptoCalendar
+
+register_calendar('CRYPTO', CryptoCalendar())
+
+# ❌ BAD - Use default calendar for all assets
+# No calendar registration - uses default NYSE
+```
+
+### Calendar Aliases
+Use standard aliases: `CRYPTO`, `FOREX`, `NYSE`, `NASDAQ`.
+
+```python
+# ✅ GOOD - Use standard aliases
+calendar = get_calendar_for_asset_class('CRYPTO')  # Standard alias
+
+# ❌ BAD - Non-standard calendar names
+calendar = get_calendar_for_asset_class('crypto_24_7')  # Non-standard!
+```
+
+## Scheduling Functions
+
+### Schedule Function Patterns
+
+```python
+# ✅ GOOD - Use schedule_function with date/time rules
+from zipline.api import schedule_function, date_rules, time_rules
+
+def initialize(context):
+    schedule_function(
+        rebalance,
+        date_rule=date_rules.every_day(),
+        time_rule=time_rules.market_open(minutes=30)
+    )
+
+# ❌ BAD - Manual scheduling in handle_data
+def handle_data(context, data):
+    if data.current_dt.hour == 9 and data.current_dt.minute == 30:
+        # Manual scheduling - use schedule_function instead!
+        rebalance(context, data)
+```
+
+## Order Management
+
+### Order Placement Patterns
+
+```python
+# ✅ GOOD - Use order API with proper asset lookup
+from zipline.api import order, symbol
+
+def rebalance(context, data):
+    asset = symbol('BTC')
+    if data.can_trade(asset):
+        order(asset, 10)
+
+# ❌ BAD - Direct asset creation without lookup
+asset = Equity(sid=12345)  # Don't create assets directly!
+order(asset, 10)
+```
+
+## Data Access Patterns
+
+### Current and History
+
+```python
+# ✅ GOOD - Use data.current() and data.history()
+def handle_data(context, data):
+    current_price = data.current(context.asset, 'price')
+    prices = data.history(context.asset, 'price', 20, '1d')
+
+# ❌ BAD - Direct data access
+price = data[context.asset]['price']  # Don't access directly!
+```
+
+## Enforcement
+
+- **Code Review**: Verify Pipeline API usage
+- **Timezone Checks**: Ensure normalize_to_utc() is called
+- **Calendar Validation**: Check calendar registration
+- **Pattern Validation**: Reference docs/code_patterns/
+
+## Related Agents
+
+- `.claude/agents/pattern-applier.md` - Pattern enforcement
+- `.claude/agents/codebase-architect.md` - Architectural validation
+- `docs/code_patterns/` - Detailed pattern documentation

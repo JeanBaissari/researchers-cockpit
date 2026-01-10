@@ -1,0 +1,184 @@
+---
+description: Backtest execution patterns - run_backtest, save_results, result directory structure
+globs: lib/backtest/**/*.py,scripts/run_backtest.py,**/*backtest*.py
+alwaysApply: false
+---
+
+# Backtest Execution Patterns
+
+## Purpose
+Define patterns for executing backtests, saving results, and managing backtest output directories using `lib/backtest/` modules.
+
+## Running Backtests
+
+### Use run_backtest() Function
+Always use `lib.backtest.run_backtest()` for executing backtests.
+
+```python
+# ✅ GOOD - Use lib.backtest.run_backtest()
+from lib.backtest import run_backtest
+
+perf, trading_calendar = run_backtest(
+    strategy_name='btc_sma_cross',
+    start_date='2023-01-01',
+    end_date='2024-01-01',
+    capital_base=100000,
+    bundle='yahoo_crypto_daily',
+    data_frequency='daily',
+    asset_class='crypto'
+)
+
+# ❌ BAD - Direct Zipline API usage
+from zipline import run_algorithm
+# Don't use Zipline directly - use lib.backtest!
+```
+
+### Backtest Parameters
+
+```python
+# ✅ GOOD - Complete parameter specification
+perf, calendar = run_backtest(
+    strategy_name='spy_sma_cross',
+    start_date='2020-01-01',  # Explicit start date
+    end_date='2024-01-01',    # Explicit end date
+    capital_base=100000,       # Explicit capital
+    bundle='yahoo_equities_daily',  # Explicit bundle
+    data_frequency='daily',    # Explicit frequency
+    asset_class='equities'     # Asset class hint
+)
+
+# ❌ BAD - Missing required parameters
+perf = run_backtest('spy_sma_cross')  # Missing dates, bundle!
+```
+
+## Saving Results
+
+### Use save_results() Function
+Always use `lib.backtest.save_results()` to save backtest results.
+
+```python
+# ✅ GOOD - Use save_results() with all required parameters
+from lib.backtest import run_backtest, save_results
+from lib.config.strategy import load_strategy_params
+
+perf, calendar = run_backtest('btc_sma_cross', ...)
+params = load_strategy_params('btc_sma_cross')
+
+result_dir = save_results(
+    strategy_name='btc_sma_cross',
+    perf=perf,
+    params=params,
+    trading_calendar=calendar,
+    result_type='backtest'
+)
+
+# ❌ BAD - Manual result saving
+import json
+with open('results.json', 'w') as f:
+    json.dump(perf.to_dict(), f)  # Don't save manually!
+```
+
+### Result Directory Structure
+
+```python
+# ✅ GOOD - Results saved to timestamped directory
+result_dir = save_results(
+    strategy_name='btc_sma_cross',
+    perf=perf,
+    params=params,
+    trading_calendar=calendar
+)
+# Creates: results/btc_sma_cross/backtest_20241220_143000/
+# Updates: results/btc_sma_cross/latest/ -> symlink
+
+# ❌ BAD - Custom result directory
+result_dir = Path('my_results')  # Don't create custom directories!
+```
+
+## Result Directory Structure
+
+### Standard Directory Layout
+
+```
+results/{strategy_name}/{result_type}_{timestamp}/
+├── returns.csv              # Daily/minute returns
+├── positions.csv            # Position history
+├── transactions.csv         # All trades
+├── metrics.json             # Performance metrics
+├── parameters_used.yaml     # Strategy config snapshot
+└── equity_curve.png         # Performance visualization (if available)
+```
+
+### Symlink Management
+
+```python
+# ✅ GOOD - Symlink automatically created by save_results()
+result_dir = save_results(...)
+# results/{strategy}/latest/ -> symlink to latest run
+
+# ❌ BAD - Manual symlink creation
+import os
+os.symlink(result_dir, 'latest')  # Don't create symlinks manually!
+```
+
+## Performance Object Handling
+
+### Accessing Performance Data
+
+```python
+# ✅ GOOD - Access performance DataFrame columns
+perf, calendar = run_backtest('btc_sma_cross', ...)
+
+returns = perf['returns']
+portfolio_value = perf['portfolio_value']
+positions = perf['positions']
+
+# Calculate metrics
+from lib.metrics import calculate_metrics
+metrics = calculate_metrics(returns, transactions=transactions_df)
+
+# ❌ BAD - Assume performance structure
+total_return = perf['total_return']  # May not exist!
+```
+
+### Performance DataFrame Columns
+
+```python
+# ✅ GOOD - Standard performance columns
+# perf DataFrame contains:
+# - returns: Daily/minute returns
+# - portfolio_value: Total portfolio value
+# - positions: Position values
+# - cash: Cash on hand
+# - capital_used: Capital used for positions
+
+# ❌ BAD - Custom performance columns
+perf['my_custom_metric'] = ...  # Don't modify perf DataFrame!
+```
+
+## Result Type Handling
+
+### Different Result Types
+
+```python
+# ✅ GOOD - Specify result_type for different operations
+save_results(..., result_type='backtest')      # Standard backtest
+save_results(..., result_type='optimization')  # Optimization results
+save_results(..., result_type='walkforward')   # Walk-forward results
+
+# ❌ BAD - Always using 'backtest'
+save_results(..., result_type='backtest')  # Wrong for optimization!
+```
+
+## Enforcement
+
+- **Code Review**: Verify use of `run_backtest()` and `save_results()`
+- **Directory Check**: Verify results saved to correct locations
+- **Symlink Verification**: Ensure latest symlink is created
+- **Parameter Validation**: Check all required parameters provided
+
+## Related Agents
+
+- `.claude/agents/backtest-runner.md` - Backtest execution
+- `.claude/agents/codebase-architect.md` - Backtest architecture
+- `lib/backtest/` - Backtest module documentation

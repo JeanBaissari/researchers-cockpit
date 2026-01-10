@@ -1,0 +1,238 @@
+---
+description: Data source configuration - data_sources.yaml structure, source definitions, bundle naming conventions
+globs: config/data_sources.yaml
+alwaysApply: false
+---
+
+# Data Source Configuration Patterns
+
+## Purpose
+Define patterns for `config/data_sources.yaml`, including source definitions, bundle naming conventions, and data source configuration structure.
+
+## Data Source Structure
+
+### Complete Source Definition
+Each data source must have complete definition with all required sections.
+
+```yaml
+# ✅ GOOD - Complete source definition
+yahoo:
+  name: Yahoo Finance
+  type: free                  # free, api_key_required, local
+  enabled: true               # Enable/disable source
+  base_url: https://query1.finance.yahoo.com
+  bundle_prefix: yahoo_       # Bundle naming prefix
+  
+  features:
+    - daily_prices
+    - historical_data
+    - crypto
+    - forex
+    - equities
+  
+  asset_classes:
+    crypto:
+      calendar: CRYPTO
+      minutes_per_day: 1440
+      timeframes:
+        1m: 7
+        5m: 60
+        1h: 730
+        daily: null
+  
+  rate_limits:
+    requests_per_hour: 2000
+    requests_per_day: 48000
+  
+  notes: |
+    Additional notes about the data source
+
+# ❌ BAD - Incomplete source definition
+yahoo:
+  enabled: true
+  # Missing features, asset_classes, rate_limits!
+```
+
+## Source Types
+
+### Source Type Values
+Use standard source types: 'free', 'api_key_required', 'local'.
+
+```yaml
+# ✅ GOOD - Standard source types
+type: free              # Free data source (Yahoo Finance)
+type: api_key_required  # Requires API key (Binance, OANDA)
+type: local             # Local files (CSV)
+
+# ❌ BAD - Non-standard types
+type: public            # Should be 'free'
+type: paid              # Should be 'api_key_required'
+```
+
+## Asset Class Configuration
+
+### Asset Class Timeframe Limits
+Each asset class must specify calendar, minutes_per_day, and timeframe limits.
+
+```yaml
+# ✅ GOOD - Complete asset class configuration
+asset_classes:
+  crypto:
+    calendar: CRYPTO           # Trading calendar
+    minutes_per_day: 1440      # 24/7 trading
+    timeframes:
+      1m: 7                    # 7 days max for 1-minute
+      5m: 60                   # 60 days max for 5-minute
+      1h: 730                  # 730 days max for hourly
+      daily: null              # null = unlimited
+  
+  equities:
+    calendar: NYSE
+    minutes_per_day: 390       # 6.5 hours
+    timeframes:
+      1m: 7
+      daily: null
+
+# ❌ BAD - Missing asset class configuration
+asset_classes:
+  crypto:
+    calendar: CRYPTO
+    # Missing minutes_per_day and timeframes!
+```
+
+## Bundle Naming Conventions
+
+### Bundle Prefix Pattern
+Use consistent bundle prefix: `{source}_{asset}_{timeframe}`.
+
+```yaml
+# ✅ GOOD - Standard bundle prefix
+yahoo:
+  bundle_prefix: yahoo_
+
+# Results in bundles like:
+# - yahoo_crypto_daily
+# - yahoo_equities_1h
+# - yahoo_forex_daily
+
+binance:
+  bundle_prefix: binance_
+
+# Results in:
+# - binance_crypto_1m
+# - binance_crypto_5m
+
+# ❌ BAD - Non-standard bundle prefix
+yahoo:
+  bundle_prefix: yf_           # Non-standard!
+```
+
+## Authentication Configuration
+
+### API Key Configuration
+For sources requiring API keys, use environment variable references.
+
+```yaml
+# ✅ GOOD - API key configuration
+binance:
+  type: api_key_required
+  authentication:
+    api_key_env: BINANCE_API_KEY        # Environment variable name
+    api_secret_env: BINANCE_API_SECRET  # For sources requiring secret
+
+# Store actual keys in .env file, not in YAML!
+
+# ❌ BAD - Hardcoded API keys
+binance:
+  authentication:
+    api_key: "your_key_here"  # Never hardcode keys!
+```
+
+## Rate Limits
+
+### Rate Limit Configuration
+Specify rate limits for API sources.
+
+```yaml
+# ✅ GOOD - Rate limit configuration
+yahoo:
+  rate_limits:
+    requests_per_hour: 2000
+    requests_per_day: 48000
+
+binance:
+  rate_limits:
+    requests_per_minute: 1200
+    weight_per_minute: 6000
+
+# ❌ BAD - Missing rate limits
+yahoo:
+  # No rate_limits section - may cause API issues!
+```
+
+## Gap Fill Configuration
+
+### Gap Fill Settings
+Configure gap filling for sources with data gaps.
+
+```yaml
+# ✅ GOOD - Gap fill configuration
+yahoo:
+  gap_fill:
+    forex:
+      enabled: true
+      method: ffill              # 'ffill' or 'bfill'
+      max_gap_days: 5
+    crypto:
+      enabled: true
+      method: ffill
+      max_gap_days: 3
+    equities:
+      enabled: false             # Equities have defined trading days
+
+# ❌ BAD - Missing gap fill for sources with gaps
+yahoo:
+  # Missing gap_fill - forex data may have gaps!
+```
+
+## Feature List
+
+### Source Features
+List all features supported by the data source.
+
+```yaml
+# ✅ GOOD - Complete feature list
+yahoo:
+  features:
+    - daily_prices
+    - historical_data
+    - crypto
+    - forex
+    - equities
+
+binance:
+  features:
+    - crypto_spot
+    - real_time
+    - minute_data
+    - daily_data
+
+# ❌ BAD - Missing or incomplete features
+yahoo:
+  features:
+    - prices
+  # Too vague, missing asset class support!
+```
+
+## Enforcement
+
+- **Structure Validation**: Verify complete source definition
+- **Bundle Naming**: Check bundle_prefix follows conventions
+- **Timeframe Limits**: Verify timeframe limits specified
+- **Authentication**: Ensure API keys use environment variables
+
+## Related Agents
+
+- `.claude/agents/data-ingestor.md` - Data source usage
+- `.claude/agents/codebase-architect.md` - Data source architecture
+- `config/data_sources.yaml` - Data source configuration file

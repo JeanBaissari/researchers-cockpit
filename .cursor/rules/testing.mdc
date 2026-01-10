@@ -1,0 +1,166 @@
+---
+description: Testing standards - unit tests, mocking patterns, coverage expectations
+globs: 02-development/project/src/**/*.test.ts,02-development/project/src/**/*.test.tsx,02-development/project/src/**/*.spec.ts,02-development/project/src/**/*.spec.tsx
+alwaysApply: false
+---
+
+# Testing Standards
+
+## Purpose
+Reliable tests, good coverage, easy maintenance.
+
+## Test File Organization
+
+### Co-located Tests
+```
+src/lib/data.ts
+src/lib/data.test.ts          // ✅ Co-located
+
+src/components/product/CategoryCard.tsx
+src/components/product/CategoryCard.test.tsx  // ✅ Co-located
+```
+
+### Integration Tests
+```
+__tests__/integration/data-layer.test.ts      // ✅ Separate folder
+```
+
+## Test Structure
+
+```typescript
+describe('ComponentName or function', () => {
+  it('does something specific', () => {
+    // Arrange
+    const input = setupInput();
+    
+    // Act
+    const result = doSomething(input);
+    
+    // Assert
+    expect(result).toBe(expected);
+  });
+});
+```
+
+## Mocking Patterns
+
+### Mock Supabase Client
+```typescript
+jest.mock('@/lib/supabase', () => ({
+  supabase: {
+    from: jest.fn(() => ({
+      select: jest.fn().mockResolvedValue({
+        data: [{ id: '1', nombre: 'Plantas' }],
+        error: null
+      })
+    }))
+  }
+}));
+```
+
+### Mock Data Layer
+```typescript
+jest.mock('@/lib/data', () => ({
+  getAllCategories: jest.fn().mockResolvedValue([
+    { id: '1', nombre: 'Plantas', slug: 'plantas' }
+  ]),
+  getSiteConfig: jest.fn().mockResolvedValue({
+    businessName: 'Jardinería de SB'
+  })
+}));
+```
+
+### Mock Next.js Router
+```typescript
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: jest.fn(),
+    pathname: '/',
+  }),
+  notFound: jest.fn(),
+}));
+```
+
+## Component Testing
+
+```typescript
+import { render, screen } from '@testing-library/react';
+import { CategoryCard } from './CategoryCard';
+
+describe('CategoryCard', () => {
+  const mockCategory = {
+    id: '1',
+    nombre: 'Plantas',
+    slug: 'plantas',
+    descripcion: 'Plantas de interior y exterior',
+    iconName: 'Leaf'
+  };
+  
+  it('renders category name', () => {
+    render(<CategoryCard category={mockCategory} />);
+    expect(screen.getByText('Plantas')).toBeInTheDocument();
+  });
+  
+  it('renders category description', () => {
+    render(<CategoryCard category={mockCategory} />);
+    expect(screen.getByText(/interior y exterior/)).toBeInTheDocument();
+  });
+});
+```
+
+## Async/Await Tests
+
+```typescript
+it('fetches categories successfully', async () => {
+  const categories = await getAllCategories();
+  expect(categories).toHaveLength(25);
+  expect(categories[0]).toHaveProperty('nombre');
+});
+
+it('handles errors gracefully', async () => {
+  jest.spyOn(console, 'error').mockImplementation();
+  const result = await getCategoryBySlug('nonexistent');
+  expect(result).toBeNull();
+});
+```
+
+## Coverage Expectations
+
+- **Unit tests**: All utility functions
+- **Component tests**: Critical UI components
+- **Integration tests**: Data flow, API routes
+- **Target**: 70%+ coverage (don't obsess over 100%)
+
+## Test Naming
+
+```typescript
+// ✅ GOOD
+it('returns null when category not found')
+it('renders loading state while fetching')
+it('calls onClick handler when button clicked')
+
+// ❌ BAD
+it('works')
+it('test 1')
+it('should render')  // "should" is redundant
+```
+
+## Assertions Best Practices
+
+```typescript
+// ✅ Specific assertions
+expect(categories).toHaveLength(25);
+expect(category.nombre).toBe('Plantas');
+
+// ❌ Weak assertions
+expect(categories).toBeTruthy();
+expect(category).toBeDefined();
+```
+
+## Enforcement
+
+- PR review: Tests for new features
+- CI/CD: Tests must pass before merge
+- Coverage: Track trends, not absolutes
+
+#testing #jest #react-testing-library #quality

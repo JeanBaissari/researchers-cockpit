@@ -1,0 +1,224 @@
+---
+description: Import patterns and conventions - project root imports, relative vs absolute, optional dependencies, import organization
+globs: **/*.py
+alwaysApply: true
+---
+
+# Import Patterns and Conventions
+
+## Purpose
+Define import patterns and conventions across the codebase, including project root imports, relative vs absolute imports, optional dependency handling, and import organization.
+
+## Project Root Imports
+
+### Use lib.* Imports
+Always use `lib.*` imports for project modules.
+
+```python
+# ✅ GOOD - Use lib.* imports
+from lib.config import load_settings
+from lib.backtest import run_backtest, save_results
+from lib.metrics import calculate_metrics
+from lib.bundles import ingest_bundle
+
+# ❌ BAD - Relative imports or direct paths
+from ..config import load_settings  # Relative import
+from config import load_settings  # Direct import - may fail!
+```
+
+### Import from lib/ Modules
+Import from specific lib/ submodules when needed.
+
+```python
+# ✅ GOOD - Import from specific submodules
+from lib.config.core import load_settings
+from lib.config.assets import load_asset_config
+from lib.config.strategy import load_strategy_params
+
+from lib.logging.config import configure_logging
+from lib.logging.context import LogContext
+
+# ❌ BAD - Import from lib root when submodule exists
+from lib import load_settings  # Should use lib.config.core!
+```
+
+## Relative vs Absolute Imports
+
+### Prefer Absolute Imports
+Use absolute imports from project root.
+
+```python
+# ✅ GOOD - Absolute imports
+from lib.backtest import run_backtest
+from lib.metrics import calculate_metrics
+from lib.validation import DataValidator
+
+# ❌ BAD - Relative imports
+from ..backtest import run_backtest  # Relative - fragile!
+from .metrics import calculate_metrics  # Relative - breaks if moved!
+```
+
+### When to Use Relative Imports
+Use relative imports only within same package.
+
+```python
+# ✅ GOOD - Relative imports within same package
+# lib/validation/data_validator.py
+from .core import ValidationResult, ValidationSeverity
+from .config import ValidationConfig
+from .base import BaseValidator
+
+# ❌ BAD - Relative imports across packages
+# lib/backtest/runner.py
+from ..validation import DataValidator  # Use absolute: lib.validation!
+```
+
+## Optional Dependency Handling
+
+### Use Try/Except for Optional Dependencies
+Handle optional dependencies gracefully.
+
+```python
+# ✅ GOOD - Optional dependency handling
+try:
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    MATPLOTLIB_AVAILABLE = True
+except ImportError:
+    MATPLOTLIB_AVAILABLE = False
+
+# Use conditionally
+if MATPLOTLIB_AVAILABLE:
+    plt.plot(data)
+else:
+    logger.warning("Matplotlib not available, skipping plot")
+
+# ❌ BAD - Assume optional dependency exists
+import matplotlib.pyplot as plt  # May fail if not installed!
+plt.plot(data)
+```
+
+### Optional Dependency Patterns
+
+```python
+# ✅ GOOD - Standard optional dependency pattern
+try:
+    import empyrical as ep
+    EMPYRICAL_AVAILABLE = True
+except ImportError:
+    EMPYRICAL_AVAILABLE = False
+
+# Use with fallback
+if EMPYRICAL_AVAILABLE:
+    sharpe = ep.sharpe_ratio(returns)
+else:
+    sharpe = calculate_sharpe_manual(returns)
+
+# ❌ BAD - No fallback
+import empyrical as ep
+sharpe = ep.sharpe_ratio(returns)  # Crashes if empyrical missing!
+```
+
+## Import Organization
+
+### Standard Import Order
+Organize imports: stdlib, third-party, local.
+
+```python
+# ✅ GOOD - Standard import organization
+# Standard library imports
+import sys
+from pathlib import Path
+from typing import Optional, Dict
+
+# Third-party imports
+import numpy as np
+import pandas as pd
+from zipline.api import order, symbol
+
+# Local imports
+from lib.config import load_settings
+from lib.backtest import run_backtest
+
+# ❌ BAD - Mixed import order
+import pandas as pd
+from lib.config import load_settings
+import sys
+# No organization!
+```
+
+### Import Grouping
+
+```python
+# ✅ GOOD - Grouped imports
+# Standard library
+import json
+import logging
+from datetime import datetime
+
+# Third-party
+import numpy as np
+import pandas as pd
+from zipline.api import order
+
+# Local - lib modules
+from lib.config import load_settings
+from lib.metrics import calculate_metrics
+
+# Local - project modules
+from .utils import helper_function
+
+# ❌ BAD - Unorganized imports
+import json
+from lib.config import load_settings
+import numpy as np
+from .utils import helper_function
+# Mixed and unorganized!
+```
+
+## Import Aliases
+
+### Use Standard Aliases
+Use standard aliases for common libraries.
+
+```python
+# ✅ GOOD - Standard aliases
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# ❌ BAD - Non-standard aliases
+import numpy as num  # Should be np!
+import pandas as dataframe  # Should be pd!
+```
+
+## Circular Import Prevention
+
+### Avoid Circular Imports
+Structure imports to prevent circular dependencies.
+
+```python
+# ✅ GOOD - Lazy imports to prevent circular dependencies
+def my_function():
+    # Import inside function to avoid circular import
+    from lib.backtest import run_backtest
+    return run_backtest(...)
+
+# ❌ BAD - Top-level circular import
+from lib.backtest import run_backtest  # May cause circular import!
+from lib.metrics import calculate_metrics  # If metrics imports backtest
+```
+
+## Enforcement
+
+- **Code Review**: Verify import organization and patterns
+- **Absolute Imports**: Check lib.* imports used
+- **Optional Dependencies**: Verify try/except for optional deps
+- **Import Order**: Ensure standard import organization
+
+## Related Agents
+
+- `.claude/agents/codebase-architect.md` - Import architecture
+- `.claude/agents/maintainer.md` - Import patterns
+- All agents - Import conventions apply to all code

@@ -1,0 +1,212 @@
+---
+description: Report generation - generate_report, report catalog, templates, weekly summary
+globs: lib/report/**/*.py,scripts/generate_report.py
+alwaysApply: false
+---
+
+# Report Generation Patterns
+
+## Purpose
+Define patterns for generating reports using `lib/report/` modules, including generate_report, report catalog management, templates, and weekly summary generation.
+
+## Report Generation
+
+### Use generate_report() Function
+Always use `lib.report.generate_report()` for creating strategy reports.
+
+```python
+# ✅ GOOD - Use generate_report()
+from lib.report import generate_report
+
+report_path = generate_report(
+    strategy_name='btc_sma_cross',
+    result_type='backtest',
+    asset_class='crypto'
+)
+
+print(f"Report saved to: {report_path}")
+
+# ❌ BAD - Manual report creation
+with open('report.md', 'w') as f:
+    f.write("# Strategy Report\n")  # Don't create manually!
+```
+
+### Report Generation Parameters
+
+```python
+# ✅ GOOD - Complete parameter specification
+from pathlib import Path
+from lib.report import generate_report
+
+# Standard backtest report
+report_path = generate_report(
+    strategy_name='spy_sma_cross',
+    result_type='backtest',  # 'backtest', 'optimization', 'walkforward'
+    asset_class='equities'
+)
+
+# Custom output path
+report_path = generate_report(
+    strategy_name='spy_sma_cross',
+    output_path=Path('reports/custom_report.md')
+)
+
+# Optimization report
+report_path = generate_report(
+    strategy_name='spy_sma_cross',
+    result_type='optimization'
+)
+
+# ❌ BAD - Missing strategy name
+report_path = generate_report()  # Missing required parameter!
+```
+
+## Report Catalog Management
+
+### Update Report Catalog
+Update strategy catalog after generating reports.
+
+```python
+# ✅ GOOD - Update catalog after report generation
+from lib.report import generate_report, update_catalog
+import json
+
+# Generate report
+report_path = generate_report('btc_sma_cross', result_type='backtest')
+
+# Load metrics
+from lib.utils import get_project_root
+results_dir = get_project_root() / 'results' / 'btc_sma_cross' / 'latest'
+with open(results_dir / 'metrics.json') as f:
+    metrics = json.load(f)
+
+# Update catalog
+update_catalog(
+    strategy_name='btc_sma_cross',
+    status='validated',  # 'testing', 'validated', 'abandoned'
+    metrics=metrics,
+    asset_class='crypto'
+)
+
+# ❌ BAD - Don't update catalog
+report_path = generate_report('btc_sma_cross')
+# Catalog not updated!
+```
+
+## Report Types
+
+### Use Appropriate Report Type
+Select correct result_type for the report.
+
+```python
+# ✅ GOOD - Use appropriate report type
+from lib.report import generate_report
+
+# Backtest report
+report = generate_report('spy_sma_cross', result_type='backtest')
+
+# Optimization report
+report = generate_report('spy_sma_cross', result_type='optimization')
+
+# Walk-forward report
+report = generate_report('spy_sma_cross', result_type='walkforward')
+
+# ❌ BAD - Wrong report type
+report = generate_report('spy_sma_cross', result_type='backtest')
+# But results are from optimization!
+```
+
+## Weekly Summary Generation
+
+### Use generate_weekly_summary() Function
+Use `generate_weekly_summary()` for weekly strategy summaries.
+
+```python
+# ✅ GOOD - Generate weekly summary
+from lib.report import generate_weekly_summary
+
+summary_path = generate_weekly_summary(
+    start_date='2024-01-01',
+    end_date='2024-01-07'
+)
+
+print(f"Weekly summary: {summary_path}")
+
+# ❌ BAD - Manual weekly summary
+# Don't create weekly summaries manually!
+```
+
+## Report Structure
+
+### Report Sections
+Reports include standard sections automatically.
+
+```python
+# ✅ GOOD - Report includes all sections
+report_path = generate_report('btc_sma_cross')
+
+# Report includes:
+# 1. Hypothesis (from hypothesis.md)
+# 2. Performance Summary (metrics)
+# 3. Trade Analysis (if transactions available)
+# 4. Validation Results (if walk-forward data)
+# 5. Overfit Analysis (if optimization data)
+# 6. Recommendations
+# 7. Next Steps
+
+# ❌ BAD - Expect custom sections
+report = generate_report('btc_sma_cross')
+# Don't expect non-standard sections!
+```
+
+## Report Output Location
+
+### Standard Report Location
+Reports saved to standard `reports/` directory.
+
+```python
+# ✅ GOOD - Use default report location
+report_path = generate_report('btc_sma_cross')
+# Saves to: reports/btc_sma_cross_report_20241220.md
+
+# Custom location if needed
+from pathlib import Path
+report_path = generate_report(
+    'btc_sma_cross',
+    output_path=Path('reports/custom_location.md')
+)
+
+# ❌ BAD - Non-standard location
+report_path = generate_report(
+    'btc_sma_cross',
+    output_path=Path('my_reports/report.md')  # Non-standard!
+)
+```
+
+## Report Data Sources
+
+### Report Uses Latest Results
+Reports automatically use latest results directory.
+
+```python
+# ✅ GOOD - Report uses latest results
+report_path = generate_report('btc_sma_cross')
+# Automatically uses: results/btc_sma_cross/latest/
+
+# ❌ BAD - Specify custom results directory
+# generate_report() doesn't accept results_dir parameter!
+# It always uses latest/
+```
+
+## Enforcement
+
+- **Code Review**: Verify use of `generate_report()` function
+- **Catalog Updates**: Check catalog updated after report generation
+- **Report Type**: Verify correct result_type used
+- **Output Location**: Ensure reports saved to standard location
+
+## Related Agents
+
+- `.claude/agents/report-generator.md` - Report generation
+- `.claude/agents/maintainer.md` - Catalog management
+- `lib/report/` - Report module documentation

@@ -1,0 +1,73 @@
+# Update Tracking for Commands and Rules
+# Tracks last update date and update cycle for commands and rules
+# Update cycle: 40 days (commands/rules should be reviewed every 40 days)
+
+commands:
+  github-commit.md:
+    last_updated: 2026-01-10
+    update_cycle_days: 40
+    status: current
+    notes: "Initial creation"
+  
+  create-cursor-rules.md:
+    last_updated: 2026-01-10
+    update_cycle_days: 40
+    status: current
+    notes: "Initial creation"
+  
+  update-commands-rules.md:
+    last_updated: 2026-01-10
+    update_cycle_days: 40
+    status: current
+    notes: "Initial creation"
+  
+  create-update-component-diagram.md:
+    last_updated: 2026-01-10
+    update_cycle_days: 40
+    status: current
+    notes: "Initial creation"
+  
+  audit-dependencies.md:
+    last_updated: 2026-01-10
+    update_cycle_days: 40
+    status: current
+    notes: "Initial creation"
+  
+  check-code-quality.md:
+    last_updated: 2026-01-10
+    update_cycle_days: 40
+    status: current
+    notes: "Initial creation"
+  
+  generate-api-docs.md:
+    last_updated: 2026-01-10
+    update_cycle_days: 40
+    status: current
+    notes: "Initial creation"
+  
+  backup-results.md:
+    last_updated: 2026-01-10
+    update_cycle_days: 40
+    status: current
+    notes: "Initial creation"
+  
+  health-check.md:
+    last_updated: 2026-01-10
+    update_cycle_days: 40
+    status: current
+    notes: "Initial creation"
+
+rules:
+  # Rules are tracked separately
+  # Add rules here as they are created/updated
+  architecture.mdc:
+    last_updated: 2026-01-10
+    update_cycle_days: 40
+    status: current
+    notes: "Foundational rule - review quarterly"
+
+# Status values:
+# - current: Within update cycle
+# - due_soon: < 10 days remaining in cycle
+# - outdated: > update_cycle_days since last update
+

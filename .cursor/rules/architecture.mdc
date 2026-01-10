@@ -1,0 +1,172 @@
+---
+description: SOLID/DRY/Modularity principles - foundational architectural standards
+globs: **/*.py
+alwaysApply: true
+---
+
+# Architecture Standards
+
+## Purpose
+Enforce SOLID principles, DRY patterns, and modularity thresholds across the entire codebase. These are the foundational rules that all other rules reference.
+
+## Quick Reference
+
+| Principle | Key Rule | Check |
+|-----------|----------|-------|
+| SRP | 1 concern/module | < 150 lines |
+| OCP | Use callbacks | No boolean flags |
+| LSP | Strategies interchangeable | Same interface |
+| ISP | Focused interfaces | No unused methods |
+| DIP | Depend on abstractions | Use `lib/config` |
+| DRY | Check lib/ first | No duplicates |
+
+## SOLID Principles
+
+### Single Responsibility Principle
+Each module/class has ONE reason to change.
+
+```python
+# ✅ GOOD - Single concern per module
+# lib/metrics/core.py - Only core metrics
+def calculate_sharpe_ratio(returns):
+    """Calculate Sharpe ratio."""
+    pass
+
+# ❌ BAD - Multiple concerns in one file
+# lib/metrics.py - Core metrics + trade metrics + rolling metrics (too many)
+def calculate_sharpe_ratio(returns): pass
+def calculate_trade_metrics(trades): pass
+def calculate_rolling_metrics(equity_curve): pass
+```
+
+**Enforcement:**
+- `lib/` files must be < 150 lines
+- One concern per module
+- Split when approaching threshold
+
+### Open/Closed Principle
+Open for extension, closed for modification.
+
+```python
+# ✅ GOOD - Use composition/callbacks for new behavior
+def run_backtest(strategy, config, custom_validator=None):
+    """Run backtest with optional custom validation."""
+    if custom_validator:
+        custom_validator.validate(config)
+    # ... backtest logic
+
+# ❌ BAD - Modify existing function for new behavior
+def run_backtest(strategy, config, use_new_validation=False):
+    if use_new_validation:
+        # New code added here
+        pass
+    # Original code
+```
+
+### Dependency Inversion Principle
+Depend on abstractions, not concretions.
+
+```python
+# ✅ GOOD - Use lib/config.py for settings
+from lib.config import load_settings
+settings = load_settings()
+data_dir = settings['data_dir']
+
+# ❌ BAD - Hardcoded paths
+data_dir = '/home/user/project/data'  # Hardcoded!
+```
+
+## DRY Principle (Don't Repeat Yourself)
+
+### Reuse First
+Check existing modules before writing new code.
+
+```python
+# ✅ GOOD - Reuse existing utilities
+from lib.utils import get_project_root, load_yaml
+from lib.paths import get_strategies_dir
+
+# ❌ BAD - Duplicate path resolution logic
+def get_strategies_dir():
+    # Duplicated from lib/paths.py
+    return Path(__file__).parent.parent / 'strategies'
+```
+
+**Check in order:**
+1. `lib/` modules
+2. `docs/code_patterns/` for documented patterns
+3. `.claude/skills/` for agent skill modules
+
+### Extract Common Logic
+If code is duplicated 2+ times, extract to shared module.
+
+```python
+# ✅ GOOD - Extracted to lib/utils.py
+from lib.utils import timestamp_dir
+result_dir = timestamp_dir(base_path, 'backtest')
+
+# ❌ BAD - Duplicated timestamp logic
+timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+result_dir = base_path / f"backtest_{timestamp}"
+# ... same logic repeated elsewhere
+```
+
+## Modularity Mandate
+
+### File Size Limits
+
+| Rule | Threshold | Action |
+|------|-----------|--------|
+| Max lib/ file size | 150 lines | Split into focused submodules |
+| Max function length | 50 lines | Extract helper functions |
+| Max function parameters | 5 params | Use config objects or dataclasses |
+| Import depth | 3 levels max | Flatten or reorganize |
+
+```python
+# ✅ GOOD - Small, focused module
+# lib/metrics/core.py (120 lines)
+def calculate_sharpe_ratio(returns): pass
+def calculate_sortino_ratio(returns): pass
+# ... other core metrics
+
+# ❌ BAD - Monolithic file
+# lib/metrics.py (500+ lines)
+# Contains core, trade, rolling, comparison metrics all in one
+```
+
+### Function Complexity
+
+```python
+# ✅ GOOD - Small, focused function
+def calculate_sharpe_ratio(returns: pd.Series, risk_free_rate: float = 0.0) -> float:
+    """Calculate Sharpe ratio."""
+    excess_returns = returns - risk_free_rate
+    return excess_returns.mean() / excess_returns.std()
+
+# ❌ BAD - Function doing too much
+def analyze_strategy(returns, trades, equity_curve, config):
+    # 100+ lines of analysis logic
+    # Should be split into multiple functions
+    pass
+```
+
+## Canonical Sources
+
+Always use these for consistency:
+
+- **Paths/Settings**: `lib/config.py` (via `load_settings()`)
+- **Path Resolution**: `lib/paths.py` (via `get_project_root()`)
+- **Logging**: `lib/logging/` modules (via `configure_logging()`)
+- **Project Root**: `lib/paths.get_project_root()` (never hardcode)
+
+## Enforcement
+
+- **Code Review**: Check file sizes and complexity
+- **Linting**: Use tools to flag violations
+- **Architect Review**: Consult codebase-architect agent for splits
+
+## Related Agents
+
+- `.claude/agents/codebase-architect.md` - Architectural authority
+- `.claude/agents/pattern-applier.md` - Pattern enforcement
+- `.claude/agents/maintainer.md` - Refactoring decisions

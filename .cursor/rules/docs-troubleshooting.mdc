@@ -1,0 +1,218 @@
+---
+description: Troubleshooting guide patterns - issue structure, solution patterns, common issues catalog
+globs: docs/troubleshooting/**/*.md,docs/**/troubleshooting*.md
+alwaysApply: false
+---
+
+# Troubleshooting Guide Patterns
+
+## Purpose
+Define patterns for troubleshooting guides in `docs/troubleshooting/`, including issue documentation structure, solution patterns, and common issues catalog.
+
+## Issue Documentation Structure
+
+### Complete Issue Documentation
+Each issue must follow standard structure.
+
+```markdown
+# ✅ GOOD - Complete issue documentation
+## Issue: Project Root Not Found
+
+### Symptoms
+- Error: `ProjectRootNotFoundError: Could not find project root`
+- Scripts fail to start
+- Imports fail in notebooks
+- Path resolution errors
+
+### Causes
+1. Running script from wrong directory
+2. Missing project marker files (.git, README.md, etc.)
+3. PROJECT_ROOT environment variable misconfigured
+4. Working directory changed during execution
+
+### Solutions
+
+#### Solution 1: Run from Project Root
+```bash
+cd /path/to/researchers-cockpit
+python scripts/run_backtest.py --strategy btc_sma_cross
+```
+
+#### Solution 2: Set PROJECT_ROOT Environment Variable
+```bash
+export PROJECT_ROOT=/path/to/researchers-cockpit
+python scripts/run_backtest.py --strategy btc_sma_cross
+```
+
+#### Solution 3: Use lib.paths.get_project_root() in Code
+```python
+from lib.paths import get_project_root
+root = get_project_root()
+```
+
+### Prevention
+- Always run scripts from project root
+- Use `lib.paths.get_project_root()` in code
+- Set PROJECT_ROOT in environment if needed
+
+### Related Issues
+- [Import Errors](import_errors.md)
+- [Path Resolution](path_resolution.md)
+
+# ❌ BAD - Incomplete issue documentation
+## Project Root Error
+Run from project root.
+# Missing symptoms, causes, solutions!
+```
+
+## Solution Patterns
+
+### Multiple Solution Approaches
+Provide multiple solution approaches when possible.
+
+```markdown
+# ✅ GOOD - Multiple solutions
+### Solutions
+
+#### Solution 1: Quick Fix
+```bash
+# Simple command to fix
+python scripts/fix_issue.py
+```
+
+#### Solution 2: Manual Fix
+```python
+# Manual code fix
+from lib.paths import get_project_root
+root = get_project_root()
+```
+
+#### Solution 3: Configuration Fix
+```yaml
+# config/settings.yaml
+project_root: /path/to/project
+```
+
+# ❌ BAD - Single solution
+### Solution
+Run this command.
+# Missing alternatives!
+```
+
+## Common Issues Catalog
+
+### Organize Common Issues
+Maintain catalog of common issues with quick references.
+
+```markdown
+# ✅ GOOD - Common issues catalog
+## Common Issues
+
+### Data Issues
+- [Bundle Not Found](bundle_not_found.md)
+- [Missing Data](missing_data.md)
+- [Timezone Errors](timezone_errors.md)
+
+### Strategy Issues
+- [Strategy Not Found](strategy_not_found.md)
+- [Parameter Errors](parameter_errors.md)
+- [Import Failures](import_failures.md)
+
+### Backtest Issues
+- [Backtest Fails](backtest_fails.md)
+- [Insufficient Data](insufficient_data.md)
+- [Calendar Mismatch](calendar_mismatch.md)
+
+# ❌ BAD - Unorganized issues
+## Issues
+- Bundle error
+- Strategy error
+# No organization, missing links!
+```
+
+## Symptom Documentation
+
+### Clear Symptom Description
+Symptoms must be clearly described for easy identification.
+
+```markdown
+# ✅ GOOD - Clear symptoms
+### Symptoms
+- Error message: `FileNotFoundError: Strategy 'btc_sma_cross' not found`
+- Script exits with code 1
+- Error occurs when running `scripts/run_backtest.py`
+- Strategy directory exists but not found by script
+
+# ❌ BAD - Vague symptoms
+### Symptoms
+- Error occurs
+# Too vague to identify issue!
+```
+
+## Cause Documentation
+
+### Root Cause Analysis
+Document root causes, not just symptoms.
+
+```markdown
+# ✅ GOOD - Root cause analysis
+### Causes
+1. Strategy directory not in expected location
+   - Expected: `strategies/crypto/btc_sma_cross/`
+   - Actual: `strategies/btc_sma_cross/` (missing asset_class)
+2. Strategy name mismatch
+   - Parameters.yaml has different name
+3. Asset class not specified
+   - Script can't find strategy without asset_class hint
+
+# ❌ BAD - Surface-level causes
+### Causes
+- Strategy not found
+# Doesn't explain why!
+```
+
+## Prevention Section
+
+### Proactive Prevention
+Include prevention strategies to avoid issues.
+
+```markdown
+# ✅ GOOD - Prevention strategies
+### Prevention
+- Always use `lib.paths.get_project_root()` for path resolution
+- Follow strategy directory structure: `strategies/{asset_class}/{name}/`
+- Validate strategy exists before running backtest
+- Use `lib.config.strategy.load_strategy_params()` for parameter loading
+
+# ❌ BAD - Missing prevention
+# No prevention section!
+```
+
+## Related Issues Section
+
+### Cross-Reference Related Issues
+Link to related issues for comprehensive troubleshooting.
+
+```markdown
+# ✅ GOOD - Related issues
+### Related Issues
+- [Import Errors](import_errors.md) - Similar path resolution issues
+- [Path Resolution](path_resolution.md) - General path problems
+- [Strategy Development](strategies.mdc) - Strategy structure
+
+# ❌ BAD - Missing related issues
+# No cross-references!
+```
+
+## Enforcement
+
+- **Structure Check**: Verify issue documentation follows standard structure
+- **Solution Completeness**: Check multiple solutions provided
+- **Symptom Clarity**: Verify symptoms clearly described
+- **Prevention**: Ensure prevention strategies included
+
+## Related Agents
+
+- `.claude/agents/maintainer.md` - Troubleshooting maintenance
+- `.claude/agents/validator.md` - Issue validation
+- `docs/troubleshooting/` - Troubleshooting documentation directory

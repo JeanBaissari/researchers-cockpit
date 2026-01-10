@@ -1,0 +1,271 @@
+---
+description: Logging standards - use lib/logging/, log levels, structured logging, context managers
+globs: **/*.py
+alwaysApply: true
+---
+
+# Logging Standards
+
+## Purpose
+Define centralized logging patterns using `lib/logging/` modules, appropriate log levels, structured logging, and context management for consistent logging across the codebase.
+
+## Centralized Logging Setup
+
+### Use lib/logging/ Modules
+Always use project logging infrastructure, never basic `logging` module directly.
+
+```python
+# ✅ GOOD - Use project logging
+from lib.logging.config import configure_logging, get_logger
+
+configure_logging()
+logger = get_logger(__name__)
+
+def my_function():
+    logger.info("Function started")
+    # ... function logic
+
+# ❌ BAD - Basic logging module
+import logging
+logger = logging.getLogger(__name__)  # Not configured!
+logger.info("Function started")
+```
+
+### Logging Configuration
+
+```python
+# ✅ GOOD - Configure at module/script entry
+from lib.logging.config import configure_logging
+
+if __name__ == '__main__':
+    configure_logging(level='INFO')
+    # ... script logic
+
+# ❌ BAD - No configuration
+# Script runs without logging setup
+```
+
+## Specialized Loggers
+
+### Use Appropriate Logger Types
+
+```python
+# ✅ GOOD - Use specialized loggers
+from lib.logging.config import get_logger
+from lib.logging.loggers import (
+    data_logger,
+    strategy_logger,
+    backtest_logger,
+    metrics_logger,
+    validation_logger
+)
+
+# General purpose
+logger = get_logger(__name__)
+
+# Data operations
+data_logger.info("Ingesting bundle: btc_1d")
+
+# Strategy operations
+strategy_logger.info("Running backtest: btc_sma_cross")
+
+# Backtest operations
+backtest_logger.info("Backtest started: btc_sma_cross")
+
+# ❌ BAD - Generic logger for all purposes
+logger = get_logger(__name__)
+logger.info("Data operation")  # Should use data_logger!
+logger.info("Strategy operation")  # Should use strategy_logger!
+```
+
+## Log Levels
+
+### Appropriate Level Usage
+
+```python
+# ✅ GOOD - Correct log levels
+logger.debug("Detailed variable values: {var}", var=value)  # Development
+logger.info("Backtest completed: {strategy}", strategy='btc_sma_cross')
+logger.warning("Bundle missing data for {dates}", dates=missing_dates)
+logger.error("Failed to load config: {path}", path=config_path, exc_info=True)
+logger.critical("Database connection lost, cannot continue")
+
+# ❌ BAD - Wrong log levels
+logger.error("User logged in")  # Should be info!
+logger.info("Critical system failure")  # Should be critical!
+logger.debug("Production error occurred")  # Should be error!
+```
+
+### Log Level Guidelines
+
+| Level | When to Use | Example |
+|-------|-------------|---------|
+| DEBUG | Development debugging, detailed state | Variable values, function entry/exit |
+| INFO | Normal operations, milestones | "Backtest started", "Results saved" |
+| WARNING | Non-critical issues, recoverable | "Missing optional data", "Using defaults" |
+| ERROR | Operation failures, exceptions | "Failed to load config", "Bundle not found" |
+| CRITICAL | System cannot continue | "Database connection lost" |
+
+## Structured Logging
+
+### Use LogContext for Context
+
+```python
+# ✅ GOOD - Structured logging with context
+from lib.logging.context import LogContext
+
+with LogContext(phase='backtest', strategy='btc_sma_cross'):
+    logger.info("Starting backtest")
+    # All logs in this context include strategy and phase
+    logger.info("Loading parameters")
+    logger.info("Backtest completed")
+
+# ❌ BAD - Unstructured logging
+logger.info("Starting backtest")  # No context!
+logger.info("Loading parameters")  # No context!
+```
+
+## Context Managers
+
+### LogContext Usage
+
+```python
+# ✅ GOOD - Use LogContext for operation scoping
+from lib.logging.context import LogContext, set_context_value
+
+with LogContext(phase='data_ingestion', bundle_name='btc_1d'):
+    logger.info("Starting ingestion")
+    # ... ingestion logic
+    logger.info("Ingestion completed")
+    # Context automatically cleared on exit
+
+# Set context value dynamically
+set_context_value('progress', '50%')
+logger.info("Progress update")
+
+# Full context example
+with LogContext(
+    phase='backtest',
+    strategy='btc_sma_cross',
+    run_id='20241220_143000',
+    asset_type='crypto',
+    bundle_name='yahoo_crypto_daily',
+    timeframe='daily'
+):
+    logger.info("Running backtest")  # All context included automatically
+
+# ❌ BAD - Manual context management
+context = {'phase': 'data_ingestion'}
+logger.info("Starting ingestion", extra=context)
+# ... logic
+del context  # Manual cleanup - error-prone!
+```
+
+## Formatter Configuration
+
+### Use Project Formatters
+
+```python
+# ✅ GOOD - Formatters configured in lib/logging/
+from lib.logging.config import configure_logging
+
+# Formatters are automatically configured
+configure_logging()
+logger.info("Message")  # Uses StructuredFormatter
+
+# ❌ BAD - Custom formatter configuration
+import logging
+formatter = logging.Formatter('%(message)s')  # Don't override!
+handler.setFormatter(formatter)
+```
+
+## Logging Best Practices
+
+### Include Exception Info
+
+```python
+# ✅ GOOD - Include exception info
+try:
+    risky_operation()
+except Exception as e:
+    logger.error("Operation failed", exc_info=True)
+    # Includes full traceback
+
+# ❌ BAD - Log exception without traceback
+try:
+    risky_operation()
+except Exception as e:
+    logger.error(f"Operation failed: {e}")  # No traceback!
+```
+
+### Avoid Logging Sensitive Data
+
+```python
+# ✅ GOOD - Sanitize sensitive data
+logger.info("User authenticated", extra={'user_id': user_id})
+# Don't log passwords, API keys, etc.
+
+# ❌ BAD - Log sensitive information
+logger.info(f"API key: {api_key}")  # Security risk!
+logger.debug(f"Password: {password}")  # Never log passwords!
+```
+
+## Utility Functions
+
+### Exception Logging
+
+```python
+# ✅ GOOD - Use log_exception for structured exception logging
+from lib.logging.utils import log_exception
+from lib.logging.error_codes import ErrorCode
+
+try:
+    risky_operation()
+except ValueError as e:
+    log_exception(
+        logger,
+        "Failed to process data",
+        exc=e,
+        error_code=ErrorCode.VALIDATION_ERROR,
+        data_source="yahoo"
+    )
+
+# ❌ BAD - Basic exception logging
+try:
+    risky_operation()
+except Exception as e:
+    logger.error(f"Error: {e}")  # Missing structure and context!
+```
+
+### Context-Aware Logging
+
+```python
+# ✅ GOOD - Use log_with_context for additional fields
+from lib.logging.utils import log_with_context
+
+log_with_context(
+    logger,
+    logging.INFO,
+    "Bundle ingestion started",
+    bundle_name="btc_1d",
+    record_count=1000,
+    source="yahoo"
+)
+
+# ❌ BAD - Manual extra fields
+logger.info("Bundle ingestion started", extra={'bundle_name': 'btc_1d'})
+# Use log_with_context for consistency!
+```
+
+## Enforcement
+
+- **Code Review**: Verify logging setup and levels
+- **Log Analysis**: Check structured logging usage
+- **Context Verification**: Ensure LogContext is used for operations
+- **Security Audit**: Verify no sensitive data in logs
+
+## Related Agents
+
+- `.claude/agents/maintainer.md` - Logging patterns
+- `.claude/agents/codebase-architect.md` - Logging infrastructure
+- `lib/logging/` - Logging module documentation

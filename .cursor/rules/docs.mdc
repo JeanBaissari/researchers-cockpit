@@ -1,0 +1,215 @@
+---
+description: Documentation standards - markdown structure, API docs, code patterns, troubleshooting guides
+globs: docs/**/*.md
+alwaysApply: false
+---
+
+# Documentation Standards
+
+## Purpose
+Define markdown structure standards, API documentation patterns, code pattern documentation, troubleshooting guide structure, and cross-referencing conventions.
+
+## Markdown Structure
+
+### Document Organization
+
+```markdown
+# ✅ GOOD - Well-structured documentation
+# Title
+Brief description of the document.
+
+## Section 1
+Content for section 1.
+
+### Subsection 1.1
+Detailed content.
+
+## Section 2
+More content.
+
+## See Also
+- [Related Document](path/to/doc.md)
+- [API Reference](path/to/api.md)
+
+# ❌ BAD - Poor structure
+# Title
+# Random content
+# More random content
+# No organization, no sections!
+```
+
+### Headers and Hierarchy
+
+```markdown
+# ✅ GOOD - Proper header hierarchy
+# Main Title (H1 - one per document)
+
+## Major Section (H2)
+
+### Subsection (H3)
+
+#### Detail (H4)
+
+# ❌ BAD - Skipped levels or inconsistent
+# Title
+### Subsection  # Skipped H2!
+## Section
+##### Detail  # Too deep, inconsistent!
+```
+
+## API Documentation
+
+### Function Documentation
+
+```markdown
+# ✅ GOOD - Complete API documentation
+## `load_settings()`
+
+Load global settings from `config/settings.yaml`.
+
+**Returns:**
+- `dict`: Settings dictionary with all configuration values
+
+**Raises:**
+- `FileNotFoundError`: If `settings.yaml` doesn't exist
+- `yaml.YAMLError`: If YAML is invalid
+
+**Example:**
+```python
+from lib.config import load_settings
+settings = load_settings()
+capital = settings['capital']['default_initial']
+```
+
+**See Also:**
+- [Configuration Guide](config.md)
+- [Asset Configuration](assets.md)
+
+# ❌ BAD - Incomplete documentation
+## load_settings()
+Loads settings.
+# Missing details, examples, return types!
+```
+
+### Parameter Documentation
+
+```markdown
+# ✅ GOOD - Detailed parameter docs
+## `run_backtest(strategy, start_date, end_date, capital=100000)`
+
+Run a backtest for a strategy.
+
+**Parameters:**
+- `strategy` (str): Strategy name (e.g., 'btc_sma_cross')
+- `start_date` (str): Start date in 'YYYY-MM-DD' format
+- `end_date` (str): End date in 'YYYY-MM-DD' format
+- `capital` (float, optional): Initial capital. Defaults to 100000.
+
+**Returns:**
+- `Performance`: Backtest performance object
+
+# ❌ BAD - Missing parameter details
+## run_backtest()
+Runs a backtest.
+# No parameters documented!
+```
+
+## Code Pattern Documentation
+
+### Pattern Documentation Structure
+
+```markdown
+# ✅ GOOD - Code pattern documentation
+# Pattern: UTC Timezone Normalization
+
+## Purpose
+Normalize all datetime operations to UTC for consistency.
+
+## Pattern
+```python
+from lib.data.normalization import normalize_to_utc
+df['timestamp'] = normalize_to_utc(df['timestamp'])
+```
+
+## When to Use
+- Loading CSV data
+- Processing time series data
+- Before Zipline backtest
+
+# ❌ BAD - Incomplete pattern docs
+# UTC Normalization
+Use normalize_to_utc().
+# Missing examples, context!
+```
+
+## Troubleshooting Guides
+
+### Issue Documentation Structure
+
+```markdown
+# ✅ GOOD - Structured troubleshooting
+## Issue: Project Root Not Found
+
+### Symptoms
+- Error: `ProjectRootNotFoundError: Could not find project root`
+- Scripts fail to start
+- Imports fail in notebooks
+
+### Causes
+1. Running script from wrong directory
+2. Missing project marker files
+3. PROJECT_ROOT environment variable misconfigured
+
+### Solutions
+
+#### Solution 1: Run from Project Root
+```bash
+cd /path/to/researchers-cockpit
+python scripts/run_backtest.py
+```
+
+#### Solution 2: Set PROJECT_ROOT
+```bash
+export PROJECT_ROOT=/path/to/researchers-cockpit
+python scripts/run_backtest.py
+```
+
+### Prevention
+- Always run scripts from project root
+- Use `lib.paths.get_project_root()` in code
+
+### Related Issues
+- [Import Errors](import_errors.md)
+- [Path Resolution](path_resolution.md)
+
+# ❌ BAD - Unstructured troubleshooting
+## Project Root Error
+Run from project root.
+# Missing symptoms, causes, solutions!
+```
+
+## Cross-References
+
+### Link Patterns
+
+```markdown
+# ✅ GOOD - Consistent cross-references
+## See Also
+- [Configuration Guide](../config/README.md)
+- [API Reference](../api/config.md#load_settings)
+
+# ❌ BAD - Broken or missing links
+## See Also
+- config.md  # Relative path may break!
+```
+
+## Enforcement
+
+- **Structure Check**: Verify header hierarchy and organization
+- **API Docs**: Ensure complete function documentation
+- **Troubleshooting**: Verify issue documentation is structured
+
+## Related Agents
+
+- `.claude/agents/report-generator.md` - Report documentation
+- `.claude/agents/maintainer.md` - Documentation maintenance

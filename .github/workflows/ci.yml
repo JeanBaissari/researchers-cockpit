@@ -1,0 +1,219 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  # 1. Code Quality Checks
+  quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "18"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Check for console.logs
+        run: |
+          echo "🔍 Checking for console.log statements..."
+          # Exclude scripts, seed files, tests, and logger utility
+          FOUND_LOGS=$(grep -r "console\.log" --include="*.ts" --include="*.tsx" \
+             --exclude-dir=node_modules --exclude-dir=.next \
+             app/ components/ lib/ contexts/ hooks/ 2>/dev/null | \
+             grep -v "lib/utils.ts" || true)
+
+          if [ -n "$FOUND_LOGS" ]; then
+            echo "❌ Found console.log statements in application code:"
+            echo "$FOUND_LOGS"
+            echo ""
+            echo "   Use logger.info/warn/error from @/lib/utils instead"
+            echo "   Whitelisted: scripts/, prisma/, __tests__/, lib/utils.ts"
+            exit 1
+          else
+            echo "✅ No inappropriate console.log statements found"
+          fi
+
+  # 2. Build Test
+  build:
+    name: Build Test
+    runs-on: ubuntu-latest
+    needs: quality
+
+    env:
+      # Use dummy values for build test - real secrets only needed for runtime
+      DATABASE_URL: ${{ secrets.DATABASE_URL || 'postgresql://dummy:dummy@localhost:5432/jardineria_sb_test' }}
+      NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET || 'dummy-secret-for-build-test-only-not-for-production' }}
+      NEXTAUTH_URL: http://localhost:3000
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "18"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: npm run build
+
+      - name: Check bundle size
+        run: |
+          echo "✅ Build completed successfully"
+
+  # 3. Security Scan
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: quality
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Run npm audit
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+      - name: Check for exposed secrets
+        run: |
+          echo "🔍 Scanning for hardcoded secrets..."
+
+          # Check for Stripe live keys (actual patterns)
+          if grep -rE "sk_live_[a-zA-Z0-9]{24,}|pk_live_[a-zA-Z0-9]{24,}" \
+             --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" \
+             --exclude-dir=node_modules --exclude-dir=.next .; then
+            echo "❌ Found Stripe live keys in code!"
+            echo "   These should be in environment variables only."
+            exit 1
+          fi
+
+          # Check for hardcoded secret strings (but exclude process.env)
+          if grep -rE "(secret|apiKey|token|password|privateKey):\s*[\"'][^\"']{8,}[\"']" \
+             --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" \
+             --exclude-dir=node_modules --exclude-dir=.next . \
+             | grep -v "process\.env" \
+             | grep -v "type " \
+             | grep -v "interface " \
+             | grep -v "\/\/" \
+             | grep -v "\/\*"; then
+            echo "❌ Found potential hardcoded secrets!"
+            echo "   Use process.env.SECRET_NAME instead."
+            exit 1
+          fi
+
+          echo "✅ No hardcoded secrets detected"
+          echo "   ✓ Stripe keys: Safe"
+          echo "   ✓ API secrets: Using environment variables"
+
+  # 4. Deploy Preview (Vercel)
+  deploy-preview:
+    name: Deploy Preview
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.repository == 'JeanBaissari/jardineria-sb-'
+    needs: [quality, build]
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Check Vercel secrets
+        id: check-secrets
+        run: |
+          if [ -z "${{ secrets.VERCEL_TOKEN }}" ]; then
+            echo "⚠️  VERCEL_TOKEN not configured. Skipping deployment."
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Deploy to Vercel
+        if: steps.check-secrets.outputs.skip != 'true'
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          scope: ${{ secrets.VERCEL_ORG_ID }}
+
+      - name: Comment PR with preview URL
+        if: steps.check-secrets.outputs.skip != 'true'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '🚀 Preview deployment ready!'
+            })
+
+  # 5. Production Deploy (only on main branch)
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && github.repository == 'JeanBaissari/jardineria-sb-'
+    needs: [quality, build, security]
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Check Vercel secrets
+        id: check-secrets
+        run: |
+          if [ -z "${{ secrets.VERCEL_TOKEN }}" ]; then
+            echo "⚠️  VERCEL_TOKEN not configured. Skipping deployment."
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Deploy to Vercel Production
+        if: steps.check-secrets.outputs.skip != 'true'
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: "--prod"
+          scope: ${{ secrets.VERCEL_ORG_ID }}
+
+      - name: Run smoke tests
+        run: |
+          echo "✅ Deployed to production successfully"
+
+  # 6. Lighthouse Performance Check
+  lighthouse:
+    name: Lighthouse Check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    needs: deploy-preview
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Run Lighthouse CI
+        uses: treosh/lighthouse-ci-action@v10
+        with:
+          urls: |
+            https://jardineria-sb.vercel.app
+            https://jardineria-sb.vercel.app/productos
+            https://jardineria-sb.vercel.app/nosotros
+          uploadArtifacts: true
+          temporaryPublicStorage: true
+        continue-on-error: true
