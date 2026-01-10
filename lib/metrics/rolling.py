@@ -90,3 +90,7 @@ def calculate_rolling_metrics(
     
     return pd.DataFrame(rolling_data).set_index('date')
 
+
+
+
+

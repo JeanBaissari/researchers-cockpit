@@ -98,3 +98,7 @@ def build_column_mapping(df: pd.DataFrame) -> ColumnMapping:
 
     return ColumnMapping(**mapping)
 
+
+
+
+

@@ -82,3 +82,7 @@ __all__ = [
     '_calculate_max_consecutive_losses',
 ]
 
+
+
+
+

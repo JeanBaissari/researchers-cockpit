@@ -291,3 +291,7 @@ def _validate_risk_section(risk: Any, errors: List[str]) -> None:
         if not isinstance(risk['use_take_profit'], bool):
             errors.append("'risk.use_take_profit' must be a boolean")
 
+
+
+
+

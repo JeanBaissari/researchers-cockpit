@@ -394,3 +394,7 @@ class ValidationResult:
         status = "PASSED" if self.passed else "FAILED"
         return f"ValidationResult({status}, checks={len(self.checks)}, errors={len(self.errors)})"
 
+
+
+
+

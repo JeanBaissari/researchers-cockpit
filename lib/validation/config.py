@@ -256,3 +256,7 @@ class ValidationConfig:
             'check_weekend_gaps': self.check_weekend_gaps,
         }
 
+
+
+
+

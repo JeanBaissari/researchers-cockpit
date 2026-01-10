@@ -93,3 +93,7 @@ def plot_all(
             title=f'{strategy_name} - Trade Analysis'
         )
 
+
+
+
+
