@@ -95,3 +95,8 @@ tasks/
 # AI Agent Configuration (LOCAL ONLY)
 .agent/
 .claude/
+
+# Documentation (local only, not for GitHub)
+docs/github_description.md
+docs/v1.0.8_refactoring_summary.md
+docs/v1.0.9_release_summary.md
