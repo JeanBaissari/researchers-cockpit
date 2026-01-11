@@ -1,6 +1,6 @@
 # The Researcher's Cockpit
 
-[![Version](https://img.shields.io/badge/version-1.0.5-blue.svg)](https://github.com/JeanBaissari/researchers-cockpit)
+[![Version](https://img.shields.io/badge/version-1.0.9-blue.svg)](https://github.com/JeanBaissari/researchers-cockpit)
 [![Powered by](https://img.shields.io/badge/powered%20by-Zipline--Reloaded%203.1.0-green.svg)](https://github.com/stefan-jansen/zipline-reloaded)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](LICENSE)
 
@@ -13,7 +13,7 @@
 ## Project Identity
 
 **Name:** researchers-cockpit
-**Version:** 1.0.5
+**Version:** 1.0.9
 **Type:** Research-First Minimalist + AI-Agent Optimized
 **Target User:** Algo trader focused on daily research cycles
 **Core Principle:** Every folder is a clear "handoff zone" between human and AI agents
@@ -43,10 +43,11 @@ Think of this structure as a **restaurant kitchen**:
 
 ## Directory Structure Explained
 
-### `.agent/` — AI Agent Instructions
+### `.agent/` & `.cursor/` — AI Agent Instructions
 
-This folder contains explicit instructions that any AI agent (Claude Code, Cursor, GPT-based tools) reads before touching any code. This is the single most important folder for automation.
+These folders contain explicit instructions that any AI agent (Claude Code, Cursor, GPT-based tools) reads before touching any code. This is the single most important folder for automation.
 
+**`.agent/` — Legacy Agent Instructions:**
 | File | Purpose |
 |------|---------|
 | `README.md` | Entry point: "Read this first before doing anything" |
@@ -56,7 +57,12 @@ This folder contains explicit instructions that any AI agent (Claude Code, Curso
 | `analyst.md` | Results analysis and interpretation |
 | `conventions.md` | Naming rules, file formats, style standards |
 
-**Why This Matters:** Without this folder, every AI agent interaction starts from zero. With it, agents have institutional knowledge.
+**`.cursor/` — Cursor IDE Integration (v1.0.9+):**
+- `commands/` - 30+ command templates for common tasks
+- `rules/` - 30+ coding standards and patterns
+- `.update_tracking.yaml` - Update cycle tracking
+
+**Why This Matters:** Without these folders, every AI agent interaction starts from zero. With them, agents have institutional knowledge and standardized workflows.
 
 ---
 
@@ -219,18 +225,96 @@ notebooks/
 
 ### `lib/` — Shared Code Library
 
+Modular architecture with domain-organized packages (v1.0.8+):
+
 ```
 lib/
 ├── __init__.py
-├── data_loader.py         # Bundle ingestion, API fetching
-├── backtest.py            # Thin Zipline wrapper
-├── metrics.py             # Empyrical + custom metrics
-├── plots.py               # Standard visualizations
-├── optimize.py            # Grid search, random search
-└── validate.py            # Walk-forward, Monte Carlo, overfit detection
+├── paths.py               # Project root detection
+├── utils.py              # Core utilities
+├── pipeline_utils.py      # Pipeline API setup and validation (v1.0.9+)
+├── position_sizing.py    # Position sizing calculations (v1.0.9+)
+├── risk_management.py     # Exit condition checks (v1.0.9+)
+│
+├── backtest/             # Backtest execution (5 modules)
+│   ├── runner.py         # Main backtest runner
+│   ├── config.py         # Configuration management
+│   ├── strategy.py       # Strategy loading
+│   ├── results.py        # Results handling
+│   └── verification.py   # Verification utilities
+│
+├── bundles/               # Data bundle management (7 modules)
+│   ├── api.py            # Bundle API
+│   ├── registry.py       # Bundle registry
+│   ├── yahoo_bundle.py   # Yahoo Finance bundle
+│   ├── csv_bundle.py     # CSV bundle
+│   └── ...
+│
+├── calendars/             # Trading calendars (4 modules)
+│   ├── crypto.py         # 24/7 crypto calendar
+│   ├── forex.py          # 24/5 forex calendar
+│   └── registry.py       # Calendar registry
+│
+├── config/                # Configuration management (4 modules)
+│   ├── core.py           # Core settings
+│   ├── assets.py         # Asset configuration
+│   ├── strategy.py       # Strategy parameters
+│   └── validation.py     # Config validation
+│
+├── data/                  # Data processing (5 modules)
+│   ├── normalization.py  # Data normalization
+│   ├── aggregation.py    # Data aggregation
+│   ├── forex.py          # FOREX data handling
+│   └── ...
+│
+├── logging/               # Centralized logging (7 modules)
+│   ├── config.py         # Logging configuration
+│   ├── context.py        # Log context management
+│   ├── formatters.py     # Log formatters
+│   └── ...
+│
+├── metrics/               # Performance metrics (4 modules)
+│   ├── core.py           # Core metrics (Sharpe, Sortino, etc.)
+│   ├── trade.py          # Trade metrics
+│   ├── rolling.py        # Rolling metrics
+│   └── comparison.py     # Strategy comparison
+│
+├── optimize/              # Parameter optimization (5 modules)
+│   ├── grid.py           # Grid search
+│   ├── random.py         # Random search
+│   ├── split.py          # Train/test splitting
+│   └── overfit.py        # Overfit detection
+│
+├── plots/                 # Visualization utilities (5 modules)
+│   ├── equity.py         # Equity curve plots
+│   ├── trade.py          # Trade analysis plots
+│   ├── rolling.py        # Rolling metric plots
+│   └── ...
+│
+├── report/                 # Report generation (6 modules)
+│   ├── templates.py      # Report templates
+│   ├── formatters.py     # Data formatters
+│   ├── sections.py       # Report sections
+│   └── ...
+│
+├── validate/               # Validation methods (4 modules)
+│   ├── walkforward.py    # Walk-forward validation
+│   ├── montecarlo.py     # Monte Carlo simulation
+│   └── metrics.py        # Validation metrics
+│
+└── validation/             # Data validation framework (9 modules)
+    ├── core.py           # Core validation types
+    ├── data_validator.py # Data validation
+    ├── bundle_validator.py # Bundle validation
+    └── ...
 ```
 
-**Design Principle:** Each file is under 150 lines. If a file grows beyond that, it's doing too much.
+**Design Principle:** Each module is under 150 lines. If a module grows beyond that, it's split into focused submodules.
+
+**New Utility Modules (v1.0.9+):**
+- `pipeline_utils.py` - Pipeline API setup and validation
+- `position_sizing.py` - Position sizing (fixed, volatility-scaled, Kelly Criterion)
+- `risk_management.py` - Risk management (stop loss, trailing stop, take profit)
 
 **What Goes Here vs. Strategy Files:**
 - `lib/` = Reusable across ALL strategies
@@ -331,7 +415,7 @@ An agent working on forex strategies knows to look in `strategies/forex/` and us
 - Strategies use standard `initialize()`, `handle_data()`, `analyze()` pattern
 
 ### Empyrical
-- All metrics calculations in `lib/metrics.py`
+- All metrics calculations in `lib/metrics/` modules
 - Standardized output format in `metrics.json`
 
 ### Jupyter
@@ -340,8 +424,9 @@ An agent working on forex strategies knows to look in `strategies/forex/` and us
 - No state stored in notebooks themselves
 
 ### AI Agents
-- Read `.agent/` before any operation
-- Follow conventions in `.agent/conventions.md`
+- Read `.agent/` and `.cursor/` before any operation
+- Follow conventions in `.agent/conventions.md` and `.cursor/rules/`
+- Use `.cursor/commands/` for standardized workflows
 - Create strategies by copying `strategies/_template/`
 
 ---
@@ -353,9 +438,9 @@ An agent working on forex strategies knows to look in `strategies/forex/` and us
 | Create new strategy | Copy `strategies/_template/` to `strategies/{asset_class}/{name}/` |
 | Run backtest | `python scripts/run_backtest.py --strategy {name}` or `notebooks/01_backtest.ipynb` |
 | View latest results | `results/{strategy_name}/latest/` |
-| Add new data source | `config/data_sources.yaml` + implement in `lib/data_loader.py` |
+| Add new data source | `config/data_sources.yaml` + implement in `lib/bundles/` |
 | Check strategy status | `docs/strategy_catalog.md` |
-| AI agent instructions | `.agent/` directory |
+| AI agent instructions | `.agent/` and `.cursor/` directories |
 
 ---
 
