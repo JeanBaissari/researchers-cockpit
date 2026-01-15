@@ -400,10 +400,9 @@ def _check_exit_signals(context, data, current_price: float) -> Optional[dict]:
         trail_activation_pips = strategy_params.get('TRAIL_ACTIVATION_PIPS', 10)
         trail_distance_pips = strategy_params.get('TRAIL_DISTANCE_PIPS', 10)
 
-        # Convert pips to price difference. Assuming 1 pip = 0.0001 for most forex pairs.
-        # This needs to be robust for different pairs (e.g., JPY pairs have 0.01)
-        # For now, let's assume 4 decimal places for simplicity for EURUSD=X
-        pip_value = 0.0001 # TODO: Make this dynamic based on asset
+        # Convert pips to price difference dynamically based on asset type.
+        # JPY pairs use 2 decimal places (0.01), other forex pairs use 4 decimal places (0.0001)
+        pip_value = 0.01 if 'JPY' in context.asset.symbol else 0.0001
 
         profit_pips = (current_price - context.entry_price) / pip_value * (1 if context.position_direction == 1 else -1)
 

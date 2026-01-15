@@ -105,6 +105,7 @@ costs:
 # Controls backtest execution and metric calculation.
 # ==============================================================================
 backtest:
+  bundle: csv_eurusd_1m          # Data bundle to use for backtest
   data_frequency: minute         # Data frequency: 'daily' or 'minute'
 
   # Warmup Period
@@ -112,9 +113,9 @@ backtest:
   # Number of days needed before the strategy can generate signals.
   # Should be >= max(all indicator periods used in the strategy).
    # Example: For a 50/200 SMA crossover, warmup_days should be at least 200.
-  # If set to null, calculated dynamically from strategy parameters.
+  # For breakout_intraday: 5 days needed for previous day high/low + ATR calculation
   # ==============================================================================
-  warmup_days: null              # Days before first signal (Range: 10-252, null=auto)
+  warmup_days: 30                # Days before first signal (Range: 10-252)
   validate_warmup: true          # Enable pre-flight warmup validation
 
   # Performance Metrics Configuration

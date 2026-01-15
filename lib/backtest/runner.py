@@ -61,9 +61,9 @@ def _validate_calendar_consistency(bundle: str, trading_calendar: Any) -> None:
     Logs:
         Warning if calendars don't match
     """
-    from ..bundles import _load_bundle_registry
+    from ..bundles import load_bundle_registry
 
-    registry = _load_bundle_registry()
+    registry = load_bundle_registry()
     if bundle not in registry:
         # Bundle not in our registry - might be a built-in bundle
         return

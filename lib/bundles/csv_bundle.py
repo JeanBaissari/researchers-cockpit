@@ -430,7 +430,7 @@ def register_csv_bundle(
                         'asset_name': symbol,
                         'start_date': first_trade,
                         'end_date': last_trade,
-                        'exchange': 'CSV',
+                        'exchange': closure_calendar_name,
                         'country_code': 'XX',
                     })
                 assets_df = pd.DataFrame(asset_data_list).set_index('sid')
@@ -471,6 +471,14 @@ def register_csv_bundle(
                                 if daily_df.empty:
                                     continue
 
+                            # === GAP FILLING ===
+                            # Fill missing sessions to match calendar expectations
+                            # (e.g., holidays like Good Friday that have no data but are expected by the calendar)
+                            if 'FOREX' in closure_calendar_name.upper() or 'CRYPTO' in closure_calendar_name.upper():
+                                daily_df = apply_gap_filling(daily_df, calendar_obj, closure_calendar_name, show_progress, sid)
+                                if daily_df.empty:
+                                    continue
+
                             yield sid, daily_df
                         except Exception as agg_err:
                             print(f"  Warning: Failed to aggregate daily data for SID {sid}: {agg_err}")
@@ -503,7 +511,7 @@ def register_csv_bundle(
                         'asset_name': symbol,
                         'start_date': first_trade,
                         'end_date': last_trade,
-                        'exchange': 'CSV',
+                        'exchange': closure_calendar_name,
                         'country_code': 'XX',
                     })
                 assets_df = pd.DataFrame(asset_data_list).set_index('sid')

@@ -138,8 +138,11 @@ def ingest_bundle(
 
     # Set default start date based on timeframe if not already set
     if start_date is None:
-        if tf_info['data_limit_days']:
-            # For limited timeframes, use max available range
+        # CSV sources have no API limits - use full available data
+        if source == 'csv':
+            start_date = '2020-01-01'  # Default for CSV (will use actual file date range)
+        elif tf_info['data_limit_days']:
+            # For API-based sources with limited timeframes, use max available range
             earliest = datetime.now().date() - timedelta(days=tf_info['data_limit_days'])
             start_date = earliest.isoformat()
         else:
@@ -159,17 +162,20 @@ def ingest_bundle(
             f"Please check TIMEFRAME_TO_YF_INTERVAL configuration."
         )
 
-    # === AUTO-EXCLUDE CURRENT DAY FOR FOREX INTRADAY ===
+    # === AUTO-EXCLUDE CURRENT DAY FOR FOREX INTRADAY (API SOURCES ONLY) ===
     # FOREX sessions span midnight UTC (05:00 UTC to 04:58 UTC next day).
-    # Current-day data from yfinance includes incomplete session data that
-    # can cause indexing errors. Auto-exclude current day for safety.
-    if calendar_name == 'FOREX' and data_frequency == 'minute' and end_date is None:
+    # Current-day data from API sources (Yahoo, etc.) may include incomplete session data
+    # that can cause indexing errors. Auto-exclude current day for API sources only.
+    #
+    # IMPORTANT: CSV sources are pre-validated and complete, so we use their actual
+    # end dates without modification.
+    if calendar_name == 'FOREX' and data_frequency == 'minute' and end_date is None and source != 'csv':
         yesterday = (datetime.now().date() - timedelta(days=1)).isoformat()
         logger.info(
-            f"FOREX intraday: Auto-excluding current day. "
+            f"FOREX intraday (API source): Auto-excluding current day. "
             f"Setting end_date to {yesterday} to avoid incomplete session data."
         )
-        print(f"Note: FOREX intraday data excludes current day (end_date set to {yesterday})")
+        print(f"Note: FOREX intraday API data excludes current day (end_date set to {yesterday})")
         end_date = yesterday
 
     # Log ingestion details

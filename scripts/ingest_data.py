@@ -45,17 +45,23 @@ def format_timeframe_help():
 def generate_bundle_name(source: str, assets: str, timeframe: str, custom_name: str = None) -> str:
     """
     Generate a consistent bundle name that always includes the timeframe.
-    
+
     Args:
         source: Data source (e.g., 'yahoo')
         assets: Asset class (e.g., 'equities')
         timeframe: Data timeframe (e.g., 'daily', '1h', '5m')
         custom_name: Optional custom base name
-        
+
     Returns:
         Bundle name in format: {base}_{timeframe} or {source}_{assets}_{timeframe}
+
+    Note:
+        If custom_name already ends with the timeframe, it won't be duplicated.
     """
     if custom_name:
+        # Avoid duplicating timeframe if already present in custom name
+        if custom_name.endswith(f"_{timeframe}"):
+            return custom_name
         return f"{custom_name}_{timeframe}"
     return f"{source}_{assets}_{timeframe}"
 
@@ -148,8 +154,12 @@ def main(source, assets, symbols, bundle_name, start_date, end_date, calendar, t
         )
         
         # Get data limit info for the current timeframe (for display purposes)
-        limit = TIMEFRAME_DATA_LIMITS.get(current_timeframe)
-        limit_info = f" ({limit} days max)" if limit else " (unlimited)"
+        # Only show limits for API-based sources (Yahoo), not local CSV
+        if source != 'csv':
+            limit = TIMEFRAME_DATA_LIMITS.get(current_timeframe)
+            limit_info = f" ({limit} days max)" if limit else " (unlimited)"
+        else:
+            limit_info = ""  # CSV has no limits - uses full available data
 
         click.echo(f"Ingesting {current_timeframe} data from {source} for {len(symbol_list)} symbols{limit_info}...")
         click.echo(f"Symbols: {', '.join(symbol_list)}")
