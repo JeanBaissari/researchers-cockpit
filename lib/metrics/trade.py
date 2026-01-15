@@ -339,3 +339,13 @@ def _calculate_max_consecutive_losses(trade_returns: np.ndarray) -> int:
 
 
 
+
+
+
+
+
+
+
+
+
+

@@ -119,3 +119,13 @@ python scripts/ingest_data.py --source yahoo --assets crypto
 - create-strategy.md - For creating new strategies
 - analyze-results.md - For analyzing backtest results
 - optimize-parameters.md - For parameter optimization
+
+
+
+
+
+
+
+
+
+

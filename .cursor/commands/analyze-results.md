@@ -132,3 +132,13 @@ results_dir = Path(f'results/{strategy_name}/latest')
 - run-backtest.md - For running backtests
 - optimize-parameters.md - For parameter optimization
 - validate-strategy.md - For validation after analysis
+
+
+
+
+
+
+
+
+
+

@@ -102,3 +102,13 @@ def build_column_mapping(df: pd.DataFrame) -> ColumnMapping:
 
 
 
+
+
+
+
+
+
+
+
+
+

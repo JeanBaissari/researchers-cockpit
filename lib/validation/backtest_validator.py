@@ -314,3 +314,13 @@ class BacktestValidator(BaseValidator):
 
 
 
+
+
+
+
+
+
+
+
+
+

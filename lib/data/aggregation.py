@@ -203,3 +203,13 @@ def get_timeframe_multiplier(base_tf: str, target_tf: str) -> int:
 
 
 
+
+
+
+
+
+
+
+
+
+

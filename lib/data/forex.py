@@ -156,3 +156,13 @@ def consolidate_sunday_to_friday(df: pd.DataFrame, calendar_obj: Optional[Any] =
 
 
 
+
+
+
+
+
+
+
+
+
+

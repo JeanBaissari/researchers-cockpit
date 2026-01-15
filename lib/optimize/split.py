@@ -41,3 +41,13 @@ def split_data(start: str, end: str, train_pct: float = 0.7) -> Tuple[Tuple[str,
 
 
 
+
+
+
+
+
+
+
+
+
+
