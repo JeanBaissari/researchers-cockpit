@@ -37,9 +37,6 @@ from .core import (
     _validate_returns,
     _convert_to_percentages,
     _empty_metrics,
-    _calculate_sortino_manual,
-    _calculate_max_drawdown_manual,
-    _calculate_recovery_time,
 )
 
 # Trade metrics
@@ -76,9 +73,6 @@ __all__ = [
     '_validate_returns',
     '_convert_to_percentages',
     '_empty_metrics',
-    '_calculate_sortino_manual',
-    '_calculate_max_drawdown_manual',
-    '_calculate_recovery_time',
     '_calculate_max_consecutive_losses',
 ]
 
