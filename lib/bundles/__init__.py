@@ -43,8 +43,8 @@ from .utils import (
     extract_symbols_from_bundle,
 )
 
-# CSV bundle registration
-from .csv_bundle import (
+# CSV bundle registration (new modular structure - v1.1.0)
+from .csv import (
     register_csv_bundle,
     normalize_csv_columns,
     parse_csv_filename,
