@@ -221,7 +221,6 @@ from .data.aggregation import (
 
 from .data.normalization import (
     normalize_to_utc,
-    normalize_to_calendar_timezone,
     fill_data_gaps,
 )
 
@@ -245,7 +244,6 @@ __all__ = [
     'create_multi_timeframe_data',
     'get_timeframe_multiplier',
     'normalize_to_utc',
-    'normalize_to_calendar_timezone',
     'fill_data_gaps',
     'consolidate_sunday_to_friday',
 ]

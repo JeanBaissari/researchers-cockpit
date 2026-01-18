@@ -39,17 +39,6 @@ def normalize_to_utc(dt: Union[pd.Timestamp, datetime, str]) -> pd.Timestamp:
     return ts
 
 
-def normalize_to_calendar_timezone(
-    dt: Union[pd.Timestamp, datetime],
-    calendar_tz: str = 'America/New_York',
-    time_of_day: str = '00:00:00'
-) -> pd.Timestamp:
-    """DEPRECATED: Use normalize_to_utc() instead."""
-    import warnings
-    warnings.warn("normalize_to_calendar_timezone is deprecated, use normalize_to_utc", DeprecationWarning)
-    return normalize_to_utc(dt)
-
-
 def fill_data_gaps(
     df: pd.DataFrame,
     calendar: 'ExchangeCalendar',
