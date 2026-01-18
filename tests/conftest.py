@@ -340,7 +340,6 @@ def deprecated_modules():
         'lib.logging_config',
         'lib.optimize',  # wrapper, not package
         'lib.validate',  # wrapper, not package
-        'lib.extension',
     ]
 
 

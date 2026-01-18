@@ -23,7 +23,7 @@ project_root = Path(__file__).parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from lib.utils import normalize_to_calendar_timezone
+from lib.data.normalization import normalize_to_utc
 from lib.config import load_settings
 from lib.bundles import list_bundles, load_bundle
 
@@ -35,7 +35,7 @@ class TestDateNormalization:
     def test_normalize_timezone_aware(self):
         """Test normalizing timezone-aware datetime to timezone-naive UTC."""
         dt = pd.Timestamp('2024-01-01 12:00:00', tz='UTC')
-        result = normalize_to_calendar_timezone(dt)
+        result = normalize_to_utc(dt)
 
         assert result.tz is None, "Result should be timezone-naive"
         # normalize_to_utc strips timezone but preserves time
@@ -46,7 +46,7 @@ class TestDateNormalization:
     def test_normalize_timezone_naive(self):
         """Test normalizing timezone-naive datetime (no-op except type conversion)."""
         dt = pd.Timestamp('2024-01-01 12:00:00')
-        result = normalize_to_calendar_timezone(dt)
+        result = normalize_to_utc(dt)
 
         assert result.tz is None, "Result should be timezone-naive"
         # normalize_to_utc preserves time for naive inputs
@@ -55,7 +55,7 @@ class TestDateNormalization:
     @pytest.mark.unit
     def test_normalize_string_date(self):
         """Test normalizing string date."""
-        result = normalize_to_calendar_timezone('2024-01-01')
+        result = normalize_to_utc('2024-01-01')
 
         assert result.tz is None, "Result should be timezone-naive"
         # String date without time defaults to midnight

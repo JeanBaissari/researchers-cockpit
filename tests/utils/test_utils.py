@@ -16,18 +16,19 @@ import pandas as pd
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from lib.utils import normalize_to_calendar_timezone, get_project_root
+from lib.data.normalization import normalize_to_utc
+from lib.utils import get_project_root
 
 
 class TestUtilityFunctions:
     """Test utility functions."""
-    
+
     @pytest.mark.unit
-    def test_normalize_to_calendar_timezone(self):
-        """Test normalize_to_calendar_timezone function."""
+    def test_normalize_to_utc(self):
+        """Test normalize_to_utc function."""
         dt = pd.Timestamp('2024-01-01 12:00:00', tz='UTC')
-        result = normalize_to_calendar_timezone(dt)
-        
+        result = normalize_to_utc(dt)
+
         assert result.tz is None, "Result should be timezone-naive"
     
     @pytest.mark.unit
