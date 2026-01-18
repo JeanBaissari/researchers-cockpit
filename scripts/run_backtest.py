@@ -43,7 +43,9 @@ from lib.utils import get_strategy_path
               help='Data frequency (auto-detected from bundle if not specified)')
 @click.option('--skip-warmup-check', is_flag=True, default=False,
               help='Skip warmup period validation (use with caution)')
-def main(strategy, start, end, capital, bundle, asset_class, data_frequency, skip_warmup_check):
+@click.option('--validate-calendar', is_flag=True, default=False,
+              help='Strict calendar validation - raise error on session mismatch (v1.1.0)')
+def main(strategy, start, end, capital, bundle, asset_class, data_frequency, skip_warmup_check, validate_calendar):
     """
     Run a backtest for a strategy.
     
@@ -100,6 +102,8 @@ def main(strategy, start, end, capital, bundle, asset_class, data_frequency, ski
 
         # Run backtest
         click.echo("Executing backtest...")
+        if validate_calendar:
+            click.echo("🔍 Strict calendar validation enabled (--validate-calendar)")
         perf, trading_calendar = run_backtest(
             strategy_name=strategy,
             start_date=start,
@@ -107,7 +111,8 @@ def main(strategy, start, end, capital, bundle, asset_class, data_frequency, ski
             capital_base=capital,
             bundle=bundle,
             data_frequency=data_frequency,
-            asset_class=asset_class
+            asset_class=asset_class,
+            validate_calendar=validate_calendar
         )
 
         # Save results

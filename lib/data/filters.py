@@ -20,7 +20,8 @@ def filter_forex_presession_bars(
     df: pd.DataFrame,
     calendar_obj: Any,
     show_progress: bool = False,
-    symbol: str = ""
+    symbol: str = "",
+    calendar_name: str = ""  # Not used, for signature compatibility
 ) -> pd.DataFrame:
     """
     Filter out FOREX pre-session bars (00:00-04:59 UTC).
@@ -89,7 +90,8 @@ def consolidate_forex_sunday_to_friday(
     df: pd.DataFrame,
     calendar_obj: Any,
     show_progress: bool = False,
-    sid: int = 0
+    sid: int = 0,
+    calendar_name: str = ""  # Not used, for signature compatibility
 ) -> pd.DataFrame:
     """
     Consolidate FOREX Sunday bars into the preceding Friday's close.
@@ -129,7 +131,8 @@ def filter_to_calendar_sessions(
     df: pd.DataFrame,
     calendar_obj: Any,
     show_progress: bool = False,
-    sid: int = 0
+    sid: int = 0,
+    calendar_name: str = ""  # Not used, for signature compatibility
 ) -> pd.DataFrame:
     """
     Filter daily data to include only valid calendar sessions.
