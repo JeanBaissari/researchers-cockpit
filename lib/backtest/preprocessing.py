@@ -12,7 +12,7 @@ from typing import Any, Tuple, Optional
 import pandas as pd
 
 from ..config import load_strategy_params
-from ..utils import normalize_to_utc
+from ..data.normalization import normalize_to_utc
 from ..calendars.sessions import SessionManager, compare_sessions
 from ..bundles import load_bundle, get_bundle_symbols, load_bundle_registry
 

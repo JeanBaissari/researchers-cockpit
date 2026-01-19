@@ -155,5 +155,5 @@ def aggregate_to_daily(minute_df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         DataFrame with daily OHLCV data
     """
-    from ...utils import aggregate_ohlcv
+    from ...data.aggregation import aggregate_ohlcv
     return aggregate_ohlcv(minute_df, 'daily')

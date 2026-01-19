@@ -11,7 +11,7 @@ from typing import Iterator, Tuple, List
 import pandas as pd
 
 from ...calendars.sessions import SessionManager
-from ...utils import aggregate_ohlcv
+from ...data.aggregation import aggregate_ohlcv
 from ...data.filters import consolidate_forex_sunday_to_friday, filter_to_calendar_sessions, apply_gap_filling
 
 logger = logging.getLogger(__name__)

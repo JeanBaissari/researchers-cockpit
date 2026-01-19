@@ -14,7 +14,8 @@ import pandas as pd
 from zipline.utils.calendar_utils import get_calendar
 
 from ...calendars.sessions import SessionManager
-from ...utils import get_project_root, aggregate_ohlcv
+from ...paths import get_project_root
+from ...data.aggregation import aggregate_ohlcv
 from ...validation import DataValidator, ValidationConfig
 from ..timeframes import get_timeframe_info, get_minutes_per_day
 from ..registry import register_bundle_metadata, add_registered_bundle, unregister_bundle

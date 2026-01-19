@@ -51,16 +51,21 @@ from .csv import (
 )
 
 # Yahoo Finance bundle registration
-from .yahoo_bundle import (
+from .yahoo import (
     register_yahoo_bundle,
     auto_register_yahoo_bundle_if_exists,
 )
 
-# Caching utilities
-from .cache import (
-    cache_api_data,
-    clear_cache,
-)
+# Caching utilities (optional - module may not exist)
+try:
+    from .cache import (
+        cache_api_data,
+        clear_cache,
+    )
+except ImportError:
+    # Cache module not available
+    cache_api_data = None
+    clear_cache = None
 
 # Main bundle API
 from .api import (
@@ -106,9 +111,9 @@ __all__ = [
     # Yahoo bundle
     'register_yahoo_bundle',
     'auto_register_yahoo_bundle_if_exists',
-    # Cache
-    'cache_api_data',
-    'clear_cache',
+    # Cache (optional)
+    # 'cache_api_data',  # Optional - module may not exist
+    # 'clear_cache',  # Optional - module may not exist
     # Main API
     'ingest_bundle',
     'load_bundle',

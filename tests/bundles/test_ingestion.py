@@ -46,8 +46,8 @@ from lib.bundles.utils import (
     _is_valid_date_string,
     _extract_symbols_from_bundle,
 )
-from lib.bundles.yahoo_bundle import (
-    _register_yahoo_bundle,
+from lib.bundles.yahoo import (
+    register_yahoo_bundle as _register_yahoo_bundle,
 )
 
 

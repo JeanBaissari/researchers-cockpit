@@ -36,7 +36,8 @@ from lib.bundles import (
     VALID_TIMEFRAMES,
 )
 from lib.validation import DataValidator, ValidationConfig
-from lib.utils import get_project_root, normalize_to_utc
+from lib.utils import get_project_root
+from lib.data.normalization import normalize_to_utc
 
 # Configure logging
 logging.basicConfig(
