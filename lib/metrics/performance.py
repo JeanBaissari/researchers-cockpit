@@ -132,7 +132,28 @@ def calculate_sortino_ratio(
         else:
             annual_return = float((1 + total_return) ** (trading_days_per_year / n_days) - 1)
 
-    # Try empyrical if available
+    # ✅ FIX: Check zero volatility BEFORE calling empyrical (DRY + OCP + Fail-Fast)
+    # Check if returns have zero volatility (all zeros or constant)
+    returns_std = float(returns.std())
+    if returns_std < 1e-10:
+        return 0.0
+    
+    excess_returns = returns - daily_rf
+    downside_returns = excess_returns[excess_returns < 0]
+
+    # Zero downside deviation = no downside returns edge case
+    if len(downside_returns) == 0:
+        return 0.0
+
+    # Calculate downside std for validation
+    downside_std = float(np.sqrt(np.mean(downside_returns ** 2)))
+    annualized_downside_std = downside_std * np.sqrt(trading_days_per_year)
+
+    # Zero downside volatility check (DRY: single check, used by both paths)
+    if annualized_downside_std < 1e-10:
+        return 0.0
+
+    # Try empyrical if available (now safe - we've validated edge cases)
     if EMPYRICAL_AVAILABLE:
         try:
             sortino = float(ep.sortino_ratio(
@@ -141,23 +162,18 @@ def calculate_sortino_ratio(
                 period='daily',
                 annualization=trading_days_per_year
             ))
-            return _sanitize_value(sortino)
+            # ✅ FIX: Validate empyrical output (defensive programming)
+            sanitized = _sanitize_value(sortino)
+            # Additional check: empyrical might return inf/nan even after our checks
+            if not np.isfinite(sanitized) or sanitized < -1e6 or sanitized > 1e6:
+                # Fall back to manual calculation
+                pass
+            else:
+                return sanitized
         except Exception:
             pass
 
-    # Manual calculation with proper downside deviation
-    excess_returns = returns - daily_rf
-    downside_returns = excess_returns[excess_returns < 0]
-
-    if len(downside_returns) == 0:
-        return 0.0
-
-    downside_std = float(np.sqrt(np.mean(downside_returns ** 2)))
-    annualized_downside_std = downside_std * np.sqrt(trading_days_per_year)
-
-    if annualized_downside_std < 1e-10:
-        return 0.0
-
+    # Manual calculation (now only reached if empyrical unavailable or returns invalid value)
     excess_annual_return = annual_return - risk_free_rate
     sortino = _sanitize_value(excess_annual_return / annualized_downside_std)
     return sortino
