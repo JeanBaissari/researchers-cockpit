@@ -1,6 +1,6 @@
 # The Researcher's Cockpit
 
-[![Version](https://img.shields.io/badge/version-1.0.9-blue.svg)](https://github.com/JeanBaissari/researchers-cockpit)
+[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](https://github.com/JeanBaissari/researchers-cockpit)
 [![Powered by](https://img.shields.io/badge/powered%20by-Zipline--Reloaded%203.1.0-green.svg)](https://github.com/stefan-jansen/zipline-reloaded)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](LICENSE)
 
@@ -13,7 +13,7 @@
 ## Project Identity
 
 **Name:** researchers-cockpit
-**Version:** 1.0.9
+**Version:** 1.1.0
 **Type:** Research-First Minimalist + AI-Agent Optimized
 **Target User:** Algo trader focused on daily research cycles
 **Core Principle:** Every folder is a clear "handoff zone" between human and AI agents
@@ -236,24 +236,38 @@ lib/
 ├── position_sizing.py    # Position sizing calculations (v1.0.9+)
 ├── risk_management.py     # Exit condition checks (v1.0.9+)
 │
-├── backtest/             # Backtest execution (5 modules)
-│   ├── runner.py         # Main backtest runner
+├── backtest/             # Backtest execution (v1.1.0: modular)
+│   ├── runner.py         # Main orchestrator (174 lines)
+│   ├── preprocessing.py  # Validation, date checks (231 lines)
+│   ├── execution.py      # Zipline algorithm setup (178 lines)
 │   ├── config.py         # Configuration management
 │   ├── strategy.py       # Strategy loading
 │   ├── results.py        # Results handling
 │   └── verification.py   # Verification utilities
 │
-├── bundles/               # Data bundle management (7 modules)
-│   ├── api.py            # Bundle API
+├── bundles/               # Data bundle management (v1.1.0: source-specific)
+│   ├── api.py            # Thin public interface (17 lines)
+│   ├── management.py     # Bundle ingestion (200 lines)
+│   ├── access.py         # Bundle loading/queries (164 lines)
 │   ├── registry.py       # Bundle registry
-│   ├── yahoo_bundle.py   # Yahoo Finance bundle
-│   ├── csv_bundle.py     # CSV bundle
-│   └── ...
+│   ├── yahoo/            # Yahoo Finance subpackage
+│   │   ├── fetcher.py    # API interaction (107 lines)
+│   │   ├── processor.py  # Data processing (159 lines)
+│   │   └── registration.py # Bundle registration (255 lines)
+│   └── csv/              # CSV data subpackage
+│       ├── parser.py     # CSV parsing (157 lines)
+│       ├── ingestion.py  # Data loading (166 lines)
+│       ├── writer.py     # Zipline writer (152 lines)
+│       └── registration.py # Bundle registration (194 lines)
 │
-├── calendars/             # Trading calendars (4 modules)
+├── calendars/             # Trading calendars (v1.1.0: session alignment)
 │   ├── crypto.py         # 24/7 crypto calendar
 │   ├── forex.py          # 24/5 forex calendar
-│   └── registry.py       # Calendar registry
+│   ├── registry.py       # Calendar registry
+│   └── sessions/         # SessionManager for alignment (v1.1.0)
+│       ├── manager.py    # SessionManager core (140 lines)
+│       ├── strategies.py # Session loading strategies (116 lines)
+│       └── validation.py # Mismatch reports (135 lines)
 │
 ├── config/                # Configuration management (4 modules)
 │   ├── core.py           # Core settings
@@ -273,10 +287,12 @@ lib/
 │   ├── formatters.py     # Log formatters
 │   └── ...
 │
-├── metrics/               # Performance metrics (4 modules)
-│   ├── core.py           # Core metrics (Sharpe, Sortino, etc.)
-│   ├── trade.py          # Trade metrics
-│   ├── rolling.py        # Rolling metrics
+├── metrics/               # Performance metrics (v1.1.0: concern separation)
+│   ├── core.py           # Main orchestrator (242 lines)
+│   ├── performance.py    # Sharpe, Sortino, returns (243 lines)
+│   ├── risk.py           # Drawdown, alpha/beta, VaR (273 lines)
+│   ├── trade.py          # Trade-level metrics
+│   ├── rolling.py        # Rolling window metrics
 │   └── comparison.py     # Strategy comparison
 │
 ├── optimize/              # Parameter optimization (5 modules)
@@ -302,14 +318,18 @@ lib/
 │   ├── montecarlo.py     # Monte Carlo simulation
 │   └── metrics.py        # Validation metrics
 │
-└── validation/             # Data validation framework (9 modules)
-    ├── core.py           # Core validation types
-    ├── data_validator.py # Data validation
-    ├── bundle_validator.py # Bundle validation
+└── validation/             # Data validation framework (v1.1.0: strategy pattern)
+    ├── api.py            # Public API functions (555 lines)
+    ├── data_validator.py # Main orchestrator (925 lines)
+    ├── validators/       # Asset-specific validators
+    │   ├── equity.py     # Equity validation (307 lines)
+    │   ├── forex.py      # FOREX validation (225 lines)
+    │   ├── crypto.py     # Crypto validation (224 lines)
+    │   └── reporting.py  # Report generation (236 lines)
     └── ...
 ```
 
-**Design Principle:** Each module is under 150 lines. If a module grows beyond that, it's split into focused submodules.
+**Design Principle:** Target 150-200 lines per module (v1.1.0: achieved 82% reduction in average size). Orchestrators may be larger (200-400 lines) but delegate to focused submodules following SOLID principles.
 
 **New Utility Modules (v1.0.9+):**
 - `pipeline_utils.py` - Pipeline API setup and validation

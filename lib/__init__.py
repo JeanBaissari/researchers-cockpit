@@ -4,7 +4,7 @@ The Researcher's Cockpit - Core Library
 This package provides the foundational modules for running algorithmic trading
 research with Zipline-reloaded.
 
-Main packages (v1.0.8 modular architecture):
+Main packages (v1.11.0 modular architecture):
 - bundles: Data bundle ingestion and management
 - validation: Data integrity validation and quality checks
 - calendars: Trading calendars (CryptoCalendar, ForexCalendar)
@@ -21,7 +21,7 @@ Main packages (v1.0.8 modular architecture):
 - paths: Robust project root resolution
 """
 
-__version__ = "1.0.8"
+__version__ = "1.11.0"
 __author__ = "The Researcher's Cockpit"
 
 # =============================================================================
