@@ -9,7 +9,7 @@
 
 # Strategy Configuration
 strategy:
-  asset_symbol: EURUSD         # Asset to trade (e.g., EURUSD=X)
+  asset_symbol: NZDJPY         # Asset to trade (e.g., EURUSD=X)
   asset_class: forex             # 'equities', 'crypto', 'forex'
   rebalance_frequency: daily     # 'daily', 'weekly', 'monthly' (using 'daily' with minutes_after_open = 0 for intraday)
   minutes_after_open: 1          # Minutes after market open to trade (Zipline requires >= 1 for minute data)
@@ -105,7 +105,7 @@ costs:
 # Controls backtest execution and metric calculation.
 # ==============================================================================
 backtest:
-  bundle: csv_eurusd_1m          # Data bundle to use for backtest
+  bundle: csv_nzdjpy_1m          # Data bundle to use for backtest
   data_frequency: minute         # Data frequency: 'daily' or 'minute'
 
   # Warmup Period
