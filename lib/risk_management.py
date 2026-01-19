@@ -23,6 +23,9 @@ if TYPE_CHECKING:
 # Configure logging
 logger = logging.getLogger(__name__)
 
+# Floating point comparison tolerance for price comparisons
+FLOAT_EPSILON = 1e-6
+
 
 def check_exit_conditions(
     context: 'Context',
@@ -96,6 +99,65 @@ def check_exit_conditions(
     return None
 
 
+def _is_price_greater_or_equal(price1: float, price2: float, epsilon: float = FLOAT_EPSILON) -> bool:
+    """
+    Compare prices with floating point tolerance.
+    
+    Args:
+        price1: First price
+        price2: Second price
+        epsilon: Tolerance for comparison
+    
+    Returns:
+        True if price1 >= price2 (within tolerance)
+    """
+    return price1 >= (price2 - epsilon)
+
+
+def _is_price_less_or_equal(price1: float, price2: float, epsilon: float = FLOAT_EPSILON) -> bool:
+    """
+    Compare prices with floating point tolerance (less than or equal).
+    
+    Args:
+        price1: First price
+        price2: Second price
+        epsilon: Tolerance for comparison
+    
+    Returns:
+        True if price1 <= price2 (within tolerance)
+    """
+    return price1 <= (price2 + epsilon)
+
+
+def _validate_percentage_param(
+    param_value: float,
+    param_name: str,
+    default: float,
+    min_value: float = 0.0,
+    max_value: float = 1.0
+) -> float:
+    """
+    Validate and normalize percentage parameter.
+    
+    Args:
+        param_value: Parameter value to validate
+        param_name: Parameter name for logging
+        default: Default value if invalid
+        min_value: Minimum allowed value
+        max_value: Maximum allowed value
+    
+    Returns:
+        Validated parameter value
+    """
+    if param_value <= min_value or param_value > max_value:
+        logger.warning(
+            f"Invalid {param_name}: {param_value}. Must be in ({min_value}, {max_value}]. "
+            f"Using default: {default}"
+        )
+        return default
+    return param_value
+
+
 def _check_take_profit(
     current_price: float,
     entry_price: float,
@@ -115,22 +177,24 @@ def _check_take_profit(
     if entry_price <= 0:
         return None
 
-    take_profit_pct = risk_params.get('take_profit_pct', 0.10)
-    
-    # Validate take profit percentage
-    if take_profit_pct <= 0:
-        logger.warning(
-            f"Invalid take_profit_pct: {take_profit_pct}. Must be positive. "
-            f"Using default: 0.10"
-        )
-        take_profit_pct = 0.10
+    # ✅ FIX: Use shared validation (DRY)
+    take_profit_pct = _validate_percentage_param(
+        risk_params.get('take_profit_pct', 0.10),
+        'take_profit_pct',
+        default=0.10,
+        min_value=0.0,
+        max_value=1.0  # 100% max
+    )
 
+    # Calculate profit target
     profit_price = entry_price * (1 + take_profit_pct)
     
-    if current_price >= profit_price:
+    # ✅ FIX: Use floating point tolerant comparison (fixes precision issue)
+    if _is_price_greater_or_equal(current_price, profit_price):
         logger.debug(
             f"Take profit triggered: current_price={current_price:.4f}, "
-            f"profit_price={profit_price:.4f}, entry_price={entry_price:.4f}"
+            f"profit_price={profit_price:.4f}, entry_price={entry_price:.4f}, "
+            f"take_profit_pct={take_profit_pct:.4f}"
         )
         return 'take_profit'
     
@@ -156,22 +220,23 @@ def _check_trailing_stop(
     if highest_price <= 0:
         return None
 
-    trailing_stop_pct = risk_params.get('trailing_stop_pct', 0.08)
-    
-    # Validate trailing stop percentage
-    if trailing_stop_pct <= 0:
-        logger.warning(
-            f"Invalid trailing_stop_pct: {trailing_stop_pct}. Must be positive. "
-            f"Using default: 0.08"
-        )
-        trailing_stop_pct = 0.08
+    # ✅ FIX: Use shared validation (DRY)
+    trailing_stop_pct = _validate_percentage_param(
+        risk_params.get('trailing_stop_pct', 0.08),
+        'trailing_stop_pct',
+        default=0.08,
+        min_value=0.0,
+        max_value=1.0
+    )
 
     stop_price = highest_price * (1 - trailing_stop_pct)
     
-    if current_price <= stop_price:
+    # ✅ FIX: Use floating point tolerant comparison
+    if _is_price_less_or_equal(current_price, stop_price):
         logger.debug(
             f"Trailing stop triggered: current_price={current_price:.4f}, "
-            f"stop_price={stop_price:.4f}, highest_price={highest_price:.4f}"
+            f"stop_price={stop_price:.4f}, highest_price={highest_price:.4f}, "
+            f"trailing_stop_pct={trailing_stop_pct:.4f}"
         )
         return 'trailing'
     
@@ -197,22 +262,23 @@ def _check_fixed_stop(
     if entry_price <= 0:
         return None
 
-    stop_loss_pct = risk_params.get('stop_loss_pct', 0.05)
-    
-    # Validate stop loss percentage
-    if stop_loss_pct <= 0:
-        logger.warning(
-            f"Invalid stop_loss_pct: {stop_loss_pct}. Must be positive. "
-            f"Using default: 0.05"
-        )
-        stop_loss_pct = 0.05
+    # ✅ FIX: Use shared validation (DRY)
+    stop_loss_pct = _validate_percentage_param(
+        risk_params.get('stop_loss_pct', 0.05),
+        'stop_loss_pct',
+        default=0.05,
+        min_value=0.0,
+        max_value=1.0
+    )
 
     stop_price = entry_price * (1 - stop_loss_pct)
     
-    if current_price <= stop_price:
+    # ✅ FIX: Use floating point tolerant comparison
+    if _is_price_less_or_equal(current_price, stop_price):
         logger.debug(
             f"Fixed stop loss triggered: current_price={current_price:.4f}, "
-            f"stop_price={stop_price:.4f}, entry_price={entry_price:.4f}"
+            f"stop_price={stop_price:.4f}, entry_price={entry_price:.4f}, "
+            f"stop_loss_pct={stop_loss_pct:.4f}"
         )
         return 'fixed'
     
