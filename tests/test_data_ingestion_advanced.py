@@ -208,7 +208,7 @@ class TestMultiSymbolIngestion:
             sid_assignments = []
 
             # Import and patch the registration function
-            from lib.bundles.yahoo_bundle import register_yahoo_bundle
+            from lib.bundles.yahoo import register_yahoo_bundle
 
             # The data_gen function yields (sid, df) tuples
             # We need to verify SIDs are sequential

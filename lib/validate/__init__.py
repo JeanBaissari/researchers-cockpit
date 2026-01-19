@@ -22,9 +22,6 @@ from .metrics import (
 from .results import (
     save_walk_forward_results,
     save_monte_carlo_results,
-    # Backward compatibility aliases
-    _save_walk_forward_results,
-    _save_monte_carlo_results,
 )
 
 __all__ = [
@@ -37,9 +34,6 @@ __all__ = [
     # Results saving
     'save_walk_forward_results',
     'save_monte_carlo_results',
-    # Backward compatibility
-    '_save_walk_forward_results',
-    '_save_monte_carlo_results',
 ]
 
 

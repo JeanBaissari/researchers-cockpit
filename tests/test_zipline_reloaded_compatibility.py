@@ -61,7 +61,7 @@ class TestCalendarConsistency:
 
     def test_calendar_codes_use_exchange_calendars_format(self):
         """Verify calendar codes use exchange_calendars format."""
-        from lib.bundles.yahoo_bundle import _register_yahoo_bundle
+        from lib.bundles.yahoo import register_yahoo_bundle as _register_yahoo_bundle
 
         # This should use XNYS, not NYSE
         # We can't easily test the registration without actual data,

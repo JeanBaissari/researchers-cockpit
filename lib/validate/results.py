@@ -114,11 +114,6 @@ def save_monte_carlo_results(
     return result_dir
 
 
-# Backward compatibility aliases
-_save_walk_forward_results = save_walk_forward_results
-_save_monte_carlo_results = save_monte_carlo_results
-
-
 
 
 

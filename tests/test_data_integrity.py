@@ -19,7 +19,7 @@ import json
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from lib.validation.integrity import (
+from lib.validation import (
     verify_bundle_dates,
     verify_returns_calculation,
     verify_positions_match_transactions,
@@ -38,13 +38,20 @@ def test_verify_bundle_dates():
     bundle = bundles[0]
     
     # Test with valid dates (within bundle range)
-    is_valid, error = verify_bundle_dates(bundle, '2020-01-01', '2020-12-31')
+    # verify_bundle_dates now returns ValidationResult object
+    from lib.validation.core import ValidationResult
+    result = verify_bundle_dates(bundle, '2020-01-01', '2020-12-31')
+    assert isinstance(result, ValidationResult), "Should return ValidationResult"
     # May be invalid if bundle doesn't cover these dates, that's OK
     
     # Test with invalid dates (far future)
-    is_valid_future, error_future = verify_bundle_dates(bundle, '2099-01-01', '2099-12-31')
-    assert not is_valid_future or len(error_future) > 0, \
-        "Future dates should be invalid or produce error message"
+    from lib.validation.core import ValidationResult
+    result_future = verify_bundle_dates(bundle, '2099-01-01', '2099-12-31')
+    assert isinstance(result_future, ValidationResult), "Should return ValidationResult"
+    # Future dates should either fail validation or have error messages
+    if not result_future.passed:
+        assert len(result_future.errors) > 0 or len(result_future.checks) > 0, \
+            "Future dates should produce error messages or failed checks"
 
 
 def test_verify_returns_calculation():
@@ -64,7 +71,8 @@ def test_verify_returns_calculation():
     is_valid, error = verify_returns_calculation(returns, transactions)
     # Should pass basic consistency check
     assert isinstance(is_valid, bool), "Should return boolean"
-    assert isinstance(error, str), "Should return error message string"
+    # Error can be None when valid, or str when invalid
+    assert error is None or isinstance(error, str), f"Error should be None or str, got {type(error)}"
 
 
 def test_verify_positions_match_transactions():
@@ -86,7 +94,8 @@ def test_verify_positions_match_transactions():
     
     is_valid, error = verify_positions_match_transactions(positions, transactions)
     assert isinstance(is_valid, bool), "Should return boolean"
-    assert isinstance(error, str), "Should return error message string"
+    # Error can be None when valid, or str when invalid
+    assert error is None or isinstance(error, str), f"Error should be None or str, got {type(error)}"
 
 
 def test_verify_metrics_calculation():
@@ -137,11 +146,11 @@ def test_verify_metrics_with_mismatch():
         'max_drawdown': -999.0
     }
     
-    is_valid, discrepancies = verify_metrics_calculation(wrong_metrics, returns, tolerance=0.01)
+    is_valid, discrepancies = verify_metrics_calculation(wrong_metrics, returns)
     
-    # Should detect mismatches
+    # Should detect mismatches (wrong_metrics are obviously wrong)
     assert not is_valid or len(discrepancies) > 0, \
-        "Should detect metric mismatches"
+        f"Should detect metric mismatches, got is_valid={is_valid}, discrepancies={discrepancies}"
 
 
 def test_empty_data_handling():

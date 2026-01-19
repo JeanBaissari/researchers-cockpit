@@ -10,11 +10,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional, List
 
-
-def get_project_root() -> Path:
-    """Get the project root directory using marker-based discovery."""
-    from .paths import get_project_root as _get_project_root
-    return _get_project_root()
+from .paths import get_project_root
 
 
 def ensure_dir(path: Path) -> Path:
@@ -204,28 +200,6 @@ def check_and_fix_symlinks(
     return fixed_links
 
 
-# =============================================================================
-# BACKWARD-COMPATIBLE RE-EXPORTS (DEPRECATED)
-# =============================================================================
-# These functions have moved to lib/data/. Import from there for new code:
-#   from lib.data.aggregation import aggregate_ohlcv, resample_to_timeframe, ...
-#   from lib.data.normalization import normalize_to_utc, fill_data_gaps, ...
-#   from lib.data.forex import consolidate_sunday_to_friday
-
-from .data.aggregation import (
-    aggregate_ohlcv,
-    resample_to_timeframe,
-    create_multi_timeframe_data,
-    get_timeframe_multiplier,
-)
-
-from .data.normalization import (
-    normalize_to_utc,
-    fill_data_gaps,
-)
-
-from .data.forex import consolidate_sunday_to_friday
-
 __all__ = [
     # Core utilities
     'get_project_root',
@@ -238,12 +212,4 @@ __all__ = [
     'create_strategy',
     'create_strategy_from_template',
     'check_and_fix_symlinks',
-    # Backward-compatible re-exports (deprecated - use lib.data directly)
-    'aggregate_ohlcv',
-    'resample_to_timeframe',
-    'create_multi_timeframe_data',
-    'get_timeframe_multiplier',
-    'normalize_to_utc',
-    'fill_data_gaps',
-    'consolidate_sunday_to_friday',
 ]
