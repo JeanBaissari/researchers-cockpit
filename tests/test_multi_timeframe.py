@@ -317,10 +317,15 @@ class TestValidationUtility:
             'end_date': None
         }
 
-        # Mock the bundle data path to exist
-        with patch.object(module, 'get_bundle_data_path') as mock_path:
-            mock_path.return_value = MagicMock()
-            mock_path.return_value.exists.return_value = True
+        # ✅ FIX: Mock check_bundle_data_exists directly (matches actual validation)
+        with patch.object(module, 'check_bundle_data_exists') as mock_check:
+            # Return (exists=True, path=Path, details=str)
+            mock_bundle_path = MagicMock(spec=Path)
+            mock_check.return_value = (
+                True,  # exists
+                mock_bundle_path,  # path
+                "1 version(s), latest: 20240101_120000"  # details
+            )
 
             issues = module.validate_bundle_entry('yahoo_equities_daily', valid_meta)
             assert len(issues) == 0, f"Valid entry should have no issues: {issues}"
@@ -331,7 +336,7 @@ class TestDataAggregation:
 
     def test_aggregate_ohlcv(self):
         """Test OHLCV aggregation to higher timeframe."""
-        from lib.utils import aggregate_ohlcv
+        from lib.data.aggregation import aggregate_ohlcv
 
         # Create sample 1-minute data
         dates = pd.date_range('2025-01-01 09:30', periods=60, freq='1min')
@@ -357,7 +362,7 @@ class TestDataAggregation:
 
     def test_resample_to_timeframe_validation(self):
         """Test that downsampling is rejected."""
-        from lib.utils import resample_to_timeframe
+        from lib.data.aggregation import resample_to_timeframe
 
         dates = pd.date_range('2025-01-01', periods=10, freq='1h')
         df = pd.DataFrame({
@@ -375,7 +380,7 @@ class TestDataAggregation:
 
     def test_get_timeframe_multiplier(self):
         """Test timeframe multiplier calculation."""
-        from lib.utils import get_timeframe_multiplier
+        from lib.data.aggregation import get_timeframe_multiplier
 
         assert get_timeframe_multiplier('1m', '5m') == 5
         assert get_timeframe_multiplier('1m', '1h') == 60
@@ -520,7 +525,7 @@ class TestIntradayBundleDailyBars:
 
     def test_aggregate_minute_to_daily(self):
         """Test minute-to-daily aggregation produces correct daily bars."""
-        from lib.utils import aggregate_ohlcv
+        from lib.data.aggregation import aggregate_ohlcv
 
         # Create sample hourly data for 3 full days starting at midnight UTC
         # Using 00:00 start ensures we get exactly 3 calendar days
@@ -726,7 +731,7 @@ class TestErrorHandling:
 
     def test_empty_dataframe_aggregation(self):
         """Test that empty DataFrame aggregation is handled."""
-        from lib.utils import aggregate_ohlcv
+        from lib.data.aggregation import aggregate_ohlcv
 
         empty_df = pd.DataFrame(columns=['open', 'high', 'low', 'close', 'volume'])
         result = aggregate_ohlcv(empty_df, 'daily')
