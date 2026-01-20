@@ -1,0 +1,63 @@
+---
+description: Comprehensive planning and task management system combining flexible task lists with structured project documentation
+globs: 
+alwaysApply: false
+---
+# Planning
+
+### PLANNING.md
+**Project-Level Documentation**: Maintain comprehensive project understanding
+
+**MANDATORY CREATION**: If PLANNING.md doesn't exist inside the [[ID_[000]]CUSTOMIZED_TASK_FOLDER], create it immediately before any major project work. Example: If the plan is about a creating a series of admin components for an e-commerce, the planning would be placed inside a folder such as/'[TASK_FOLDER]/001_ADMIN_COMPONENTS', it would be named /PLANNING.md and should contain every major detail describing the component integration and how it should be handled so other agents can disect each section into multiple individual tasks. Each planning file should not be longer than 400 lines during initial draft, otherwise refactor into multiple different planning files. 
+
+**REQUIRED STRUCTURE**:
+```markdown
+# Project Planning Document
+
+## Project Overview
+- **Project Name**: [Clear, descriptive name]
+- **Version**: [Current version]
+- **Last Updated**: [Today's date]
+- **Project Type**: [Web app, API, desktop app, etc.]
+
+## Vision & Goals
+- **Primary Goal**: [Main objective in one sentence]
+- **Success Criteria**: [Measurable outcomes]
+- **Target Users**: [Who will use this]
+- **Key Features**: [Top 3-5 features]
+
+## Technical Architecture
+- **Tech Stack**: [Languages, frameworks, databases]
+- **Architecture Pattern**: [MVC, microservices, monolith, etc.]
+- **Development Environment**: [OS, IDE, tools]
+- **Deployment Strategy**: [Local, cloud, containers]
+
+## Project Structure
+- **Root Directory Layout**: [Folder organization]
+- **Naming Conventions**: [File/variable/function naming]
+- **Import Strategy**: [Relative vs absolute imports]
+- **Module Organization**: [How code is grouped]
+
+## Development Standards
+- **Code Style**: [PEP8, ESLint rules, etc.]
+- **Maximum File Length**: [REQUEST] lines
+- **Testing Strategy**: [Unit tests, integration tests]
+- **Documentation Requirements**: [Docstrings, comments]
+
+## Task List Management
+- **Primary Task File**: [Name of main task list file, e.g., TASKS.md]
+- **Feature-Specific Lists**: [List of feature task files, e.g., ASSISTANT_CHAT.md]
+- **Update Frequency**: [How often to update task lists]
+- **Completion Tracking**: [Method for tracking progress]
+
+## Constraints & Limitations
+- **Performance Requirements**: [Speed, memory, etc.]
+- **Browser/Platform Support**: [Compatibility needs]
+- **Technical Debt**: [Known issues to address]
+
+## Tools & Dependencies
+- **Core Dependencies**: [Essential packages]
+- **Development Tools**: [Linters, formatters, etc.]
+- **Testing Framework**: [pytest, jest, etc.]
+- **Build Tools**: [Webpack, Docker, etc.]
+```

@@ -3,7 +3,7 @@
 
 **Created:** 2026-01-15
 **Purpose:** Handoff document for running EURUSD and NZDJPY backtests
-**Session Reference:** Pipeline Validation v1.0.10
+**Session Reference:** Pipeline Validation v1.10.0
 **Status:** ✅ Bundles Ingested, Ready for Backtest Execution
 
 ---
@@ -121,7 +121,7 @@ broadcast to indexing result of shape (4560,1)
 1. ✅ Fixed data frequency match (1m vs 1h)
 2. ✅ Fixed gap filling in aggregation path
 3. ✅ Fixed exchange calendar metadata
-4. ⚠️ Calendar alignment still has 4-bar mismatch
+4. ⚠️ Calendar alignment still has 4-bar mismatch (verify again)
 
 **Recommendation:**
 - If backtest fails with shape mismatch, document the error
