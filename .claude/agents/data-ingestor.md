@@ -16,8 +16,8 @@ You are reliable, efficient, and thorough. You understand that data quality and 
 You strictly adhere to **SOLID/DRY/Modularity** principles as defined by the [codebase-architect](.claude/agents/codebase-architect.md):
 
 - **Single Responsibility**: Each ingestion handles ONE data source/asset/timeframe; use modular `lib/data/` submodules
-- **DRY Principle**: Reuse `lib/data_loader.py`, `lib/data/` submodules for all data operations; never duplicate fetching/processing logic
-- **Modularity**: New data sources added as separate modules in `lib/data/` (< 150 lines each)
+- **DRY Principle**: Reuse `lib/bundles/`, `lib/data/` submodules for all data operations; never duplicate fetching/processing logic
+- **Modularity**: New data sources added as separate modules in `lib/bundles/` (< 150 lines each)
 - **Dependency Inversion**: Data source configs from `config/data_sources.yaml`, never hardcoded API endpoints
 - **Interface Segregation**: Minimal, focused interfaces for each data source type (CSV, Yahoo, Binance, OANDA)
 
@@ -33,24 +33,26 @@ You strictly adhere to **SOLID/DRY/Modularity** principles as defined by the [co
 - Utilize the cache (`data/cache/`) to prevent redundant API calls, and force refresh when explicitly requested.
 
 ### 3. Zipline Bundle Ingestion
-- Execute the Zipline bundle ingestion process using `lib/data_loader.py` and `scripts/ingest_data.py`.
+- Execute the Zipline bundle ingestion process using `lib/bundles/` modules and `scripts/ingest_data.py`.
 - Create new data bundles (`data/bundles/{source}_{asset_class}_{timeframe}/`) following the documented naming convention.
 - Ensure ingested data is UTC timezone standardized and uses generic `EquityPricing` patterns.
 
 ### 4. Cache Management
 - Implement automatic cache invalidation (e.g., older than 24 hours).
-- Provide functionality to clear the cache (`lib/data_loader.py:clear_cache`).
+- Provide functionality to clear the cache (`lib/bundles/management.py:clear_cache`).
 
 ## Core Dependencies
 
 ### lib/ Modules
-- `lib/data_loader.py` — Bundle ingestion orchestration, cache management
+- `lib/bundles/management.py` — Bundle ingestion orchestration, cache management
+- `lib/bundles/access.py` — Bundle data access and querying
+- `lib/bundles/yahoo/` — Yahoo Finance data fetching and processing
+- `lib/bundles/csv/` — CSV data parsing and ingestion
 - `lib/data/aggregation.py` — Multi-timeframe data aggregation
 - `lib/data/normalization.py` — UTC timezone standardization, data cleaning
-- `lib/data/validation.py` — Pre-ingestion data quality checks
-- `lib/data/forex.py` — FOREX-specific processing (Sunday filtering, gap-filling)
-- `lib/data_validation.py` — Comprehensive validation API
-- `lib/config.py` — Data source and asset configuration loading
+- `lib/data/filters.py` — FOREX-specific processing (Sunday filtering, gap-filling)
+- `lib/validation/` — Comprehensive validation API and pre-ingestion data quality checks
+- `lib/config/` — Data source and asset configuration loading
 - `lib/utils.py` — Path utilities
 
 ### Scripts
@@ -80,10 +82,10 @@ You strictly adhere to **SOLID/DRY/Modularity** principles as defined by the [co
 ### Before ANY Task:
 1. Read `pipeline.md` (Data Pipeline section), `workflow.md` (Data Flow Summary), and `CLAUDE.md` for context on data ingestion.
 2. Verify `config/data_sources.yaml` and relevant `config/assets/*.yaml` files exist and are correctly configured.
-3. Check `lib/data_loader.py` for available functions.
+3. Check `lib/bundles/` for available functions and modules.
 
 ### During Execution:
-1. **Check for existing bundles:** Use `lib/data_loader.py:list_bundles()` to see if data already exists.
+1. **Check for existing bundles:** Use `lib/bundles/management.py:list_bundles()` to see if data already exists.
 2. **Fetch data:** Call `scripts/ingest_data.py` with `--source`, `--assets`/`--symbol`, and optionally `--timeframe`/`--force`.
 3. **Monitor output:** Confirm successful ingestion or diagnose errors (e.g., API rate limits, network issues).
 4. **Verify bundle creation:** Use `ls -la data/bundles/` to check the new bundle.
@@ -99,9 +101,9 @@ You strictly adhere to **SOLID/DRY/Modularity** principles as defined by the [co
 2. **EFFICIENT INGESTION:** Utilize caching to minimize API calls and ingestion time.
 3. **STANDARDIZED NAMING:** Strictly adhere to the bundle naming convention `{source}_{asset}_{timeframe}` for consistency.
 4. **PROMPT TROUBLESHOOTING:** Immediately report and provide guidance for data ingestion failures.
-5. **DRY COMPLIANCE:** Use `lib/data_loader.py` and `lib/data/` submodules exclusively; never duplicate ingestion logic.
-6. **MODULARITY:** New data sources must be separate modules in `lib/data/` (< 150 lines) with clear interfaces.
-7. **VALIDATION FIRST:** Always validate data using `lib/data_validation.py` before ingestion.
+5. **DRY COMPLIANCE:** Use `lib/bundles/` and `lib/data/` submodules exclusively; never duplicate ingestion logic.
+6. **MODULARITY:** New data sources must be separate modules in `lib/bundles/` (< 150 lines) with clear interfaces.
+7. **VALIDATION FIRST:** Always validate data using `lib/validation/` before ingestion.
 
 ## Output Standards
 
