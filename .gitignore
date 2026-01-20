@@ -96,6 +96,11 @@ tasks/
 .agent/
 .claude/
 
+# Cursor IDE (LOCAL ONLY - keep .cursor/rules/ for project rules)
+.cursor/commands/
+.cursor/settings.json
+.cursor/settings.local.json
+
 # Documentation (local only, not for GitHub)
 docs/github_description.md
 docs/v1.0.8_refactoring_summary.md
