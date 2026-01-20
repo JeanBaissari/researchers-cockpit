@@ -11,7 +11,7 @@ This module covers test scenarios that were previously missing:
 These tests use mocking to avoid network calls and provide fast, reliable unit tests.
 """
 
-import pytest
+# Standard library imports
 import sys
 import json
 import sqlite3
@@ -23,11 +23,14 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock, Mock
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# Third-party imports
+import pytest
 import pandas as pd
 import numpy as np
 
-# Add project root to path
-project_root = Path(__file__).parent.parent
+# Local imports
+project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 
@@ -191,6 +194,7 @@ class TestMultiSymbolIngestion:
     5. Symbol ordering is preserved
     """
 
+    @pytest.mark.unit
     def test_multi_symbol_sid_assignment(self, mock_yfinance_data):
         """Verify that multiple symbols receive sequential SIDs."""
         symbols = ['SPY', 'AAPL', 'GOOGL', 'MSFT']
@@ -216,6 +220,7 @@ class TestMultiSymbolIngestion:
                 assert expected_sid == symbols.index(symbol), \
                     f"SID {expected_sid} should be assigned to {symbol}"
 
+    @pytest.mark.unit
     def test_multi_symbol_registry_persistence(self):
         """Test that all symbols are persisted to bundle registry."""
         from lib.bundles.registry import (
@@ -250,6 +255,7 @@ class TestMultiSymbolIngestion:
         del registry[bundle_name]
         save_bundle_registry(registry)
 
+    @pytest.mark.unit
     def test_multi_symbol_partial_failure(self, mock_yfinance_data):
         """Test graceful handling when some symbols fail to fetch."""
         symbols = ['SPY', 'INVALID_SYMBOL_XYZ', 'AAPL', 'ANOTHER_BAD_123']
@@ -270,6 +276,7 @@ class TestMultiSymbolIngestion:
             valid_symbols = [s for s in symbols if 'INVALID' not in s and 'BAD' not in s]
             assert len(valid_symbols) == 2, "Should have 2 valid symbols"
 
+    @pytest.mark.unit
     def test_multi_symbol_ordering_preserved(self):
         """Test that symbol ordering is preserved in registry."""
         from lib.bundles.registry import register_bundle_metadata, load_bundle_registry, save_bundle_registry
@@ -292,6 +299,7 @@ class TestMultiSymbolIngestion:
         del registry[bundle_name]
         save_bundle_registry(registry)
 
+    @pytest.mark.unit
     def test_multi_symbol_different_asset_classes(self):
         """Test multi-symbol ingestion with symbols from different exchanges."""
         from lib.bundles.registry import register_bundle_metadata, load_bundle_registry, save_bundle_registry
@@ -333,6 +341,7 @@ class TestGapFillingBehavior:
     5. Calendar session alignment works correctly
     """
 
+    @pytest.mark.unit
     def test_fill_data_gaps_basic(self):
         """Test basic gap-filling functionality."""
         from lib.data.normalization import fill_data_gaps
@@ -378,6 +387,7 @@ class TestGapFillingBehavior:
         # Verify no NaN values in price columns (gaps should be filled)
         assert not filled_df['close'].isna().any(), "Gaps should be forward-filled"
 
+    @pytest.mark.unit
     def test_fill_data_gaps_volume_zero(self, sample_ohlcv_with_gaps):
         """Test that synthetic bars have volume set to 0."""
         from lib.data.normalization import fill_data_gaps
@@ -397,6 +407,7 @@ class TestGapFillingBehavior:
         assert filled_df['volume'].sum() <= original_volume_sum + 1, \
             "Total volume should not increase significantly (synthetic bars should have 0)"
 
+    @pytest.mark.unit
     def test_fill_data_gaps_large_gap_warning(self, caplog):
         """Test that large gaps trigger warning messages."""
         from lib.data.normalization import fill_data_gaps
@@ -425,6 +436,7 @@ class TestGapFillingBehavior:
         # Should log a warning about large gap
         # Note: The actual warning message depends on implementation
 
+    @pytest.mark.unit
     def test_fill_data_gaps_empty_dataframe(self):
         """Test that empty DataFrame is handled gracefully."""
         from lib.data.normalization import fill_data_gaps
@@ -436,6 +448,7 @@ class TestGapFillingBehavior:
 
         assert len(result) == 0, "Empty DataFrame should return empty"
 
+    @pytest.mark.unit
     def test_fill_data_gaps_no_gaps(self):
         """Test behavior when data has no gaps."""
         from lib.data.normalization import fill_data_gaps
@@ -460,6 +473,7 @@ class TestGapFillingBehavior:
         # Should be unchanged
         assert len(filled_df) == len(df), "No gaps should mean no change in length"
 
+    @pytest.mark.unit
     def test_fill_data_gaps_ffill_vs_bfill(self, sample_ohlcv_with_gaps):
         """Test different fill methods (forward-fill vs backward-fill)."""
         from lib.data.normalization import fill_data_gaps
@@ -491,6 +505,7 @@ class TestConcurrentIngestion:
     3. Race conditions in load/save registry are handled
     """
 
+    @pytest.mark.unit
     def test_concurrent_registry_writes(self):
         """Test thread-safety of bundle registry write operations."""
         from lib.bundles.registry import (
@@ -533,6 +548,7 @@ class TestConcurrentIngestion:
                 del registry[bundle_name]
         save_bundle_registry(registry)
 
+    @pytest.mark.unit
     def test_concurrent_registry_reads(self):
         """Test thread-safety of bundle registry read operations."""
         from lib.bundles.registry import load_bundle_registry
@@ -557,6 +573,7 @@ class TestConcurrentIngestion:
         assert len(errors) == 0, f"Concurrent reads failed: {errors}"
         assert len(results) == num_threads, "Not all threads completed"
 
+    @pytest.mark.unit
     def test_registered_bundles_set_concurrent_access(self):
         """Test thread-safety of _registered_bundles set."""
         from lib.bundles import registry
@@ -590,6 +607,7 @@ class TestConcurrentIngestion:
 
         assert len(errors) == 0, f"Concurrent set access failed: {errors}"
 
+    @pytest.mark.unit
     def test_concurrent_load_and_save(self):
         """Test interleaved load and save operations."""
         from lib.bundles.registry import (
@@ -645,6 +663,7 @@ class TestLargeDateRanges:
     4. Memory efficiency for large datasets
     """
 
+    @pytest.mark.unit
     def test_validate_1m_timeframe_limit(self):
         """Test that 1-minute timeframe enforces 7-day limit."""
         from lib.bundles.timeframes import validate_timeframe_date_range, TIMEFRAME_DATA_LIMITS
@@ -666,6 +685,7 @@ class TestLargeDateRanges:
         assert adjusted_start_date >= expected_earliest, \
             f"Adjusted start {adjusted_start_date} should be >= {expected_earliest}"
 
+    @pytest.mark.unit
     def test_validate_5m_timeframe_limit(self):
         """Test that 5-minute timeframe enforces 60-day limit."""
         from lib.bundles.timeframes import validate_timeframe_date_range, TIMEFRAME_DATA_LIMITS
@@ -678,6 +698,7 @@ class TestLargeDateRanges:
 
         assert warning is not None, "Should warn about date adjustment"
 
+    @pytest.mark.unit
     def test_validate_1h_timeframe_limit(self):
         """Test that 1-hour timeframe enforces 730-day limit."""
         from lib.bundles.timeframes import validate_timeframe_date_range, TIMEFRAME_DATA_LIMITS
@@ -690,6 +711,7 @@ class TestLargeDateRanges:
 
         assert warning is not None, "Should warn about date adjustment"
 
+    @pytest.mark.unit
     def test_validate_daily_unlimited(self):
         """Test that daily timeframe has no date limit."""
         from lib.bundles.timeframes import validate_timeframe_date_range
@@ -703,6 +725,7 @@ class TestLargeDateRanges:
         assert warning is None, "Daily should have no limit warning"
         assert adjusted_start == old_start, "Daily should not adjust start date"
 
+    @pytest.mark.unit
     def test_large_date_range_memory_handling(self, mock_yfinance_data):
         """Test memory handling with large datasets (simulated)."""
         # Create a large dataset (1000 days)
@@ -721,6 +744,7 @@ class TestLargeDateRanges:
         assert large_df.memory_usage(deep=True).sum() < 500_000, \
             "DataFrame should use reasonable memory"
 
+    @pytest.mark.unit
     def test_date_range_boundary_conditions(self):
         """Test boundary conditions for date range validation."""
         from lib.bundles.timeframes import validate_timeframe_date_range, TIMEFRAME_DATA_LIMITS
@@ -736,6 +760,7 @@ class TestLargeDateRanges:
         # Should be at or just after the limit (no adjustment needed)
         # The actual behavior depends on implementation
 
+    @pytest.mark.unit
     def test_future_end_date_handling(self):
         """Test handling of future end dates."""
         from lib.bundles.timeframes import validate_timeframe_date_range
@@ -764,6 +789,7 @@ class TestCorruptedBundleRecovery:
     4. No-op ingest registration for existing data
     """
 
+    @pytest.mark.unit
     def test_is_valid_date_string(self):
         """Test date string validation helper."""
         from lib.bundles.utils import is_valid_date_string
@@ -780,6 +806,7 @@ class TestCorruptedBundleRecovery:
         assert is_valid_date_string('01-01-2024') is False  # Wrong format
         assert is_valid_date_string('2024/01/01') is False  # Wrong separator
 
+    @pytest.mark.unit
     def test_corrupted_end_date_detection(self, corrupted_registry_data):
         """Test detection of corrupted end_date field (timeframe stored as date)."""
         from lib.bundles.utils import is_valid_date_string
@@ -790,6 +817,7 @@ class TestCorruptedBundleRecovery:
         assert is_valid_date_string(corrupted_entry['end_date']) is False, \
             "Should detect 'daily' as invalid date"
 
+    @pytest.mark.unit
     def test_missing_symbols_handling(self, corrupted_registry_data):
         """Test handling of registry entries with missing symbols field."""
         entry = corrupted_registry_data['missing_symbols']
@@ -801,6 +829,7 @@ class TestCorruptedBundleRecovery:
         symbols = entry.get('symbols', [])
         assert symbols == [], "Should default to empty list"
 
+    @pytest.mark.unit
     def test_empty_symbols_handling(self, corrupted_registry_data):
         """Test handling of registry entries with empty symbols list."""
         entry = corrupted_registry_data['empty_symbols']
@@ -808,6 +837,7 @@ class TestCorruptedBundleRecovery:
         assert entry['symbols'] == []
         assert len(entry['symbols']) == 0
 
+    @pytest.mark.unit
     def test_load_bundle_with_corrupted_registry(self, tmp_path):
         """Test load_bundle behavior with corrupted registry data."""
         from lib.bundles.registry import (
@@ -842,6 +872,7 @@ class TestCorruptedBundleRecovery:
         del registry['corrupted_test_bundle']
         save_bundle_registry(registry)
 
+    @pytest.mark.unit
     def test_extract_symbols_from_nonexistent_bundle(self):
         """Test symbol extraction from non-existent bundle returns empty list."""
         from lib.bundles.utils import extract_symbols_from_bundle
@@ -850,6 +881,7 @@ class TestCorruptedBundleRecovery:
 
         assert symbols == [], "Should return empty list for non-existent bundle"
 
+    @pytest.mark.unit
     def test_get_bundle_symbols_fallback_chain(self):
         """Test get_bundle_symbols fallback from registry to SQLite."""
         from lib.bundles.registry import (
@@ -876,6 +908,7 @@ class TestCorruptedBundleRecovery:
                 del registry['test_fallback_bundle']
                 save_bundle_registry(registry)
 
+    @pytest.mark.unit
     def test_null_dates_handling(self, corrupted_registry_data):
         """Test handling of null start_date and end_date."""
         entry = corrupted_registry_data['null_dates']
@@ -889,6 +922,7 @@ class TestCorruptedBundleRecovery:
         assert is_valid_date_string(entry['start_date']) is False
         assert is_valid_date_string(entry['end_date']) is False
 
+    @pytest.mark.unit
     def test_auto_register_validates_dates(self):
         """Test that auto-registration validates dates before using them."""
         from lib.bundles.registry import (
@@ -923,6 +957,7 @@ class TestCorruptedBundleRecovery:
         del registry['yahoo_equities_daily_test']
         save_bundle_registry(registry)
 
+    @pytest.mark.unit
     def test_registry_json_decode_error_handling(self, tmp_path):
         """Test handling of corrupted JSON in registry file."""
         from lib.bundles.registry import get_bundle_registry_path
@@ -959,6 +994,7 @@ class TestCorruptedBundleRecovery:
 class TestIntegrationScenarios:
     """Integration tests combining multiple test scenarios."""
 
+    @pytest.mark.integration
     def test_multi_symbol_with_gaps(self, mock_yfinance_data):
         """Test multi-symbol ingestion where some symbols have data gaps."""
         symbols = ['SPY', 'AAPL', 'GOOGL']
@@ -966,12 +1002,14 @@ class TestIntegrationScenarios:
         # In real scenario, some symbols might have gaps
         # This tests that the system handles heterogeneous data quality
 
+    @pytest.mark.integration
     def test_concurrent_multi_symbol_ingestion(self):
         """Test concurrent ingestion of multiple bundles with multiple symbols."""
         # This would be a stress test combining concurrent access
         # with multi-symbol functionality
         pass  # Placeholder for future implementation
 
+    @pytest.mark.integration
     def test_recovery_after_partial_failure(self):
         """Test system recovery after partial ingestion failure."""
         # Simulate a failure mid-ingestion and verify recovery
@@ -985,6 +1023,7 @@ class TestIntegrationScenarios:
 class TestUtilityFunctions:
     """Tests for utility functions supporting data ingestion."""
 
+    @pytest.mark.unit
     def test_get_minutes_per_day_crypto(self):
         """Test minutes per day for CRYPTO calendar."""
         from lib.bundles.timeframes import get_minutes_per_day
@@ -992,6 +1031,7 @@ class TestUtilityFunctions:
         mpd = get_minutes_per_day('CRYPTO')
         assert mpd == 1440, "CRYPTO should have 1440 minutes per day (24/7)"
 
+    @pytest.mark.unit
     def test_get_minutes_per_day_forex(self):
         """Test minutes per day for FOREX calendar."""
         from lib.bundles.timeframes import get_minutes_per_day
@@ -999,6 +1039,7 @@ class TestUtilityFunctions:
         mpd = get_minutes_per_day('FOREX')
         assert mpd == 1440, "FOREX should have 1440 minutes per day"
 
+    @pytest.mark.unit
     def test_get_minutes_per_day_equities(self):
         """Test minutes per day for equities (XNYS) calendar."""
         from lib.bundles.timeframes import get_minutes_per_day
@@ -1006,6 +1047,7 @@ class TestUtilityFunctions:
         mpd = get_minutes_per_day('XNYS')
         assert mpd == 390, "XNYS should have 390 minutes per day (6.5 hours)"
 
+    @pytest.mark.unit
     def test_get_minutes_per_day_unknown_calendar(self):
         """Test minutes per day defaults to 390 for unknown calendars."""
         from lib.bundles.timeframes import get_minutes_per_day
@@ -1013,6 +1055,7 @@ class TestUtilityFunctions:
         mpd = get_minutes_per_day('UNKNOWN_CALENDAR')
         assert mpd == 390, "Unknown calendar should default to 390 minutes"
 
+    @pytest.mark.unit
     def test_get_timeframe_info_all_timeframes(self):
         """Test get_timeframe_info for all supported timeframes."""
         from lib.bundles.timeframes import get_timeframe_info, VALID_TIMEFRAMES
@@ -1024,6 +1067,7 @@ class TestUtilityFunctions:
             assert 'data_frequency' in info
             assert 'is_intraday' in info
 
+    @pytest.mark.unit
     def test_timeframe_data_limits_structure(self):
         """Test TIMEFRAME_DATA_LIMITS has correct structure."""
         from lib.bundles.timeframes import TIMEFRAME_DATA_LIMITS

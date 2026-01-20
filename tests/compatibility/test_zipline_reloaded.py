@@ -10,13 +10,16 @@ Tests that verify:
 6. End-to-end backtest execution works
 """
 
+# Standard library imports
+import sys
+from pathlib import Path
+
+# Third-party imports
 import pytest
 import pandas as pd
-from pathlib import Path
-import sys
 
-# Add project root to path
-project_root = Path(__file__).parent.parent
+# Local imports
+project_root = Path(__file__).parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
@@ -28,6 +31,7 @@ from lib.bundles import list_bundles, load_bundle
 class TestDateNormalization:
     """Test date normalization utility."""
 
+    @pytest.mark.unit
     def test_normalize_timezone_aware(self):
         """Test normalizing timezone-aware datetime to timezone-naive UTC."""
         dt = pd.Timestamp('2024-01-01 12:00:00', tz='UTC')
@@ -38,6 +42,7 @@ class TestDateNormalization:
         assert result.time() == pd.Timestamp('12:00:00').time(), "Time should be preserved"
         assert result.date() == pd.Timestamp('2024-01-01').date(), "Date should be preserved"
 
+    @pytest.mark.unit
     def test_normalize_timezone_naive(self):
         """Test normalizing timezone-naive datetime (no-op except type conversion)."""
         dt = pd.Timestamp('2024-01-01 12:00:00')
@@ -47,6 +52,7 @@ class TestDateNormalization:
         # normalize_to_utc preserves time for naive inputs
         assert result.time() == pd.Timestamp('12:00:00').time(), "Time should be preserved"
 
+    @pytest.mark.unit
     def test_normalize_string_date(self):
         """Test normalizing string date."""
         result = normalize_to_utc('2024-01-01')
@@ -59,6 +65,7 @@ class TestDateNormalization:
 class TestCalendarConsistency:
     """Test calendar code consistency."""
 
+    @pytest.mark.unit
     def test_calendar_codes_use_exchange_calendars_format(self):
         """Verify calendar codes use exchange_calendars format."""
         from lib.bundles.yahoo import register_yahoo_bundle as _register_yahoo_bundle
@@ -76,6 +83,7 @@ class TestCalendarConsistency:
 class TestAPIImports:
     """Test that API imports match ZR conventions."""
 
+    @pytest.mark.unit
     def test_run_algorithm_import(self):
         """Test run_algorithm import."""
         try:
@@ -84,6 +92,7 @@ class TestAPIImports:
         except ImportError:
             pytest.skip("zipline-reloaded not installed")
 
+    @pytest.mark.unit
     def test_api_imports(self):
         """Test zipline.api imports."""
         try:
@@ -102,6 +111,7 @@ class TestAPIImports:
         except ImportError:
             pytest.skip("zipline-reloaded not installed")
 
+    @pytest.mark.unit
     def test_finance_imports(self):
         """Test zipline.finance imports."""
         try:
@@ -115,11 +125,13 @@ class TestAPIImports:
 class TestBundlePatterns:
     """Test bundle registration and loading patterns."""
 
+    @pytest.mark.unit
     def test_list_bundles(self):
         """Test listing bundles."""
         bundles = list_bundles()
         assert isinstance(bundles, list), "Should return a list"
 
+    @pytest.mark.unit
     def test_bundle_loading_error_handling(self):
         """Test bundle loading handles missing bundles gracefully."""
         with pytest.raises(FileNotFoundError):
@@ -129,6 +141,7 @@ class TestBundlePatterns:
 class TestDataAccessPatterns:
     """Test data access patterns match ZR requirements."""
 
+    @pytest.mark.unit
     def test_strategy_template_imports(self):
         """Test that strategy template can be imported."""
         template_path = project_root / 'strategies' / '_template' / 'strategy.py'
@@ -145,6 +158,7 @@ class TestDataAccessPatterns:
 class TestEndToEndIntegration:
     """End-to-end integration tests."""
 
+    @pytest.mark.integration
     @pytest.mark.skip(reason="Requires actual bundle data and longer execution time")
     def test_full_backtest_pipeline(self):
         """Test full backtest pipeline execution.

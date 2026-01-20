@@ -5,10 +5,14 @@ Tests the core SessionManager functionality including strategies,
 manager operations, and session validation.
 """
 
-import pytest
-import pandas as pd
+# Standard library imports
 from datetime import datetime
 
+# Third-party imports
+import pytest
+import pandas as pd
+
+# Local imports
 from lib.calendars.sessions import (
     SessionManager,
     SessionStrategy,
@@ -23,11 +27,13 @@ from lib.calendars.sessions import (
 class TestSessionStrategies:
     """Test SessionStrategy implementations."""
 
+    @pytest.mark.unit
     def test_forex_strategy_calendar_name(self):
         """ForexSessionStrategy returns correct calendar name."""
         strategy = ForexSessionStrategy()
         assert strategy.get_calendar_name() == "FOREX"
 
+    @pytest.mark.unit
     def test_forex_strategy_filters(self):
         """ForexSessionStrategy returns 4 filters in correct order."""
         strategy = ForexSessionStrategy()
@@ -43,6 +49,7 @@ class TestSessionStrategies:
         ]
         assert filter_names == expected
 
+    @pytest.mark.unit
     def test_forex_strategy_validation_tolerant(self):
         """ForexSessionStrategy allows small discrepancies."""
         strategy = ForexSessionStrategy()
@@ -61,11 +68,13 @@ class TestSessionStrategies:
         assert is_valid
         assert "within tolerance" in msg
 
+    @pytest.mark.unit
     def test_crypto_strategy_calendar_name(self):
         """CryptoSessionStrategy returns correct calendar name."""
         strategy = CryptoSessionStrategy()
         assert strategy.get_calendar_name() == "CRYPTO"
 
+    @pytest.mark.unit
     def test_crypto_strategy_filters(self):
         """CryptoSessionStrategy returns 2 filters."""
         strategy = CryptoSessionStrategy()
@@ -75,6 +84,7 @@ class TestSessionStrategies:
         expected = ['filter_to_calendar_sessions', 'apply_gap_filling']
         assert filter_names == expected
 
+    @pytest.mark.unit
     def test_crypto_strategy_validation_strict(self):
         """CryptoSessionStrategy enforces strict matching."""
         strategy = CryptoSessionStrategy()
@@ -91,11 +101,13 @@ class TestSessionStrategies:
         assert not is_valid
         assert "CRYPTO requires exact sessions" in msg
 
+    @pytest.mark.unit
     def test_equity_strategy_calendar_name(self):
         """EquitySessionStrategy returns correct calendar name."""
         strategy = EquitySessionStrategy()
         assert strategy.get_calendar_name() == "NYSE"
 
+    @pytest.mark.unit
     def test_equity_strategy_filters(self):
         """EquitySessionStrategy returns 1 filter."""
         strategy = EquitySessionStrategy()
@@ -107,29 +119,34 @@ class TestSessionStrategies:
 class TestSessionManager:
     """Test SessionManager core functionality."""
 
+    @pytest.mark.unit
     def test_for_asset_class_forex(self):
         """SessionManager.for_asset_class('forex') creates ForexSessionStrategy."""
         mgr = SessionManager.for_asset_class('forex')
         assert isinstance(mgr.strategy, ForexSessionStrategy)
         assert mgr.calendar_name == "FOREX"
 
+    @pytest.mark.unit
     def test_for_asset_class_crypto(self):
         """SessionManager.for_asset_class('crypto') creates CryptoSessionStrategy."""
         mgr = SessionManager.for_asset_class('crypto')
         assert isinstance(mgr.strategy, CryptoSessionStrategy)
         assert mgr.calendar_name == "CRYPTO"
 
+    @pytest.mark.unit
     def test_for_asset_class_equity(self):
         """SessionManager.for_asset_class('equity') creates EquitySessionStrategy."""
         mgr = SessionManager.for_asset_class('equity')
         assert isinstance(mgr.strategy, EquitySessionStrategy)
         assert mgr.calendar_name == "NYSE"
 
+    @pytest.mark.unit
     def test_for_asset_class_invalid(self):
         """SessionManager.for_asset_class() raises on invalid asset class."""
         with pytest.raises(ValueError, match="Unknown asset class"):
             SessionManager.for_asset_class('invalid')
 
+    @pytest.mark.unit
     def test_get_sessions_deterministic(self):
         """SessionManager.get_sessions() is deterministic."""
         mgr1 = SessionManager.for_asset_class('forex')
@@ -143,6 +160,7 @@ class TestSessionManager:
 
         assert sessions1.equals(sessions2), "SessionManager must be deterministic"
 
+    @pytest.mark.unit
     def test_get_sessions_timezone_naive(self):
         """SessionManager.get_sessions() returns timezone-naive."""
         mgr = SessionManager.for_asset_class('forex')
@@ -152,6 +170,7 @@ class TestSessionManager:
         sessions = mgr.get_sessions(start, end)
         assert sessions.tz is None, "Sessions must be timezone-naive"
 
+    @pytest.mark.unit
     def test_apply_filters_forex(self):
         """SessionManager.apply_filters() applies FOREX filters."""
         mgr = SessionManager.for_asset_class('forex')
@@ -177,6 +196,7 @@ class TestSessionManager:
 class TestSessionValidation:
     """Test session validation utilities."""
 
+    @pytest.mark.unit
     def test_compare_sessions_exact_match(self):
         """compare_sessions() returns valid for exact match."""
         expected = pd.DatetimeIndex([
@@ -195,6 +215,7 @@ class TestSessionValidation:
         assert len(report.missing_sessions) == 0
         assert len(report.extra_sessions) == 0
 
+    @pytest.mark.unit
     def test_compare_sessions_missing(self):
         """compare_sessions() detects missing sessions."""
         expected = pd.DatetimeIndex([
@@ -216,6 +237,7 @@ class TestSessionValidation:
         assert report.missing_sessions[0] == pd.Timestamp('2024-01-02')
         assert "re-ingest" in " ".join(report.recommendations).lower()
 
+    @pytest.mark.unit
     def test_compare_sessions_extra(self):
         """compare_sessions() detects extra sessions."""
         expected = pd.DatetimeIndex([
@@ -233,6 +255,7 @@ class TestSessionValidation:
         assert len(report.extra_sessions) == 1
         assert report.extra_sessions[0] == pd.Timestamp('2024-01-03')
 
+    @pytest.mark.unit
     def test_compare_sessions_tolerance(self):
         """compare_sessions() respects tolerance parameter."""
         expected = pd.DatetimeIndex([
@@ -254,6 +277,7 @@ class TestSessionValidation:
         report = compare_sessions(expected, actual, tolerance=1)
         assert report.is_valid
 
+    @pytest.mark.unit
     def test_session_mismatch_report_to_dict(self):
         """SessionMismatchReport.to_dict() serializes correctly."""
         expected = pd.DatetimeIndex([pd.Timestamp('2024-01-01')])
@@ -269,6 +293,7 @@ class TestSessionValidation:
         assert 'missing_sessions' in report_dict
         assert 'recommendations' in report_dict
 
+    @pytest.mark.unit
     def test_session_mismatch_report_to_markdown(self):
         """SessionMismatchReport.to_markdown() generates markdown."""
         expected = pd.DatetimeIndex([pd.Timestamp('2024-01-01')])

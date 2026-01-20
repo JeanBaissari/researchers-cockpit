@@ -9,14 +9,18 @@ Verify data consistency:
 5. Plots reflect data accurately
 """
 
-import pytest
-from pathlib import Path
+# Standard library imports
 import sys
+import json
+from pathlib import Path
+
+# Third-party imports
+import pytest
 import pandas as pd
 import numpy as np
-import json
 
-project_root = Path(__file__).parent.parent
+# Local imports
+project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from lib.validation import (
@@ -28,6 +32,7 @@ from lib.validation import (
 from lib.bundles import list_bundles
 
 
+@pytest.mark.unit
 def test_verify_bundle_dates():
     """Test bundle date range verification."""
     bundles = list_bundles()
@@ -54,6 +59,7 @@ def test_verify_bundle_dates():
             "Future dates should produce error messages or failed checks"
 
 
+@pytest.mark.unit
 def test_verify_returns_calculation():
     """Test returns calculation verification."""
     # Create sample returns and transactions
@@ -75,6 +81,7 @@ def test_verify_returns_calculation():
     assert error is None or isinstance(error, str), f"Error should be None or str, got {type(error)}"
 
 
+@pytest.mark.unit
 def test_verify_positions_match_transactions():
     """Test positions/transactions consistency verification."""
     dates = pd.date_range('2020-01-01', periods=5, freq='D')
@@ -98,6 +105,7 @@ def test_verify_positions_match_transactions():
     assert error is None or isinstance(error, str), f"Error should be None or str, got {type(error)}"
 
 
+@pytest.mark.unit
 def test_verify_metrics_calculation():
     """Test metrics calculation verification."""
     # Create sample returns with fixed seed for reproducibility
@@ -133,6 +141,7 @@ def test_verify_metrics_calculation():
     assert is_valid, f"Metrics should match within tolerance: {discrepancies}"
 
 
+@pytest.mark.unit
 def test_verify_metrics_with_mismatch():
     """Test metrics verification catches mismatches."""
     dates = pd.date_range('2020-01-01', periods=100, freq='D')
@@ -153,6 +162,7 @@ def test_verify_metrics_with_mismatch():
         f"Should detect metric mismatches, got is_valid={is_valid}, discrepancies={discrepancies}"
 
 
+@pytest.mark.unit
 def test_empty_data_handling():
     """Test that empty data is handled gracefully."""
     # Empty returns

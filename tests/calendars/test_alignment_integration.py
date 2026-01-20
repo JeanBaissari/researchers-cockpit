@@ -16,6 +16,7 @@ from lib.bundles.csv import normalize_csv_columns, parse_csv_filename
 class TestSessionManagerIntegration:
     """Integration tests for SessionManager across modules."""
 
+    @pytest.mark.integration
     def test_forex_session_manager_consistency(self):
         """Multiple SessionManager instances for FOREX return identical sessions."""
         # This test validates that SessionManager is deterministic across
@@ -32,6 +33,7 @@ class TestSessionManagerIntegration:
         assert sessions_ingestion.equals(sessions_backtest), \
             "SessionManager must return identical sessions across different instances"
 
+    @pytest.mark.integration
     def test_csv_normalize_columns(self):
         """CSV column normalization handles various formats."""
         test_cases = [
@@ -53,6 +55,7 @@ class TestSessionManagerIntegration:
                 with pytest.raises(ValueError):
                     normalize_csv_columns(df)
 
+    @pytest.mark.integration
     def test_csv_filename_parsing(self):
         """CSV filename parsing extracts dates correctly."""
         test_cases = [
@@ -97,6 +100,7 @@ class TestSessionManagerIntegration:
                 assert start.normalize() == expected_start.normalize()
                 assert end.normalize() == expected_end.normalize()
 
+    @pytest.mark.integration
     def test_session_validation_workflow(self):
         """End-to-end workflow: get sessions, compare, generate report."""
         mgr = SessionManager.for_asset_class('forex')
@@ -131,6 +135,7 @@ class TestSessionManagerIntegration:
 class TestBacktestPreFlightValidation:
     """Test backtest pre-flight validation integration."""
 
+    @pytest.mark.integration
     def test_validate_calendar_parameter_propagates(self):
         """Validate that validate_calendar parameter works in runner."""
         # This is a smoke test to ensure the parameter exists

@@ -36,19 +36,6 @@ from lib.bundles import (
     get_bundle_symbols,
     register_yahoo_bundle,
 )
-from lib.bundles.registry import (
-    _register_bundle_metadata,
-    _load_bundle_registry,
-    _save_bundle_registry,
-    _get_bundle_registry_path,
-)
-from lib.bundles.utils import (
-    _is_valid_date_string,
-    _extract_symbols_from_bundle,
-)
-from lib.bundles.yahoo import (
-    register_yahoo_bundle as _register_yahoo_bundle,
-)
 
 
 @pytest.fixture
@@ -262,8 +249,7 @@ class TestConcurrentIngestion:
 
     @pytest.mark.integration
     def test_registered_bundles_set_concurrent_access(self):
-        """Test thread-safety of _registered_bundles set."""
-        from lib.bundles.registry import _registered_bundles
+        """Test thread-safety of registered bundles set."""
         from lib.bundles import add_registered_bundle, discard_registered_bundle
 
         num_threads = 10

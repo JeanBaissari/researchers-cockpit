@@ -144,10 +144,10 @@ class TestModernImports:
     def test_import_logging_package(self):
         """Test importing from lib.logging."""
         from lib.logging import (
-            setup_logging,
+            configure_logging,
             get_logger,
         )
-        assert setup_logging is not None
+        assert configure_logging is not None
         assert get_logger is not None
     
     @pytest.mark.unit
