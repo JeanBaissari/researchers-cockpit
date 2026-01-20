@@ -69,6 +69,18 @@ Example:
 - Enter on golden cross, exit on death cross
 - Apply 200-day trend filter to avoid trading in bear markets
 
+**Module Usage (v1.11.0+):**
+- Configuration: `lib.config.load_strategy_params()` loads parameters from YAML
+- Position sizing: `lib.position_sizing.compute_position_size()` for dynamic sizing
+- Risk management: `lib.risk_management.check_exit_conditions()` for stop losses
+- Pipeline setup: `lib.pipeline_utils.setup_pipeline()` for Pipeline API strategies
+- Data access: `lib.bundles.load_bundle()` to access bundle data
+- Validation: `lib.validation.validate_bundle()` to verify data quality
+
+**See Also:**
+- `strategies/_template/strategy.py` - Strategy implementation template
+- `lib/_exports.py` - Complete public API reference
+
 ---
 
 ## Parameter Sensitivity
@@ -109,18 +121,80 @@ Example:
 - Required: [e.g., "200 days for longest indicator"]
 - Must be >= max(all indicator periods)
 - Configure in `parameters.yaml` under `backtest.warmup_days`
+- Calculated automatically by `lib.config.get_warmup_days()` (v1.11.0+)
+
+**Data Ingestion (v1.11.0+):**
+- Use `lib.bundles.ingest_bundle()` to create data bundles
+- CLI: `python scripts/ingest_data.py --source yahoo --assets equities --timeframe daily`
+- Bundle naming: `{source}_{asset_class}_{timeframe}` (e.g., `yahoo_equities_daily`)
+- Supported sources: yahoo, csv, binance (planned), oanda (planned)
+- See `lib/bundles/` package for bundle management utilities
+
+**Data Quality Validation:**
+- Pre-ingestion: Use `lib.validation.validate_before_ingest()` to validate source data
+- Bundle validation: Use `lib.validation.validate_bundle()` to verify bundle integrity
+- CLI: `python scripts/validate_bundles.py {bundle_name}`
+- Validation config: `ValidationConfig.strict()` for production, `lenient()` for testing
+- See `lib/validation/` package for validation utilities
 
 **Data Quality:**
 - [ ] Adjusted prices required? (for equities with splits/dividends)
 - [ ] Volume data required?
 - [ ] Missing data tolerance: [X] consecutive days max
+- Validation handled by `lib/validation/DataValidator` (v1.11.0+)
 
 **Asset Class Considerations:**
-| Asset Class | Trading Days/Year | Session Hours | Notes |
-|-------------|-------------------|---------------|-------|
-| Equities | 252 | 9:30-16:00 ET | Standard US market |
-| Forex | 260 | 24/5 | No weekends |
-| Crypto | 365 | 24/7 | No market close |
+| Asset Class | Trading Days/Year | Session Hours | Calendar | Notes |
+|-------------|-------------------|---------------|----------|-------|
+| Equities | 252 | 9:30-16:00 ET | XNYS | Standard US market, uses `lib.calendars` for custom calendars |
+| Forex | 260 | 24/5 | FOREX | No weekends, uses `lib.calendars.ForexCalendar` (v1.11.0+) |
+| Crypto | 365 | 24/7 | CRYPTO | No market close, uses `lib.calendars.CryptoCalendar` (v1.11.0+) |
+
+**Calendar Management (v1.11.0+):**
+- Calendars defined in `lib/calendars/` package
+- `CryptoCalendar`: 24/7 trading (365 days/year)
+- `ForexCalendar`: 24/5 trading (260 days/year, weekdays only)
+- Calendar selection: `lib.calendars.get_calendar_for_asset_class(asset_class)`
+- Session alignment: `lib/calendars/sessions/SessionManager` validates bundle-calendar alignment
+- See `lib/calendars/` package for calendar utilities
+
+## Data Ingestion Examples
+
+**Creating Bundles (v1.11.0+):**
+
+```python
+from lib.bundles import ingest_bundle, list_bundles
+
+# Ingest daily equities data
+bundle_name = ingest_bundle(
+    source='yahoo',
+    assets=['equities'],
+    symbols=['SPY', 'AAPL'],
+    timeframe='daily'
+)
+
+# List available bundles
+bundles = list_bundles()
+print(f"Available bundles: {bundles}")
+```
+
+**Validating Data Before Backtest:**
+
+```python
+from lib.validation import validate_bundle, ValidationConfig
+
+# Validate bundle before backtest
+result = validate_bundle('yahoo_equities_daily', config=ValidationConfig.strict())
+if not result.is_valid:
+    print(result.summary())
+    # Fix issues before proceeding
+```
+
+**See Also:**
+- `lib/bundles/` - Bundle management package
+- `lib/validation/` - Data validation package
+- `scripts/ingest_data.py` - CLI for data ingestion
+- `scripts/validate_bundles.py` - CLI for bundle validation
 
 ---
 
@@ -240,6 +314,16 @@ Example:
 **What research, papers, or observations support this hypothesis?**
 
 [Optional: List any relevant sources or prior research.]
+
+**Codebase References (v1.11.0+):**
+- `lib/bundles/` - Data bundle management and ingestion
+- `lib/validation/` - Data quality validation
+- `lib/calendars/` - Trading calendar management
+- `lib/config/` - Configuration loading and validation
+- `lib/backtest/` - Backtest execution and results
+- `lib/metrics/` - Performance metrics calculation
+- `docs/api/` - Complete API documentation
+- `CLAUDE.md` - Project overview and version history
 
 ---
 

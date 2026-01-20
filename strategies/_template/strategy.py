@@ -16,8 +16,17 @@ CRITICAL RULES:
 - Follow naming conventions from .agent/conventions.md
 
 REQUIREMENTS:
-- This template requires v1.0.8 or later of The Researcher's Cockpit
+- This template requires v1.11.0 or later of The Researcher's Cockpit
+- The lib/ package uses modular architecture (v1.11.0+)
 - The lib/ package must be properly installed and available
+
+MODULAR ARCHITECTURE (v1.11.0+):
+- lib/bundles/ - Data bundle management (replaces lib/data_loader.py)
+- lib/validation/ - Data validation (replaces lib/data_validation.py)
+- lib/calendars/ - Trading calendars (replaces lib/extension.py)
+- lib/config/ - Configuration loading with validation
+- lib/strategies/ - Strategy management utilities
+All imports use canonical paths from lib/_exports.py
 ==============================================================================
 """
 
@@ -62,6 +71,22 @@ from lib.position_sizing import compute_position_size
 from lib.risk_management import check_exit_conditions, get_exit_type_code
 from lib.pipeline_utils import setup_pipeline
 
+# =============================================================================
+# IMPORT NOTES (v1.11.0 Modular Architecture)
+# =============================================================================
+# All imports use canonical paths from lib/_exports.py:
+# - lib.paths: Project root and directory resolution
+# - lib.config: Configuration loading and validation
+# - lib.position_sizing: Position sizing algorithms
+# - lib.risk_management: Risk management utilities
+# - lib.pipeline_utils: Pipeline API setup helpers
+#
+# For data operations, use:
+# - lib.bundles: Bundle ingestion and management (ingest_bundle, load_bundle)
+# - lib.validation: Data validation (DataValidator, validate_bundle)
+# - lib.calendars: Trading calendars (register_custom_calendars, CryptoCalendar)
+# =============================================================================
+
 _project_root = get_project_root()
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
@@ -71,7 +96,8 @@ def load_params():
     """
     Load parameters from parameters.yaml file using lib.config.
     
-    Requires v1.0.8+ with lib.config.load_strategy_params() available.
+    Requires v1.11.0+ with lib.config.load_strategy_params() available.
+    Uses modular architecture for configuration loading.
     
     Returns:
         dict: Strategy parameters
@@ -79,6 +105,10 @@ def load_params():
     Raises:
         FileNotFoundError: If parameters.yaml file is not found
         ValueError: If asset_class cannot be inferred from path
+        
+    See Also:
+        lib.config.load_strategy_params - Main configuration loader
+        lib.config.validate_strategy_params - Parameter validation
     """
     # Extract strategy name from path: strategies/{asset_class}/{name}/strategy.py
     strategy_path = Path(__file__).parent
@@ -283,10 +313,12 @@ def initialize(context):
 
     # Schedule before_trading_start explicitly for cross-version compatibility
     # This ensures pipeline data is fetched before rebalance runs
+    # Use minutes=1 for minute data (Zipline requires at least 1 minute offset)
+    before_open_minutes = 1 if context.data_frequency == 'minute' else 0
     schedule_function(
         before_trading_start,
         date_rule=date_rules.every_day(),
-        time_rule=time_rules.market_open(minutes=0)
+        time_rule=time_rules.market_open(minutes=before_open_minutes)
     )
 
 
@@ -296,6 +328,13 @@ def make_pipeline():
     
     This is an example pipeline. Customize based on your strategy needs.
     The window_length should be parameterized in your actual implementation.
+    
+    NOTE: Pipeline API is primarily designed for US equities. For crypto/forex,
+    consider using direct price data access via data.history() instead.
+    
+    See Also:
+        lib.pipeline_utils.setup_pipeline - Pipeline setup helper
+        lib.pipeline_utils.validate_pipeline_config - Pipeline validation
     """
     if not _PIPELINE_AVAILABLE or _PRICING_CLASS is None:
         return None
@@ -372,6 +411,11 @@ def compute_signals(context, data):
     - If signals are always 0: Verify indicator calculations and thresholds
     
     See docs/code_patterns/ for detailed examples and best practices.
+    
+    See Also:
+        lib.bundles.ingest_bundle - For data ingestion before backtest
+        lib.validation.validate_bundle - For bundle validation
+        lib.calendars.get_calendar_for_asset_class - For calendar selection
     
     Args:
         context: Zipline context object with params attribute
@@ -547,9 +591,13 @@ def analyze(context, perf):
     This function is called after the backtest completes.
     Use it to print summary statistics or perform final calculations.
 
+    v1.11.0: When metrics_set='none', Zipline doesn't populate standard columns.
+    This function now stores portfolio_value and returns in perf DataFrame
+    for post-backtest metric calculation.
+
     Args:
         context: Zipline context object
-        perf: Performance DataFrame with returns, positions, etc.
+        perf: Performance DataFrame (may be empty if metrics_set='none')
     """
     params = load_params()
 
@@ -577,11 +625,27 @@ def analyze(context, perf):
     print("=" * 60)
 
     # Calculate basic metrics
-    returns = perf['returns'].dropna()
-    total_return = (1 + returns).prod() - 1
-    final_value = perf['portfolio_value'].iloc[-1]
+    # v1.11.0: Handle case where returns column is missing (when metrics_set='none')
+    # Calculate returns from portfolio_value if needed
+    if 'returns' in perf.columns:
+        returns = perf['returns'].dropna()
+    elif 'portfolio_value' in perf.columns:
+        # Calculate returns from portfolio_value
+        pv = perf['portfolio_value'].dropna()
+        if len(pv) > 1:
+            returns = pv.pct_change().dropna()
+        else:
+            returns = pd.Series(dtype=float)
+    else:
+        returns = pd.Series(dtype=float)
+    
+    total_return = (1 + returns).prod() - 1 if len(returns) > 0 else 0.0
+    capital_base = context.portfolio.starting_cash if hasattr(context.portfolio, 'starting_cash') else context.portfolio.portfolio_value
+    final_value = perf['portfolio_value'].iloc[-1] if 'portfolio_value' in perf.columns else capital_base
 
     # Use empyrical for consistent Sharpe/Sortino calculation (matches lib/metrics.py)
+    # Note: lib/metrics.calculate_metrics() provides the same functionality
+    # and is used by the backtest runner for standardized metric calculation
     try:
         import empyrical as ep
         sharpe = float(ep.sharpe_ratio(

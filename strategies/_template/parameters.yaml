@@ -20,12 +20,23 @@ strategy:
                                  # Used in example compute_signals() implementation
 
   # Pipeline Configuration
+  # ==============================================================================
   # NOTE: Pipeline API is primarily designed for US equities with proper metadata.
   # Only set use_pipeline: true when:
   #   1. Asset class is 'equities' (US stocks)
   #   2. Bundle was ingested with 'country_code' column in asset metadata
   #   3. Strategy needs factor-based screening across multiple assets
   # For crypto/forex strategies, keep use_pipeline: false
+  #
+  # Pipeline Setup (v1.11.0+):
+  # - Pipeline setup handled by lib.pipeline_utils.setup_pipeline()
+  # - Pipeline validation via lib.pipeline_utils.validate_pipeline_config()
+  # - Asset class compatibility checked automatically
+  #
+  # See Also:
+  # - lib/pipeline_utils.py - Pipeline helper utilities
+  # - lib/backtest/execution.py - Pipeline integration in backtest
+  # ==============================================================================
   use_pipeline: false
 
   # Strategy-specific parameters
@@ -112,6 +123,54 @@ costs:
     volume_limit: 0.025          # Max % of bar volume (Range: 0.01-0.10)
     price_impact: 0.1            # Price impact coefficient (Range: 0.05-0.30)
 
+# Data Validation Configuration (Optional)
+# ==============================================================================
+# Pre-ingestion and bundle validation settings (v1.11.0+).
+# Validation is handled by lib/validation/ package.
+#
+# To validate data before backtest:
+#   from lib.validation import validate_bundle, DataValidator
+#   result = validate_bundle('yahoo_equities_daily')
+#   if not result.is_valid:
+#       print(result.summary())
+#
+# Validation Config Options:
+#   - ValidationConfig.strict() - Strict validation (recommended for production)
+#   - ValidationConfig.lenient() - Lenient validation (for testing)
+#   - ValidationConfig.custom() - Custom validation settings
+#
+# See Also:
+# - lib/validation/ - Data validation package
+# - scripts/validate_bundles.py - CLI for bundle validation
+# ==============================================================================
+# validation:
+#   enabled: true                 # Enable pre-backtest validation
+#   config: strict               # 'strict', 'lenient', or 'custom'
+#   check_gaps: true             # Check for missing dates
+#   check_outliers: true         # Check for price outliers
+
+# Bundle Naming Convention
+# ==============================================================================
+# Bundle naming convention: {source}_{asset_class}_{timeframe}
+# Examples: yahoo_equities_daily, csv_forex_1h, yahoo_crypto_5m
+#
+# Bundle Management (v1.11.0+):
+# - Use lib.bundles.ingest_bundle() to create bundles
+# - Use lib.bundles.list_bundles() to see available bundles
+# - Use lib.bundles.load_bundle() to load bundle data
+# - Bundle registry managed by lib/bundles/registry.py
+#
+# Supported Sources:
+# - yahoo: Yahoo Finance (via yfinance)
+# - csv: Local CSV files
+# - binance: Binance API (planned)
+# - oanda: OANDA API (planned)
+#
+# See Also:
+# - lib/bundles/ - Bundle management package
+# - scripts/ingest_data.py - CLI for bundle ingestion
+# ==============================================================================
+
 # Calendar Configuration
 # ==============================================================================
 # The backtest runner automatically selects the trading calendar based on asset_class:
@@ -125,6 +184,13 @@ costs:
 #     * 24-hour trading Monday-Friday
 #     * Excludes weekends only
 # 
+# Calendar Management (v1.11.0+):
+# - Calendars defined in lib/calendars/ package
+# - CryptoCalendar: 24/7 trading (lib/calendars/crypto.py)
+# - ForexCalendar: 24/5 trading (lib/calendars/forex.py)
+# - Calendar selection via lib.calendars.get_calendar_for_asset_class()
+# - Session alignment validation via lib/calendars/sessions/SessionManager
+# 
 # Calendar selection happens automatically in lib/backtest/runner.py via 
 # get_calendar_for_asset_class(). You do not need to specify the calendar manually.
 #
@@ -134,7 +200,10 @@ costs:
 # - The backtest runner handles timezone conversion automatically
 # - Historical data is stored in UTC to ensure consistency
 #
-# For more details, see docs/workflow.md and lib/calendars/
+# See Also:
+# - lib/calendars/ - Trading calendar package
+# - lib/calendars/sessions/ - Session alignment validation
+# - docs/workflow.md - Calendar usage guide
 # ==============================================================================
 
 # Backtest Configuration
@@ -181,6 +250,19 @@ notes: |
   4. Implement compute_signals() in strategy.py
   5. Run backtest: python scripts/run_backtest.py --strategy {name}
 
+  DATA INGESTION (v1.11.0+):
+  - Use lib.bundles.ingest_bundle() to create data bundles
+  - CLI: python scripts/ingest_data.py --source yahoo --assets equities --timeframe daily
+  - Bundle naming: {source}_{asset_class}_{timeframe}
+  - Validate bundles: python scripts/validate_bundles.py {bundle_name}
+
   OPTIMIZATION:
-  When optimizing, modify parameter ranges in lib/optimize.py, not individual values here.
+  When optimizing, modify parameter ranges in lib/optimize/, not individual values here.
   See hypothesis.md for recommended optimization bounds.
+
+  MODULAR ARCHITECTURE (v1.11.0+):
+  - All imports use canonical paths from lib/_exports.py
+  - Data operations: lib/bundles/, lib/validation/
+  - Calendars: lib/calendars/
+  - Configuration: lib/config/
+  - See CLAUDE.md for complete module reference
