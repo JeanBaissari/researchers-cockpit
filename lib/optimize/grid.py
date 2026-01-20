@@ -5,6 +5,7 @@ Provides exhaustive grid search over parameter combinations.
 """
 
 import itertools
+import logging
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -14,6 +15,8 @@ from ..config import load_strategy_params
 from ..metrics import calculate_metrics
 from .split import split_data
 from .results import deep_copy_dict, set_nested_param, save_optimization_results
+
+logger = logging.getLogger(__name__)
 
 
 def grid_search(
@@ -82,8 +85,18 @@ def grid_search(
                 custom_params=params  # Pass modified parameters
             )
 
-            train_returns = train_perf['returns'].dropna()
-            train_metrics = calculate_metrics(train_returns)
+            # v1.11.0: Handle missing returns when metrics_set='none' (FOREX calendars)
+            if 'returns' in train_perf.columns:
+                train_returns = train_perf['returns'].dropna()
+            elif 'portfolio_value' in train_perf.columns:
+                pv = train_perf['portfolio_value'].dropna()
+                train_returns = pv.pct_change().dropna() if len(pv) > 1 else pd.Series(dtype=float)
+                logger.debug(f"Calculated train returns from portfolio_value for {train_start} to {train_end}")
+            else:
+                train_returns = pd.Series(dtype=float)
+                logger.warning(f"No returns data available for train period {train_start} to {train_end}")
+            
+            train_metrics = calculate_metrics(train_returns) if len(train_returns) > 0 else {}
 
             # Run backtest on test data
             test_perf, _ = run_backtest(
@@ -96,8 +109,18 @@ def grid_search(
                 custom_params=params  # Pass modified parameters
             )
 
-            test_returns = test_perf['returns'].dropna()
-            test_metrics = calculate_metrics(test_returns)
+            # v1.11.0: Handle missing returns when metrics_set='none' (FOREX calendars)
+            if 'returns' in test_perf.columns:
+                test_returns = test_perf['returns'].dropna()
+            elif 'portfolio_value' in test_perf.columns:
+                pv = test_perf['portfolio_value'].dropna()
+                test_returns = pv.pct_change().dropna() if len(pv) > 1 else pd.Series(dtype=float)
+                logger.debug(f"Calculated test returns from portfolio_value for {test_start} to {test_end}")
+            else:
+                test_returns = pd.Series(dtype=float)
+                logger.warning(f"No returns data available for test period {test_start} to {test_end}")
+            
+            test_metrics = calculate_metrics(test_returns) if len(test_returns) > 0 else {}
             
             # Get objective metric
             train_obj = train_metrics.get(objective, 0.0)

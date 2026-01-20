@@ -80,7 +80,19 @@ def save_results(
     save_transactions_csv(transactions_df, result_dir)
     
     # Calculate and save metrics
-    metrics = calculate_and_save_metrics(perf_normalized, transactions_df, result_dir, trading_calendar)
+    # v1.11.0: Extract initial_capital from params for portfolio_value reconstruction
+    initial_capital = None
+    if params:
+        initial_capital = params.get('backtest', {}).get('capital_base')
+    
+    # Calculate metrics (this may modify perf_normalized by adding portfolio_value/returns)
+    metrics = calculate_and_save_metrics(
+        perf_normalized, 
+        transactions_df, 
+        result_dir, 
+        trading_calendar,
+        initial_capital=initial_capital
+    )
     
     # Optional data integrity verification
     if verify_integrity:
@@ -89,7 +101,7 @@ def save_results(
     # Save parameters used
     save_parameters_yaml(params, result_dir)
     
-    # Generate plots
+    # Generate plots (perf_normalized may now have portfolio_value/returns from reconstruction)
     generate_plots(perf_normalized, transactions_df, result_dir, strategy_name, trading_calendar)
     
     # Check and fix any broken symlinks before updating

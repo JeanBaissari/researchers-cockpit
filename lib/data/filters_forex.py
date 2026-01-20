@@ -91,7 +91,8 @@ def consolidate_forex_sunday_to_friday(
     calendar_obj: Any,
     show_progress: bool = False,
     sid: int = 0,
-    calendar_name: str = ""  # Not used, for signature compatibility
+    calendar_name: str = "",  # Not used, for signature compatibility
+    symbol: str = ""  # Optional symbol name for logging compatibility
 ) -> pd.DataFrame:
     """
     Consolidate FOREX Sunday bars into the preceding Friday's close.

@@ -38,6 +38,11 @@ def execute_zipline_backtest(
     Handles custom parameter injection for optimization by creating a
     temporary parameters file.
 
+    Note:
+        Zipline's built-in metrics are disabled (metrics_set='none') to avoid
+        known bugs with FOREX calendars. All metrics are calculated post-backtest
+        using lib/metrics.calculate_metrics() from the performance DataFrame.
+
     Args:
         strategy_module: Loaded strategy module
         start_ts: Start timestamp (timezone-naive UTC)
@@ -51,7 +56,9 @@ def execute_zipline_backtest(
         params: Optional parameter overrides (for optimization)
 
     Returns:
-        Tuple of (performance DataFrame, trading calendar)
+        Tuple of (performance DataFrame, trading_calendar)
+        The performance DataFrame contains returns, portfolio_value, etc.
+        Metrics are calculated separately using lib/metrics.
 
     Raises:
         RuntimeError: If backtest execution fails
@@ -94,19 +101,73 @@ def execute_zipline_backtest(
 
     try:
         # Execute backtest
-        perf = run_algorithm(
-            start=start_ts,
-            end=end_ts,
-            initialize=strategy_module.initialize,
-            handle_data=strategy_module.handle_data,
-            analyze=strategy_module.analyze,
-            before_trading_start=strategy_module.before_trading_start,
-            capital_base=capital_base,
-            bundle=bundle,
-            data_frequency=data_frequency,
-            trading_calendar=trading_calendar,
-            benchmark_returns=empty_benchmark,
-        )
+        # v1.11.0: For FOREX calendars, default to metrics_set='none' to avoid known bugs
+        # For other asset classes, try default metrics first, fallback to 'none' if errors occur
+        # We use lib/metrics for all metric calculations anyway, so Zipline metrics are redundant.
+        use_no_metrics = (asset_class == 'forex')  # FOREX has known metrics bugs
+        
+        if use_no_metrics:
+            logger.info("Using metrics_set='none' for FOREX calendar to avoid known metrics tracker bugs.")
+            perf = run_algorithm(
+                start=start_ts,
+                end=end_ts,
+                initialize=strategy_module.initialize,
+                handle_data=strategy_module.handle_data,
+                analyze=strategy_module.analyze,
+                before_trading_start=strategy_module.before_trading_start,
+                capital_base=capital_base,
+                bundle=bundle,
+                data_frequency=data_frequency,
+                trading_calendar=trading_calendar,
+                benchmark_returns=empty_benchmark,
+                metrics_set='none',  # Disable metrics for FOREX
+            )
+        else:
+            # Try default metrics first for other asset classes
+            try:
+                perf = run_algorithm(
+                    start=start_ts,
+                    end=end_ts,
+                    initialize=strategy_module.initialize,
+                    handle_data=strategy_module.handle_data,
+                    analyze=strategy_module.analyze,
+                    before_trading_start=strategy_module.before_trading_start,
+                    capital_base=capital_base,
+                    bundle=bundle,
+                    data_frequency=data_frequency,
+                    trading_calendar=trading_calendar,
+                    benchmark_returns=empty_benchmark,
+                    # Try default metrics first
+                )
+            except (IndexError, KeyError, ValueError) as metrics_error:
+                # Check if it's a known metrics-related error
+                error_str = str(metrics_error)
+                if any(keyword in error_str.lower() for keyword in [
+                    'daily_cumulative_returns', 'session_ix', 'out of bounds',
+                    'broadcast', 'alpha_beta', 'empyrical'
+                ]):
+                    logger.warning(
+                        f"Zipline metrics error encountered: {metrics_error}. "
+                        f"Retrying with metrics_set='none'. Metrics will be calculated post-backtest using lib/metrics."
+                    )
+                    # Retry with metrics disabled
+                    perf = run_algorithm(
+                        start=start_ts,
+                        end=end_ts,
+                        initialize=strategy_module.initialize,
+                        handle_data=strategy_module.handle_data,
+                        analyze=strategy_module.analyze,
+                        before_trading_start=strategy_module.before_trading_start,
+                        capital_base=capital_base,
+                        bundle=bundle,
+                        data_frequency=data_frequency,
+                        trading_calendar=trading_calendar,
+                        benchmark_returns=empty_benchmark,
+                        metrics_set='none',  # Disable metrics to avoid bug
+                    )
+                else:
+                    # Re-raise if it's a different error
+                    raise
 
         return perf, trading_calendar
 

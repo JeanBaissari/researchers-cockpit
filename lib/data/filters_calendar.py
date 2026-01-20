@@ -17,7 +17,8 @@ def filter_to_calendar_sessions(
     calendar_obj: Any,
     show_progress: bool = False,
     sid: int = 0,
-    calendar_name: str = ""  # Not used, for signature compatibility
+    calendar_name: str = "",  # Not used, for signature compatibility
+    symbol: str = ""  # Optional symbol name for logging compatibility
 ) -> pd.DataFrame:
     """
     Filter daily data to include only valid calendar sessions.

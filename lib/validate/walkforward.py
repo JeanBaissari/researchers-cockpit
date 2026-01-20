@@ -205,8 +205,16 @@ def _run_period_backtest(
         asset_class=asset_class
     )
 
-    returns = perf['returns'].dropna()
-    metrics = calculate_metrics(returns)
+    # v1.11.0: Handle missing returns when metrics_set='none' (FOREX calendars)
+    if 'returns' in perf.columns:
+        returns = perf['returns'].dropna()
+    elif 'portfolio_value' in perf.columns:
+        pv = perf['portfolio_value'].dropna()
+        returns = pv.pct_change().dropna() if len(pv) > 1 else pd.Series(dtype=float)
+    else:
+        returns = pd.Series(dtype=float)
+    
+    metrics = calculate_metrics(returns) if len(returns) > 0 else {}
     metrics['period'] = period_num
     metrics['start_date'] = start_date
     metrics['end_date'] = end_date

@@ -124,11 +124,106 @@ def save_transactions_csv(transactions_df: pd.DataFrame, result_dir: Path) -> No
     transactions_df.to_csv(result_dir / 'transactions.csv', date_format='%Y-%m-%d', index_label='date')
 
 
+def calculate_portfolio_value_from_transactions(
+    perf: pd.DataFrame,
+    transactions_df: pd.DataFrame,
+    positions_df: pd.DataFrame,
+    initial_capital: float
+) -> pd.Series:
+    """
+    Calculate portfolio_value from transactions and positions when metrics_set='none'.
+    
+    v1.11.0: Reconstructs portfolio_value by:
+    1. Tracking cash balance from transactions
+    2. Calculating position values from positions DataFrame
+    3. Portfolio_value = cash + sum(position_values)
+    
+    Args:
+        perf: Performance DataFrame
+        transactions_df: Transactions DataFrame
+        positions_df: Positions DataFrame
+        initial_capital: Starting capital
+        
+    Returns:
+        pd.Series: Portfolio value over time (indexed by date)
+    """
+    if len(transactions_df) == 0 and len(positions_df) == 0:
+        # No transactions or positions - return constant portfolio value
+        if len(perf) > 0:
+            return pd.Series(initial_capital, index=perf.index)
+        return pd.Series(dtype=float)
+    
+    # Get all unique dates from perf index
+    dates = perf.index.sort_values()
+    portfolio_values = pd.Series(index=dates, dtype=float)
+    
+    # Track cash balance over time (initialize with starting capital)
+    cash_balance = initial_capital
+    
+    # Group transactions by date for efficient processing
+    if len(transactions_df) > 0:
+        transactions_by_date = transactions_df.groupby(transactions_df.index.date)
+    else:
+        transactions_by_date = {}
+    
+    # Group positions by date for efficient processing
+    if len(positions_df) > 0:
+        positions_by_date = positions_df.groupby(positions_df.index.date)
+    else:
+        positions_by_date = {}
+    
+    # Process each date chronologically
+    for date in dates:
+        date_only = date.date() if hasattr(date, 'date') else pd.Timestamp(date).date()
+        
+        # Process transactions for this date
+        if date_only in transactions_by_date.groups:
+            date_transactions = transactions_by_date.get_group(date_only)
+            for _, txn in date_transactions.iterrows():
+                amount = float(txn.get('amount', 0))
+                price = float(txn.get('price', 0.0))
+                commission = float(txn.get('commission', 0.0)) if pd.notna(txn.get('commission')) else 0.0
+                
+                # Update cash: buy reduces cash, sell increases cash
+                if amount > 0:  # Buy
+                    cash_balance -= (amount * price + commission)
+                elif amount < 0:  # Sell
+                    cash_balance += (abs(amount) * price - commission)
+        
+        # Calculate position values for this date
+        position_value = 0.0
+        if date_only in positions_by_date.groups:
+            date_positions = positions_by_date.get_group(date_only)
+            for _, pos in date_positions.iterrows():
+                amount = float(pos.get('amount', 0))
+                last_sale_price = float(pos.get('last_sale_price', 0.0)) if pd.notna(pos.get('last_sale_price')) else 0.0
+                if last_sale_price > 0:
+                    position_value += amount * last_sale_price
+                else:
+                    # Fallback to cost_basis if last_sale_price not available
+                    cost_basis = float(pos.get('cost_basis', 0.0)) if pd.notna(pos.get('cost_basis')) else 0.0
+                    if cost_basis > 0 and amount > 0:
+                        position_value += cost_basis
+        
+        # Portfolio value = cash + positions
+        portfolio_values[date] = cash_balance + position_value
+    
+    # Forward fill any missing values (use pandas 2.0+ compatible method)
+    if hasattr(portfolio_values, 'ffill'):
+        portfolio_values = portfolio_values.ffill().fillna(initial_capital)
+    else:
+        # Fallback for older pandas
+        portfolio_values = portfolio_values.fillna(method='ffill').fillna(initial_capital)
+    
+    return portfolio_values
+
+
 def calculate_and_save_metrics(
     perf: pd.DataFrame,
     transactions_df: pd.DataFrame,
     result_dir: Path,
-    trading_calendar: Any
+    trading_calendar: Any,
+    initial_capital: float = None
 ) -> Dict[str, Any]:
     """
     Calculate enhanced metrics and save to JSON.
@@ -138,6 +233,7 @@ def calculate_and_save_metrics(
         transactions_df: Transactions DataFrame
         result_dir: Directory to save metrics
         trading_calendar: Trading calendar object
+        initial_capital: Starting capital (for portfolio_value reconstruction)
         
     Returns:
         Dict[str, Any]: Calculated metrics
@@ -164,9 +260,51 @@ def calculate_and_save_metrics(
     logger.info(f"Using trading_days_per_year: {trading_days_per_year} for metrics calculation.")
     
     metrics = {}
+    # v1.11.0: Handle case where returns column is missing (when metrics_set='none')
+    # Calculate returns from portfolio_value if available, or reconstruct portfolio_value from transactions
+    returns = None
+    portfolio_value = None
+    
     if 'returns' in perf.columns:
         returns = perf['returns'].dropna()
+        portfolio_value = perf['portfolio_value'] if 'portfolio_value' in perf.columns else None
+    elif 'portfolio_value' in perf.columns:
+        # Calculate returns from portfolio_value
+        portfolio_value = perf['portfolio_value']
+        pv = portfolio_value.dropna()
+        if len(pv) > 1:
+            returns = pv.pct_change().dropna()
+            logger.info("Calculated returns from portfolio_value (metrics_set='none' was used)")
+        else:
+            logger.warning("Insufficient portfolio_value data to calculate returns")
+            returns = pd.Series(dtype=float)
+    else:
+        # v1.11.0 Option B: Reconstruct portfolio_value from transactions and positions
+        logger.info("Reconstructing portfolio_value from transactions and positions (metrics_set='none' was used)")
+        positions_df = extract_positions_dataframe(perf)
         
+        # Get initial capital from perf if available, or use default
+        if initial_capital is None:
+            # Try to get from perf if it has capital_base column
+            if 'capital_base' in perf.columns:
+                initial_capital = float(perf['capital_base'].iloc[0])
+            else:
+                # Default to 100000 if not available
+                initial_capital = 100000.0
+                logger.warning(f"Initial capital not provided, using default: {initial_capital}")
+        
+        portfolio_value = calculate_portfolio_value_from_transactions(
+            perf, transactions_df, positions_df, initial_capital
+        )
+        
+        if len(portfolio_value) > 1:
+            returns = portfolio_value.pct_change().dropna()
+            logger.info(f"Reconstructed portfolio_value and calculated returns from {len(portfolio_value)} data points")
+        else:
+            logger.warning("Could not reconstruct portfolio_value from transactions")
+            returns = pd.Series(dtype=float)
+    
+    if returns is not None and len(returns) > 0:
         # Use enhanced metrics calculation
         metrics = calculate_metrics(
             returns,
@@ -174,9 +312,20 @@ def calculate_and_save_metrics(
             risk_free_rate=risk_free_rate,
             trading_days_per_year=trading_days_per_year
         )
+    else:
+        logger.warning("No returns data available for metrics calculation")
+        metrics = {}
     
     # Portfolio value (add to metrics if available)
-    if 'portfolio_value' in perf.columns:
+    if portfolio_value is not None and len(portfolio_value) > 0:
+        metrics['final_portfolio_value'] = float(portfolio_value.iloc[-1])
+        metrics['initial_portfolio_value'] = float(portfolio_value.iloc[0])
+        # v1.11.0: Add reconstructed portfolio_value and returns to perf DataFrame for plotting
+        if 'portfolio_value' not in perf.columns:
+            perf['portfolio_value'] = portfolio_value.reindex(perf.index, method='ffill').fillna(initial_capital if initial_capital else 100000.0)
+        if 'returns' not in perf.columns and returns is not None and len(returns) > 0:
+            perf['returns'] = returns.reindex(perf.index)
+    elif 'portfolio_value' in perf.columns:
         metrics['final_portfolio_value'] = float(perf['portfolio_value'].iloc[-1])
         metrics['initial_portfolio_value'] = float(perf['portfolio_value'].iloc[0])
     
