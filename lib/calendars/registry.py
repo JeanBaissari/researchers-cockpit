@@ -56,8 +56,8 @@ def register_calendar_type(
     Args:
         name: Calendar name (e.g., 'CRYPTO', 'FOREX')
         calendar_class: Calendar class (subclass of ExchangeCalendar)
-        start: Deprecated, not used (kept for API compatibility)
-        end: Deprecated, not used (kept for API compatibility)
+        start: Ignored parameter (not used, kept for API compatibility)
+        end: Ignored parameter (not used, kept for API compatibility)
         force: If True, overwrite existing calendar registration. Default True.
 
     Returns:
@@ -115,8 +115,8 @@ def register_custom_calendars(
     
     Args:
         calendars: List of calendar names to register. If None, registers all available.
-        start: Optional start date string (YYYY-MM-DD) for all calendars.
-        end: Optional end date string (YYYY-MM-DD) for all calendars.
+        start: Ignored parameter (not used, kept for API compatibility)
+        end: Ignored parameter (not used, kept for API compatibility)
         force: If True, overwrite existing calendar registrations. Default True.
     
     Returns:

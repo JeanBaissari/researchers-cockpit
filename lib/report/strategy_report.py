@@ -9,7 +9,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any
 
-from ..utils import get_project_root, get_strategy_path, load_yaml, ensure_dir
+from ..utils import get_project_root, load_yaml, ensure_dir
+from ..strategies import get_strategy_path
 from .formatters import format_params_yaml, generate_recommendations, generate_next_steps
 from .sections import build_trade_section, build_validation_section, build_overfit_section
 from .templates import build_report_header, build_performance_summary, build_report_footer

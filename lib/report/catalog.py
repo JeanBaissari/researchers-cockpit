@@ -7,7 +7,8 @@ Manages the strategy catalog with status and performance metrics.
 from datetime import datetime
 from typing import Optional, Dict, Any
 
-from ..utils import get_project_root, get_strategy_path, ensure_dir
+from ..utils import get_project_root, ensure_dir
+from ..strategies import get_strategy_path
 
 
 def update_catalog(
