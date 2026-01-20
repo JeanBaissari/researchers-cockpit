@@ -22,8 +22,8 @@ import numpy as np
 import pandas as pd
 
 # Local imports
+from ..data.sanitization import sanitize_value
 from .core import (
-    _sanitize_value,
     _convert_to_percentages,
     MAX_PROFIT_FACTOR,
 )
@@ -126,13 +126,13 @@ def calculate_trade_metrics(
     
     # Win rate
     wins = trade_returns > 0
-    win_rate = _sanitize_value(float(np.mean(wins))) if len(wins) > 0 else 0.0
+    win_rate = sanitize_value(float(np.mean(wins))) if len(wins) > 0 else 0.0
     
     # v1.0.7: Fixed profit factor edge case
     gross_profit = trade_returns[trade_returns > 0].sum()
     gross_loss = abs(trade_returns[trade_returns < 0].sum())
     if gross_loss > 1e-10:
-        profit_factor = _sanitize_value(float(gross_profit / gross_loss))
+        profit_factor = sanitize_value(float(gross_profit / gross_loss))
     elif gross_profit > 0:
         # v1.0.7: Profits but no losses - cap at MAX_PROFIT_FACTOR
         profit_factor = MAX_PROFIT_FACTOR
@@ -141,24 +141,24 @@ def calculate_trade_metrics(
         profit_factor = 0.0
     
     # Average trade return
-    avg_trade_return = _sanitize_value(float(np.mean(trade_returns)))
+    avg_trade_return = sanitize_value(float(np.mean(trade_returns)))
     
     # Average win/loss
     winning_trades = trade_returns[trade_returns > 0]
     losing_trades = trade_returns[trade_returns < 0]
-    avg_win = _sanitize_value(float(np.mean(winning_trades))) if len(winning_trades) > 0 else 0.0
-    avg_loss = _sanitize_value(float(np.mean(losing_trades))) if len(losing_trades) > 0 else 0.0
+    avg_win = sanitize_value(float(np.mean(winning_trades))) if len(winning_trades) > 0 else 0.0
+    avg_loss = sanitize_value(float(np.mean(losing_trades))) if len(losing_trades) > 0 else 0.0
     
     # Max win/loss
     # v1.0.7: Use only winning/losing trades for max calculations (not all trades)
-    max_win = _sanitize_value(float(np.max(winning_trades))) if len(winning_trades) > 0 else 0.0
-    max_loss = _sanitize_value(float(np.min(losing_trades))) if len(losing_trades) > 0 else 0.0
+    max_win = sanitize_value(float(np.max(winning_trades))) if len(winning_trades) > 0 else 0.0
+    max_loss = sanitize_value(float(np.min(losing_trades))) if len(losing_trades) > 0 else 0.0
     
     # Max consecutive losses
     max_consecutive_losses = _calculate_max_consecutive_losses(trade_returns)
     
     # Average trade duration
-    avg_trade_duration = _sanitize_value(float(np.mean(trade_durations))) if len(trade_durations) > 0 else 0.0
+    avg_trade_duration = sanitize_value(float(np.mean(trade_durations))) if len(trade_durations) > 0 else 0.0
     
     # Trades per month (approximate)
     trades_per_month = 0.0
@@ -169,7 +169,7 @@ def calculate_trade_metrics(
             if first_trade_date is not None and last_trade_date is not None:
                 total_days = (last_trade_date - first_trade_date).days
                 if total_days > 0:
-                    trades_per_month = _sanitize_value(float(len(trades) * 30 / total_days))
+                    trades_per_month = sanitize_value(float(len(trades) * 30 / total_days))
         except Exception:
             trades_per_month = 0.0
     

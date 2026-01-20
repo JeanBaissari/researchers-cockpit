@@ -117,12 +117,6 @@ def extract_symbols_from_bundle(bundle_name: str) -> List[str]:
     return []
 
 
-# Backward compatibility aliases (private functions with underscore prefix)
-_is_valid_date_string = is_valid_date_string
-_aggregate_to_4h = aggregate_to_4h
-_extract_symbols_from_bundle = extract_symbols_from_bundle
-
-
 
 
 

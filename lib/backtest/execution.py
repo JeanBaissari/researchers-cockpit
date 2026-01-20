@@ -15,7 +15,7 @@ from typing import Optional, Dict, Any, Tuple
 import pandas as pd
 import yaml
 
-from ..utils import get_strategy_path
+from ..strategies import get_strategy_path
 
 logger = logging.getLogger(__name__)
 

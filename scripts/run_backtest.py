@@ -28,7 +28,7 @@ sys.path.insert(0, str(project_root))
 import click
 from lib.backtest import run_backtest, save_results
 from lib.config import load_strategy_params, validate_strategy_params, get_warmup_days
-from lib.utils import get_strategy_path
+from lib.strategies import get_strategy_path
 
 
 @click.command()

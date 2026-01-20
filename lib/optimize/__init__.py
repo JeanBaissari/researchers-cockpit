@@ -39,13 +39,6 @@ from .results import (
     set_nested_param,
 )
 
-# Backward-compatible private aliases
-from .results import (
-    _deep_copy_dict,
-    _set_nested_param,
-    _save_optimization_results,
-)
-
 __all__ = [
     # Core functions
     'grid_search',
@@ -56,10 +49,6 @@ __all__ = [
     'save_optimization_results',
     'deep_copy_dict',
     'set_nested_param',
-    # Private aliases (backward compat)
-    '_deep_copy_dict',
-    '_set_nested_param',
-    '_save_optimization_results',
 ]
 
 

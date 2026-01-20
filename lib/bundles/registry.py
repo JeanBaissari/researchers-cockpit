@@ -159,13 +159,6 @@ def unregister_bundle(bundle_name: str) -> bool:
     return False
 
 
-# Backward compatibility aliases (private functions with underscore prefix)
-_get_bundle_registry_path = get_bundle_registry_path
-_load_bundle_registry = load_bundle_registry
-_save_bundle_registry = save_bundle_registry
-_register_bundle_metadata = register_bundle_metadata
-
-
 
 
 

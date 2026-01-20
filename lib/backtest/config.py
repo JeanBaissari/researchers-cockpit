@@ -12,7 +12,7 @@ from typing import Optional, Dict, Any
 import pandas as pd
 
 from ..config import load_settings, get_default_bundle, get_warmup_days
-from ..utils import get_strategy_path
+from ..strategies import get_strategy_path
 
 
 # Module-level logger

@@ -17,7 +17,7 @@ import pandas as pd
 # Local imports
 from .core import (
     calculate_metrics,
-    _validate_returns,
+    sanitize_series,
 )
 
 
@@ -46,7 +46,7 @@ def calculate_rolling_metrics(
     """
     # v1.0.4: Input validation
     try:
-        returns = _validate_returns(returns)
+        returns = sanitize_series(returns)
     except ValueError:
         return pd.DataFrame()
     

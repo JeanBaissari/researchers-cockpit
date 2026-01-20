@@ -9,7 +9,8 @@ from __future__ import annotations
 import logging
 from typing import Optional, Dict, Any
 
-from ..utils import load_yaml, get_strategy_path
+from ..utils import load_yaml
+from ..strategies import get_strategy_path
 
 
 # Configure logging

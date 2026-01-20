@@ -17,7 +17,7 @@ from typing import List, Optional
 import pandas as pd
 
 # Local imports
-from .core import _sanitize_value
+from ..data.sanitization import sanitize_value
 
 
 def compare_strategies(strategy_names: List[str], results_base: Optional[Path] = None) -> pd.DataFrame:
@@ -65,12 +65,12 @@ def compare_strategies(strategy_names: List[str], results_base: Optional[Path] =
             
             comparison_data.append({
                 'strategy': strategy_name,
-                'sharpe': _sanitize_value(metrics.get('sharpe', 0.0)),
-                'sortino': _sanitize_value(metrics.get('sortino', 0.0)),
-                'annual_return': _sanitize_value(metrics.get('annual_return', 0.0)),
-                'max_drawdown': _sanitize_value(metrics.get('max_drawdown', 0.0)),
-                'calmar': _sanitize_value(metrics.get('calmar', 0.0)),
-                'win_rate': _sanitize_value(metrics.get('win_rate', 0.0)),
+                'sharpe': sanitize_value(metrics.get('sharpe', 0.0)),
+                'sortino': sanitize_value(metrics.get('sortino', 0.0)),
+                'annual_return': sanitize_value(metrics.get('annual_return', 0.0)),
+                'max_drawdown': sanitize_value(metrics.get('max_drawdown', 0.0)),
+                'calmar': sanitize_value(metrics.get('calmar', 0.0)),
+                'win_rate': sanitize_value(metrics.get('win_rate', 0.0)),
                 'trade_count': int(metrics.get('trade_count', 0)),
             })
         except Exception:

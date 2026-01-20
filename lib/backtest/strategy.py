@@ -10,7 +10,8 @@ import logging
 from dataclasses import dataclass
 from typing import Optional, Callable
 
-from ..utils import get_project_root, get_strategy_path
+from ..utils import get_project_root
+from ..strategies import get_strategy_path
 
 
 # Module-level logger

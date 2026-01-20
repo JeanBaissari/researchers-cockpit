@@ -71,27 +71,6 @@ from .loggers import (
 )
 
 
-# Legacy compatibility - setup_logging is an alias for configure_logging
-def setup_logging(level: LogLevel = 'INFO', log_file=None):
-    """
-    Legacy function for backwards compatibility.
-    
-    Use configure_logging() for new code.
-    
-    Args:
-        level: Logging level.
-        log_file: Optional log file path (ignored, uses default log directory).
-        
-    Returns:
-        Configured root logger.
-    """
-    return configure_logging(
-        level=level,
-        file=log_file is not None,
-        console=True
-    )
-
-
 # Public API exports
 __all__ = [
     # Core configuration
@@ -127,8 +106,6 @@ __all__ = [
     "optimization_logger",
     "pipeline_logger",
     "ingestion_logger",
-    # Legacy compatibility
-    "setup_logging",
 ]
 
 

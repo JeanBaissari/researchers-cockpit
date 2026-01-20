@@ -112,41 +112,6 @@ def get_reports_dir() -> Path:
     return get_project_root() / 'reports'
 
 
-def resolve_strategy_path(strategy_name: str, asset_class: Optional[str] = None) -> Path:
-    """
-    Resolve the full path to a strategy directory.
-
-    Args:
-        strategy_name: Name of the strategy (e.g., 'spy_sma_cross')
-        asset_class: Optional asset class hint ('crypto', 'forex', 'equities')
-                    If None, searches all asset classes
-
-    Returns:
-        Path: Full path to strategy directory
-
-    Raises:
-        FileNotFoundError: If strategy not found
-    """
-    strategies_dir = get_strategies_dir()
-
-    if asset_class:
-        # Direct path with asset class
-        strategy_path = strategies_dir / asset_class / strategy_name
-        if strategy_path.exists():
-            return strategy_path
-    else:
-        # Search all asset classes
-        for asset_class in ['crypto', 'forex', 'equities']:
-            strategy_path = strategies_dir / asset_class / strategy_name
-            if strategy_path.exists():
-                return strategy_path
-
-    raise FileNotFoundError(
-        f"Strategy '{strategy_name}' not found. "
-        f"Searched in: {strategies_dir}/*/{strategy_name}"
-    )
-
-
 def validate_project_structure() -> List[str]:
     """
     Validate that expected project directories exist.
