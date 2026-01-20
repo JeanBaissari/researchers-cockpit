@@ -140,6 +140,13 @@ data:
     default_forex: yahoo_forex_daily
 
 # Data Validation Configuration
+# ==============================================================================
+# Data validation is handled by lib/validation/ package (v1.11.0+).
+# Use ValidationConfig.strict(), ValidationConfig.lenient(), or ValidationConfig.custom()
+# for programmatic validation configuration.
+#
+# See: lib/validation/ValidationConfig and docs/api/validation.md
+# ==============================================================================
 data_validation:
   enabled: true                 # Master switch for validation
   strict_mode: false            # If true, warnings become errors
