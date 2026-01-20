@@ -2,7 +2,33 @@
 
 Configuration loading and management with caching.
 
-**Location:** `lib/config.py`
+**Location:** `lib/config/`
+
+---
+
+## Module Structure
+
+The config package is organized into focused modules (v1.11.0 modular architecture):
+
+```
+lib/config/
+├── core.py                   # Main config loader (load_settings, cache)
+├── assets.py                 # Asset configuration (load_asset_config)
+├── strategy.py               # Strategy parameter loading
+├── validation.py             # Main validation orchestrator
+├── validation_backtest.py     # Backtest config validation (v1.11.0)
+├── validation_position_sizing.py  # Position sizing validation (v1.11.0)
+└── validation_risk.py        # Risk config validation (v1.11.0)
+```
+
+**Key Modules:**
+- **core.py**: Main configuration loader with caching
+- **assets.py**: Asset class configuration loading
+- **strategy.py**: Strategy parameter loading and warmup calculation
+- **validation.py**: Orchestrator that coordinates all validation
+- **validation_backtest.py**: Validates backtest section (dates, warmup, capital)
+- **validation_position_sizing.py**: Validates position sizing section
+- **validation_risk.py**: Validates risk management section
 
 ---
 
@@ -131,6 +157,8 @@ backtest:
 
 Validate strategy parameters for correctness.
 
+**Location:** `lib/config/validation.py` (orchestrator)
+
 **Signature:**
 ```python
 def validate_strategy_params(
@@ -148,14 +176,49 @@ def validate_strategy_params(
 
 **Returns:** `Tuple[bool, List[str]]` - (is_valid, list_of_errors)
 
+**Internal Architecture:**
+
+The `validate_strategy_params()` function orchestrates validation across three specialized modules:
+
+- **Backtest Validation** (`lib/config/validation_backtest.py`):
+  - Validates `backtest` section
+  - Date format validation (YYYY-MM-DD)
+  - Date order validation (start_date < end_date)
+  - Warmup days validation
+  - Capital base validation
+
+- **Position Sizing Validation** (`lib/config/validation_position_sizing.py`):
+  - Validates `position_sizing` section
+  - `max_position_pct` range validation (0.0-1.0)
+  - `method` enum validation (`'fixed'`, `'volatility_scaled'`, `'kelly'`)
+  - Method-specific parameter validation
+
+- **Risk Validation** (`lib/config/validation_risk.py`):
+  - Validates `risk` section
+  - `stop_loss_pct` validation (positive, typically <= 1.0)
+  - `take_profit_pct` validation (must be > stop_loss_pct)
+  - Trailing stop validation
+  - Risk management flag validation
+
 **Validation Rules:**
+
+**Strategy Section:**
 - `strategy.asset_symbol`: Required, must be string
 - `strategy.rebalance_frequency`: Must be `'daily'`, `'weekly'`, or `'monthly'`
+- `strategy.minutes_after_open`: Must be 0-60
+
+**Position Sizing Section:**
 - `position_sizing.max_position_pct`: Must be 0.0-1.0
 - `position_sizing.method`: Must be `'fixed'`, `'volatility_scaled'`, or `'kelly'`
+
+**Risk Section:**
 - `risk.stop_loss_pct`: Must be positive, typically <= 1.0
 - `risk.take_profit_pct`: Must be > `stop_loss_pct`
-- `strategy.minutes_after_open`: Must be 0-60
+
+**Backtest Section:**
+- `backtest.start_date`: Must be YYYY-MM-DD format
+- `backtest.end_date`: Must be YYYY-MM-DD format
+- `backtest.start_date` < `backtest.end_date` (date order validation)
 
 **Example:**
 ```python
@@ -167,6 +230,23 @@ is_valid, errors = validate_strategy_params(params, 'spy_sma_cross')
 if not is_valid:
     for error in errors:
         print(f"Error: {error}")
+```
+
+**Direct Module Access:**
+
+For advanced use cases, you can import directly from specific validation modules:
+
+```python
+# Direct access to specific validators
+from lib.config.validation_backtest import validate_backtest_section
+from lib.config.validation_position_sizing import validate_position_sizing_section
+from lib.config.validation_risk import validate_risk_section
+
+# Use individual validators
+errors = []
+validate_backtest_section(params.get('backtest'), errors)
+validate_position_sizing_section(params.get('position_sizing'), errors)
+validate_risk_section(params.get('risk'), errors)
 ```
 
 ---
@@ -340,7 +420,46 @@ settings = load_settings()  # Reloads from disk
 
 ---
 
+## Validation Module Organization
+
+**Validation Split (v1.11.0):**
+
+The validation module was refactored in v1.11.0 to separate validation concerns:
+
+- **validation.py** (orchestrator): Coordinates all validation
+  - Calls specialized validators
+  - Aggregates errors
+  - Provides unified `validate_strategy_params()` interface
+
+- **validation_backtest.py**: Backtest configuration validation
+  - Date format and order validation
+  - Warmup period validation
+  - Capital base validation
+
+- **validation_position_sizing.py**: Position sizing validation
+  - Position size range validation
+  - Method enum validation
+  - Method-specific parameter validation
+
+- **validation_risk.py**: Risk management validation
+  - Stop loss validation
+  - Take profit validation
+  - Risk management flag validation
+
+---
+
 ## See Also
 
-- [Backtest API](backtest.md)
-- [Optimize API](optimize.md)
+**Related API Documentation:**
+- [Backtest API](backtest.md) - Uses config for backtest setup
+- [Optimize API](optimize.md) - Uses config for optimization parameters
+- [Strategies API](strategies.md) - Strategy path resolution
+
+**Internal Modules:**
+- `lib/config/core.py` - Main config loader
+- `lib/config/assets.py` - Asset configuration
+- `lib/config/strategy.py` - Strategy parameter loading
+- `lib/config/validation.py` - Validation orchestrator
+- `lib/config/validation_backtest.py` - Backtest validation
+- `lib/config/validation_position_sizing.py` - Position sizing validation
+- `lib/config/validation_risk.py` - Risk validation

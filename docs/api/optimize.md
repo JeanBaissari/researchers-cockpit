@@ -2,7 +2,7 @@
 
 Parameter optimization with grid search, random search, and overfit detection.
 
-**Location:** `lib/optimize.py`
+**Location:** `lib/optimize/`
 **CLI Equivalent:** `scripts/run_optimization.py`
 
 ---

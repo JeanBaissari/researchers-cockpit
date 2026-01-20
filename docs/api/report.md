@@ -2,7 +2,7 @@
 
 Generate human-readable markdown reports from backtest results.
 
-**Location:** `lib/report.py`
+**Location:** `lib/report/`
 **CLI Equivalent:** `scripts/generate_report.py`
 
 ---

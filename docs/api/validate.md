@@ -2,7 +2,9 @@
 
 Walk-forward analysis and Monte Carlo simulation for strategy validation.
 
-**Location:** `lib/validate.py`
+**Location:** `lib/validate/`
+
+**Note:** This module is for **strategy validation** (walk-forward analysis, Monte Carlo simulation). For **data validation** (OHLCV data quality checks), see [Validation API](validation.md) (`lib/validation/`).
 
 ---
 
