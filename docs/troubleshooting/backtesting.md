@@ -312,6 +312,72 @@ python scripts/run_backtest.py --strategy my_strategy \
 
 ---
 
+---
+
+## Zipline Metrics Tracker Bug (v1.11.0 Fix)
+
+### The Issue
+
+Zipline's internal metrics tracker has a known bug that causes `IndexError` when using FOREX calendars:
+
+```
+IndexError: index 18 is out of bounds for axis 0 with size 18
+```
+
+This occurs in `zipline/finance/metrics/metric.py` due to session counting discrepancies between FOREX calendars and Zipline's internal session tracking.
+
+### The Solution
+
+**v1.11.0** automatically disables Zipline's built-in metrics for FOREX strategies (`metrics_set='none'`) to avoid this bug. All metrics are calculated post-backtest using `lib/metrics`, which is more reliable and accurate.
+
+### What This Means
+
+- ✅ **FOREX backtests work correctly** - No more IndexError crashes
+- ✅ **All metrics still calculated** - Using `lib/metrics` after backtest completes
+- ✅ **Portfolio value reconstructed** - Automatically calculated from transactions
+- ✅ **Returns calculated** - Derived from reconstructed portfolio_value
+
+### Technical Details
+
+When `metrics_set='none'` is used:
+1. Zipline doesn't populate `returns` or `portfolio_value` columns
+2. `save_results()` automatically reconstructs portfolio_value from transactions
+3. Returns are calculated from portfolio_value: `returns = portfolio_value.pct_change()`
+4. All metrics calculated using `lib/metrics.calculate_metrics()`
+
+### Verification
+
+You can verify metrics are calculated correctly:
+
+```python
+from lib.backtest import run_backtest, save_results
+from lib.config import load_strategy_params
+
+# Run FOREX backtest
+perf, calendar = run_backtest(
+    strategy_name='my_forex_strategy',
+    asset_class='forex'
+)
+
+# Save results (reconstructs portfolio_value automatically)
+params = load_strategy_params('my_forex_strategy', 'forex')
+result_dir = save_results('my_forex_strategy', perf, params, calendar)
+
+# Check metrics were calculated
+import json
+with open(result_dir / 'metrics.json') as f:
+    metrics = json.load(f)
+    print(f"Sharpe: {metrics.get('sharpe', 'N/A')}")
+    print(f"Total Return: {metrics.get('total_return', 'N/A')}")
+```
+
+### Related
+
+- [Backtest API](../api/backtest.md) - Details on portfolio_value reconstruction
+- [Metrics API](../api/metrics.md) - Metrics calculation documentation
+
+---
+
 ## See Also
 
 - [Common Issues](common_issues.md)

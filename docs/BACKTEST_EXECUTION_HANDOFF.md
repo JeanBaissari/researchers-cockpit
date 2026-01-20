@@ -1,10 +1,13 @@
 # Backtest Execution Handoff Document
-## Ready for Execution - v1.0.10
+## Ready for Execution - v1.11.0
 
-**Created:** 2026-01-15
-**Purpose:** Handoff document for running EURUSD and NZDJPY backtests
-**Session Reference:** Pipeline Validation v1.10.0
+**Created:** 2026-01-15  
+**Updated:** 2026-01-20 (v1.11.0 metrics fix)  
+**Purpose:** Handoff document for running EURUSD and NZDJPY backtests  
+**Session Reference:** Pipeline Validation v1.10.0, Metrics Fix v1.11.0  
 **Status:** ✅ Bundles Ingested, Ready for Backtest Execution
+
+**v1.11.0 Update:** FOREX backtests now use `metrics_set='none'` to avoid Zipline metrics tracker bugs. Portfolio value and returns are automatically reconstructed from transactions during `save_results()`. All metrics are calculated correctly using `lib/metrics`.
 
 ---
 
