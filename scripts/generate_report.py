@@ -14,6 +14,12 @@ sys.path.insert(0, str(project_root))
 
 import click
 from lib.report import generate_report, update_catalog
+from lib.paths import get_project_root
+from lib.logging import configure_logging, get_logger, LogContext
+
+# Configure logging (console=False since we use click.echo for user output)
+configure_logging(level='INFO', console=False, file=False)
+logger = get_logger(__name__)
 
 
 @click.command()
@@ -44,53 +50,68 @@ def main(strategy, result_type, output, asset_class, update_catalog_flag, status
     """
     click.echo(f"Generating {result_type} report for strategy: {strategy}")
     
-    try:
-        # Generate report
-        output_path = generate_report(
-            strategy_name=strategy,
-            result_type=result_type,
-            output_path=Path(output) if output else None,
-            asset_class=asset_class
-        )
+    # Use LogContext for structured logging
+    with LogContext(phase='report_generation', strategy=strategy, result_type=result_type):
+        logger.info(f"Generating {result_type} report for strategy: {strategy}")
         
-        click.echo(f"\n✓ Report generated: {output_path}")
-        
-        # Update catalog if requested
-        if update_catalog_flag:
-            # Load metrics from latest results
-            from lib.utils import get_project_root
-            import json
+        try:
+            # Generate report
+            logger.info("Generating report")
+            output_path = generate_report(
+                strategy_name=strategy,
+                result_type=result_type,
+                output_path=Path(output) if output else None,
+                asset_class=asset_class
+            )
             
-            results_dir = get_project_root() / 'results' / strategy / 'latest'
-            metrics_file = results_dir / 'metrics.json'
+            logger.info(f"Report generated: {output_path}")
+            click.echo(f"\n✓ Report generated: {output_path}")
             
-            if metrics_file.exists():
-                with open(metrics_file) as f:
-                    metrics = json.load(f)
+            # Update catalog if requested
+            if update_catalog_flag:
+                # Load metrics from latest results
+                import json
                 
-                update_catalog(
-                    strategy_name=strategy,
-                    status=status,
-                    metrics=metrics,
-                    asset_class=asset_class
-                )
+                results_dir = get_project_root() / 'results' / strategy / 'latest'
+                metrics_file = results_dir / 'metrics.json'
                 
-                click.echo(f"✓ Strategy catalog updated")
-            else:
-                click.echo(f"⚠ Warning: Metrics file not found, catalog not updated", err=True)
+                if metrics_file.exists():
+                    logger.info("Updating strategy catalog")
+                    with open(metrics_file) as f:
+                        metrics = json.load(f)
+                    
+                    update_catalog(
+                        strategy_name=strategy,
+                        status=status,
+                        metrics=metrics,
+                        asset_class=asset_class
+                    )
+                    
+                    logger.info("Strategy catalog updated")
+                    click.echo(f"✓ Strategy catalog updated")
+                else:
+                    logger.warning(f"Metrics file not found: {metrics_file}")
+                    click.echo(f"⚠ Warning: Metrics file not found, catalog not updated", err=True)
+            
+            click.echo("\n" + "=" * 60)
+            click.echo("REPORT GENERATION COMPLETE")
+            click.echo("=" * 60)
+            click.echo(f"Strategy: {strategy}")
+            click.echo(f"Report: {output_path}")
+            click.echo("=" * 60)
         
-        click.echo("\n" + "=" * 60)
-        click.echo("REPORT GENERATION COMPLETE")
-        click.echo("=" * 60)
-        click.echo(f"Strategy: {strategy}")
-        click.echo(f"Report: {output_path}")
-        click.echo("=" * 60)
-        
-    except Exception as e:
-        click.echo(f"✗ Error: {e}", err=True)
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
+        except FileNotFoundError as e:
+            logger.error(f"Report generation failed - file not found: {e}", exc_info=True)
+            click.echo(f"✗ Error: Strategy '{strategy}' results not found", err=True)
+            click.echo(f"  Searched in: results/{strategy}/latest/", err=True)
+            click.echo(f"  Run backtest first: python scripts/run_backtest.py --strategy {strategy}", err=True)
+            sys.exit(1)
+        except Exception as e:
+            logger.error(f"Report generation failed: {e}", exc_info=True)
+            click.echo(f"✗ Error: {e}", err=True)
+            import traceback
+            traceback.print_exc()
+            sys.exit(1)
 
 
 if __name__ == '__main__':

@@ -18,7 +18,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import logging
 import sys
 from dataclasses import dataclass, field
 from enum import Enum
@@ -36,15 +35,13 @@ from lib.bundles import (
     VALID_TIMEFRAMES,
 )
 from lib.validation import DataValidator, ValidationConfig
-from lib.utils import get_project_root
+from lib.paths import get_project_root
 from lib.data.normalization import normalize_to_utc
+from lib.logging import configure_logging, get_logger, LogContext
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# Configure logging (console=False since we use print/click.echo for user output)
+configure_logging(level='INFO', console=False, file=False)
+logger = get_logger(__name__)
 
 
 # =============================================================================
@@ -1327,71 +1324,89 @@ Exit Codes:
         parser.error("Cannot specify both --timeframe and --all")
         return EXIT_CONFIGURATION_ERROR
     
-    # Determine timeframes to validate
-    if args.all:
-        processed_path = get_project_root() / 'data' / 'processed'
-        if not processed_path.exists():
-            logger.error(f"Processed data directory does not exist: {processed_path}")
-            return EXIT_CONFIGURATION_ERROR
+    # Use LogContext for structured logging
+    timeframe_context = args.timeframe or 'all'
+    with LogContext(phase='csv_validation', timeframe=timeframe_context, symbol=args.symbol, strict=args.strict):
+        logger.info(f"Starting CSV validation (timeframe={timeframe_context}, symbol={args.symbol}, strict={args.strict})")
         
-        timeframes = sorted([d.name for d in processed_path.iterdir() if d.is_dir()])
-        if not timeframes:
-            logger.error("No timeframe directories found")
-            return EXIT_CONFIGURATION_ERROR
-    else:
-        timeframes = [args.timeframe]
-    
-    # Run validation
-    all_results: Dict[str, List[ValidationResult]] = {}
-    total_valid = 0
-    total_invalid = 0
-    
-    for timeframe in timeframes:
-        print(f"\nValidating timeframe: {timeframe}")
-        print("-" * 40)
+        # Determine timeframes to validate
+        if args.all:
+            processed_path = get_project_root() / 'data' / 'processed'
+            if not processed_path.exists():
+                logger.error(f"Processed data directory does not exist: {processed_path}")
+                print(f"✗ Error: Processed data directory does not exist: {processed_path}")
+                print(f"  Create directory: mkdir -p {processed_path}")
+                return EXIT_CONFIGURATION_ERROR
+            
+            timeframes = sorted([d.name for d in processed_path.iterdir() if d.is_dir()])
+            if not timeframes:
+                logger.error("No timeframe directories found")
+                print(f"✗ Error: No timeframe directories found in {processed_path}")
+                print(f"  Ingest data first: python scripts/ingest_data.py --source csv --assets forex --symbols EURUSD")
+                return EXIT_CONFIGURATION_ERROR
+            logger.info(f"Found {len(timeframes)} timeframe directories: {timeframes}")
+        else:
+            timeframes = [args.timeframe]
         
-        results = validate_timeframe_directory(
-            timeframe,
-            symbol_filter=args.symbol,
-            verbose=args.verbose,
-            strict=args.strict
-        )
+        # Run validation
+        all_results: Dict[str, List[ValidationResult]] = {}
+        total_valid = 0
+        total_invalid = 0
         
-        all_results[timeframe] = results
-        total_valid += sum(1 for r in results if r.is_valid)
-        total_invalid += sum(1 for r in results if not r.is_valid)
+        for timeframe in timeframes:
+            logger.info(f"Validating timeframe: {timeframe}")
+            print(f"\nValidating timeframe: {timeframe}")
+            print("-" * 40)
+            
+            results = validate_timeframe_directory(
+                timeframe,
+                symbol_filter=args.symbol,
+                verbose=args.verbose,
+                strict=args.strict
+            )
+            
+            all_results[timeframe] = results
+            valid_count = sum(1 for r in results if r.is_valid)
+            invalid_count = sum(1 for r in results if not r.is_valid)
+            total_valid += valid_count
+            total_invalid += invalid_count
+            
+            logger.info(f"Timeframe {timeframe}: {valid_count} valid, {invalid_count} invalid files")
+            print_summary(results, timeframe)
+    
+        # Final summary for multiple timeframes
+        if len(timeframes) > 1:
+            total_rows = sum(
+                r.stats.get('row_count', 0)
+                for results in all_results.values()
+                for r in results
+            )
+            
+            logger.info(f"Overall validation: {total_valid} valid, {total_invalid} invalid files across {len(timeframes)} timeframes")
+            print(f"\n{'='*70}")
+            print("OVERALL SUMMARY")
+            print(f"{'='*70}")
+            print(f"Timeframes validated: {len(timeframes)}")
+            print(f"Total files:          {total_valid + total_invalid}")
+            print(f"Total rows:           {total_rows:,}")
+            print(f"Total valid:          {total_valid}")
+            print(f"Total invalid:        {total_invalid}")
+            print(f"{'='*70}")
         
-        print_summary(results, timeframe)
-    
-    # Final summary for multiple timeframes
-    if len(timeframes) > 1:
-        total_rows = sum(
-            r.stats.get('row_count', 0)
-            for results in all_results.values()
-            for r in results
-        )
+        # Export results if requested
+        if args.output:
+            output_path = Path(args.output)
+            logger.info(f"Exporting results to: {output_path}")
+            export_results_json(all_results, output_path)
+            print(f"\nResults exported to: {output_path}")
         
-        print(f"\n{'='*70}")
-        print("OVERALL SUMMARY")
-        print(f"{'='*70}")
-        print(f"Timeframes validated: {len(timeframes)}")
-        print(f"Total files:          {total_valid + total_invalid}")
-        print(f"Total rows:           {total_rows:,}")
-        print(f"Total valid:          {total_valid}")
-        print(f"Total invalid:        {total_invalid}")
-        print(f"{'='*70}")
-    
-    # Export results if requested
-    if args.output:
-        output_path = Path(args.output)
-        export_results_json(all_results, output_path)
-        print(f"\nResults exported to: {output_path}")
-    
-    # Return appropriate exit code
-    if total_invalid > 0:
-        return EXIT_VALIDATION_FAILED
-    
-    return EXIT_SUCCESS
+        # Return appropriate exit code
+        if total_invalid > 0:
+            logger.warning(f"Validation failed: {total_invalid} invalid file(s)")
+            return EXIT_VALIDATION_FAILED
+        
+        logger.info("Validation complete: all files valid")
+        return EXIT_SUCCESS
 
 
 if __name__ == '__main__':

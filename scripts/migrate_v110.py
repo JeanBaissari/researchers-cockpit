@@ -10,17 +10,12 @@ import re
 from pathlib import Path
 from typing import List, Tuple
 
+# Bootstrap: Add project root to path (scripts are in scripts/ subdirectory)
+# This allows us to import lib.paths.get_project_root
+_project_root_bootstrap = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_project_root_bootstrap))
 
-def _find_project_root() -> Path:
-    """Find project root by searching for marker files."""
-    markers = ['pyproject.toml', '.git', 'config/settings.yaml', 'CLAUDE.md']
-    current = Path(__file__).resolve().parent
-    while current != current.parent:
-        for marker in markers:
-            if (current / marker).exists():
-                return current
-        current = current.parent
-    raise RuntimeError("Could not find project root")
+from lib.paths import get_project_root
 
 
 def find_files_with_old_imports(root: Path) -> List[Path]:
@@ -128,8 +123,8 @@ def main():
     args = parser.parse_args()
 
     try:
-        root = _find_project_root()
-    except RuntimeError as e:
+        root = get_project_root()
+    except Exception as e:
         print(f"Error: {e}")
         sys.exit(1)
 

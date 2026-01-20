@@ -28,9 +28,14 @@ sys.path.insert(0, str(project_root))
 
 import click
 from lib.bundles import ingest_bundle, VALID_TIMEFRAMES, TIMEFRAME_DATA_LIMITS
+from lib.logging import configure_logging, get_logger, LogContext
+
+# Configure logging (console=False since we use click.echo for user output)
+configure_logging(level='INFO', console=False, file=False)
+logger = get_logger(__name__)
 
 
-def format_timeframe_help():
+def format_timeframe_help() -> str:
     """Generate help text showing timeframe options and their data limits."""
     lines = ["Available timeframes with Yahoo Finance data limits:"]
     for tf in VALID_TIMEFRAMES:
@@ -114,14 +119,19 @@ def main(source, assets, symbols, bundle_name, start_date, end_date, calendar, t
 
     # Validate required options for ingestion
     if source is None:
-        click.echo("Error: --source is required for ingestion.", err=True)
-        click.echo("Use --list-timeframes to see available timeframes without other options.", err=True)
+        logger.error("Missing required option: --source")
+        click.echo("✗ Error: --source is required for ingestion.", err=True)
+        click.echo("  Use --list-timeframes to see available timeframes without other options.", err=True)
         sys.exit(1)
     if assets is None:
-        click.echo("Error: --assets is required for ingestion.", err=True)
+        logger.error("Missing required option: --assets")
+        click.echo("✗ Error: --assets is required for ingestion.", err=True)
+        click.echo("  Example: --assets equities", err=True)
         sys.exit(1)
     if symbols is None:
-        click.echo("Error: --symbols is required for ingestion.", err=True)
+        logger.error("Missing required option: --symbols")
+        click.echo("✗ Error: --symbols is required for ingestion.", err=True)
+        click.echo("  Example: --symbols SPY,AAPL", err=True)
         sys.exit(1)
 
     # Parse symbols
@@ -143,44 +153,52 @@ def main(source, assets, symbols, bundle_name, start_date, end_date, calendar, t
     if not bundles_to_ingest:
         bundles_to_ingest.append(timeframe.lower())
 
-    ingested_bundles = []
-    for current_timeframe in bundles_to_ingest:
-        # Generate consistent bundle name that always includes timeframe
-        current_bundle_name = generate_bundle_name(
-            source=source,
-            assets=assets,
-            timeframe=current_timeframe,
-            custom_name=bundle_name
-        )
+    # Use LogContext for structured logging
+    with LogContext(phase='data_ingestion', source=source, assets=assets, timeframe=timeframe):
+        logger.info(f"Starting data ingestion for {len(symbol_list)} symbols")
         
-        # Get data limit info for the current timeframe (for display purposes)
-        # Only show limits for API-based sources (Yahoo), not local CSV
-        if source != 'csv':
-            limit = TIMEFRAME_DATA_LIMITS.get(current_timeframe)
-            limit_info = f" ({limit} days max)" if limit else " (unlimited)"
-        else:
-            limit_info = ""  # CSV has no limits - uses full available data
-
-        click.echo(f"Ingesting {current_timeframe} data from {source} for {len(symbol_list)} symbols{limit_info}...")
-        click.echo(f"Symbols: {', '.join(symbol_list)}")
-        
-        try:
-            bundle = ingest_bundle(
+        ingested_bundles = []
+        for current_timeframe in bundles_to_ingest:
+            # Generate consistent bundle name that always includes timeframe
+            current_bundle_name = generate_bundle_name(
                 source=source,
-                assets=[assets],
-                bundle_name=current_bundle_name,
-                symbols=symbol_list,
-                start_date=start_date,
-                end_date=end_date,
-                calendar_name=calendar,
+                assets=assets,
                 timeframe=current_timeframe,
-                force=force
+                custom_name=bundle_name
             )
-            ingested_bundles.append(bundle)
-            click.echo(f"✓ Successfully ingested bundle: {bundle}")
-        except Exception as e:
-            click.echo(f"✗ Error ingesting {current_timeframe} bundle {current_bundle_name}: {e}", err=True)
-            sys.exit(1)
+            
+            # Get data limit info for the current timeframe (for display purposes)
+            # Only show limits for API-based sources (Yahoo), not local CSV
+            if source != 'csv':
+                limit = TIMEFRAME_DATA_LIMITS.get(current_timeframe)
+                limit_info = f" ({limit} days max)" if limit else " (unlimited)"
+            else:
+                limit_info = ""  # CSV has no limits - uses full available data
+
+            click.echo(f"Ingesting {current_timeframe} data from {source} for {len(symbol_list)} symbols{limit_info}...")
+            click.echo(f"Symbols: {', '.join(symbol_list)}")
+            
+            try:
+                logger.info(f"Ingesting bundle: {current_bundle_name} with {len(symbol_list)} symbols")
+                bundle = ingest_bundle(
+                    source=source,
+                    assets=[assets],
+                    bundle_name=current_bundle_name,
+                    symbols=symbol_list,
+                    start_date=start_date,
+                    end_date=end_date,
+                    calendar_name=calendar,
+                    timeframe=current_timeframe,
+                    force=force
+                )
+                ingested_bundles.append(bundle)
+                logger.info(f"Successfully ingested bundle: {bundle}")
+                click.echo(f"✓ Successfully ingested bundle: {bundle}")
+            except Exception as e:
+                logger.error(f"Failed to ingest bundle {current_bundle_name}: {e}", exc_info=True)
+                click.echo(f"✗ Error ingesting {current_timeframe} bundle {current_bundle_name}: {e}", err=True)
+                click.echo(f"  Check bundle registry: python scripts/validate_bundles.py --bundle {current_bundle_name}", err=True)
+                sys.exit(1)
 
     click.echo(f"\nAll specified bundles successfully ingested:")
     for b in ingested_bundles:

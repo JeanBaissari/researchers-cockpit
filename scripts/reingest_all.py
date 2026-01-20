@@ -43,6 +43,11 @@ from lib.bundles import (
     ingest_bundle,
     VALID_TIMEFRAMES,
 )
+from lib.logging import configure_logging, get_logger, LogContext
+
+# Configure logging (console=False since we use click.echo for user output)
+configure_logging(level='INFO', console=False, file=False)
+logger = get_logger(__name__)
 
 
 def parse_bundle_name(bundle_name: str) -> Dict[str, str]:
@@ -239,93 +244,106 @@ def main(bundles, timeframe, assets, source, dry_run, force, list_only):
         # Preview what would be re-ingested
         python scripts/reingest_all.py --dry-run
     """
-    # Load registry
-    registry = _load_bundle_registry()
+    # Use LogContext for structured logging
+    with LogContext(phase='reingest_all', timeframe=timeframe, assets=assets, source=source, dry_run=dry_run):
+        logger.info(f"Starting batch re-ingestion (filters: timeframe={timeframe}, assets={assets}, source={source})")
+        
+        # Load registry
+        registry = _load_bundle_registry()
 
-    if not registry:
-        click.echo("No bundles found in registry.")
-        click.echo("Registry location: ~/.zipline/bundle_registry.json")
-        click.echo("\nTo ingest data, use:")
-        click.echo("  python scripts/ingest_data.py --source yahoo --assets equities --symbols SPY")
-        return
+        if not registry:
+            logger.warning("No bundles found in registry")
+            click.echo("No bundles found in registry.")
+            click.echo("Registry location: ~/.zipline/bundle_registry.json")
+            click.echo("\nTo ingest data, use:")
+            click.echo("  python scripts/ingest_data.py --source yahoo --assets equities --symbols SPY")
+            return
 
-    # List mode
-    if list_only:
-        click.echo(f"Bundles in registry ({len(registry)} total):\n")
-        for name, meta in sorted(registry.items()):
-            symbols = meta.get('symbols', [])
-            timeframe_val = meta.get('timeframe', 'daily')
-            calendar = meta.get('calendar_name', 'unknown')
-            click.echo(f"  {name}")
-            click.echo(f"    Symbols: {', '.join(symbols)}")
-            click.echo(f"    Timeframe: {timeframe_val}, Calendar: {calendar}")
-            click.echo()
-        return
+        # List mode
+        if list_only:
+            click.echo(f"Bundles in registry ({len(registry)} total):\n")
+            for name, meta in sorted(registry.items()):
+                symbols = meta.get('symbols', [])
+                timeframe_val = meta.get('timeframe', 'daily')
+                calendar = meta.get('calendar_name', 'unknown')
+                click.echo(f"  {name}")
+                click.echo(f"    Symbols: {', '.join(symbols)}")
+                click.echo(f"    Timeframe: {timeframe_val}, Calendar: {calendar}")
+                click.echo()
+            return
 
     # Parse bundle names if provided
     bundle_list = None
     if bundles:
         bundle_list = [b.strip() for b in bundles.split(',')]
 
-    # Filter bundles
-    filtered = filter_bundles(
-        registry,
-        bundle_names=bundle_list,
-        timeframe_filter=timeframe,
-        assets_filter=assets,
-        source_filter=source,
-    )
-
-    if not filtered:
-        click.echo("No bundles match the specified filters.")
-        return
-
-    # Show summary
-    click.echo(f"\nBundles to re-ingest: {len(filtered)}")
-    click.echo("-" * 40)
-    for name in sorted(filtered.keys()):
-        meta = filtered[name]
-        symbols = meta.get('symbols', [])
-        tf = meta.get('timeframe', 'daily')
-        click.echo(f"  {name} ({tf}, {len(symbols)} symbol(s))")
-    click.echo("-" * 40)
-
-    # Dry run mode
-    if dry_run:
-        click.echo("\n[DRY RUN] Would perform the following:\n")
-        for name, meta in sorted(filtered.items()):
-            reingest_bundle(name, meta, dry_run=True)
-            click.echo()
-        return
-
-    # Confirm unless forced
-    if not force:
-        click.confirm(
-            f"\nProceed with re-ingesting {len(filtered)} bundle(s)?",
-            abort=True
+        # Filter bundles
+        filtered = filter_bundles(
+            registry,
+            bundle_names=bundle_list,
+            timeframe_filter=timeframe,
+            assets_filter=assets,
+            source_filter=source,
         )
 
-    # Re-ingest bundles
-    click.echo("\nRe-ingesting bundles...\n")
-    success_count = 0
-    fail_count = 0
+        if not filtered:
+            logger.warning("No bundles match the specified filters")
+            click.echo("No bundles match the specified filters.")
+            return
 
-    for name, meta in sorted(filtered.items()):
-        if reingest_bundle(name, meta, dry_run=False):
-            success_count += 1
-        else:
-            fail_count += 1
+        logger.info(f"Found {len(filtered)} bundle(s) to re-ingest")
+        # Show summary
+        click.echo(f"\nBundles to re-ingest: {len(filtered)}")
+        click.echo("-" * 40)
+        for name in sorted(filtered.keys()):
+            meta = filtered[name]
+            symbols = meta.get('symbols', [])
+            tf = meta.get('timeframe', 'daily')
+            click.echo(f"  {name} ({tf}, {len(symbols)} symbol(s))")
+        click.echo("-" * 40)
 
-    # Summary
-    click.echo("\n" + "=" * 40)
-    click.echo(f"Re-ingestion complete:")
-    click.echo(f"  ✓ Successful: {success_count}")
-    if fail_count:
-        click.echo(f"  ✗ Failed: {fail_count}")
-    click.echo("=" * 40)
+        # Dry run mode
+        if dry_run:
+            logger.info("Dry run mode: showing what would be re-ingested")
+            click.echo("\n[DRY RUN] Would perform the following:\n")
+            for name, meta in sorted(filtered.items()):
+                reingest_bundle(name, meta, dry_run=True)
+                click.echo()
+            return
 
-    if fail_count:
-        sys.exit(1)
+        # Confirm unless forced
+        if not force:
+            click.confirm(
+                f"\nProceed with re-ingesting {len(filtered)} bundle(s)?",
+                abort=True
+            )
+
+        # Re-ingest bundles
+        logger.info(f"Starting re-ingestion of {len(filtered)} bundle(s)")
+        click.echo("\nRe-ingesting bundles...\n")
+        success_count = 0
+        fail_count = 0
+
+        for name, meta in sorted(filtered.items()):
+            logger.info(f"Re-ingesting bundle: {name}")
+            if reingest_bundle(name, meta, dry_run=False):
+                logger.info(f"Successfully re-ingested bundle: {name}")
+                success_count += 1
+            else:
+                logger.error(f"Failed to re-ingest bundle: {name}")
+                fail_count += 1
+
+        # Summary
+        logger.info(f"Re-ingestion complete: {success_count} successful, {fail_count} failed")
+        click.echo("\n" + "=" * 40)
+        click.echo(f"Re-ingestion complete:")
+        click.echo(f"  ✓ Successful: {success_count}")
+        if fail_count:
+            click.echo(f"  ✗ Failed: {fail_count}")
+        click.echo("=" * 40)
+
+        if fail_count:
+            sys.exit(1)
 
 
 if __name__ == '__main__':

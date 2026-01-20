@@ -32,6 +32,11 @@ from lib.bundles import (
     list_bundles,
     load_bundle_registry as _load_bundle_registry,
 )
+from lib.logging import configure_logging, get_logger, LogContext
+
+# Configure logging (console=False since we use print/click.echo for user output)
+configure_logging(level='INFO', console=False, file=False)
+logger = get_logger(__name__)
 
 
 def format_number(n: int) -> str:
@@ -300,12 +305,16 @@ def main(bundle_name: Optional[str], list_bundles_flag: bool, verbose: bool, out
         return
 
     if not bundle_name:
-        click.echo("Error: Please provide a bundle name or use --list to see available bundles.")
-        click.echo("\nUsage: python scripts/bundle_info.py <bundle_name>")
-        click.echo("       python scripts/bundle_info.py --list")
+        logger.error("Bundle name not provided")
+        click.echo("✗ Error: Please provide a bundle name or use --list to see available bundles.", err=True)
+        click.echo("\nUsage: python scripts/bundle_info.py <bundle_name>", err=True)
+        click.echo("       python scripts/bundle_info.py --list", err=True)
         sys.exit(1)
 
-    info = get_bundle_info(bundle_name, verbose=verbose)
+    # Use LogContext for structured logging
+    with LogContext(phase='bundle_info', bundle=bundle_name, verbose=verbose):
+        logger.info(f"Getting bundle information for: {bundle_name}")
+        info = get_bundle_info(bundle_name, verbose=verbose)
 
     if output_json:
         import json

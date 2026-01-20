@@ -15,31 +15,32 @@ import sys
 from pathlib import Path
 import os
 
+# Bootstrap: Add project root to path (scripts are in scripts/ subdirectory)
+# This allows us to import lib.paths.get_project_root
+_project_root_bootstrap = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_project_root_bootstrap))
 
-def _find_project_root() -> Path:
-    """Find project root by searching for marker files."""
-    markers = ['pyproject.toml', '.git', 'config/settings.yaml', 'CLAUDE.md']
-    current = Path(__file__).resolve().parent
-    while current != current.parent:
-        for marker in markers:
-            if (current / marker).exists():
-                return current
-        current = current.parent
-    raise RuntimeError("Could not find project root. Missing marker files.")
+from lib.paths import get_project_root
 
-
-# Add project root to path
-project_root = _find_project_root()
-sys.path.insert(0, str(project_root))
+# Use canonical path resolution
+project_root = get_project_root()
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 import json
 import click
 from datetime import datetime
+from typing import Any
 import exchange_calendars
 
 # Import shared constants from lib modules to ensure consistency
 from lib.bundles import VALID_TIMEFRAMES, TIMEFRAME_DATA_LIMITS, VALID_SOURCES
 from lib.calendars import register_custom_calendars, get_available_calendars
+from lib.logging import configure_logging, get_logger, LogContext
+
+# Configure logging (console=False since we use click.echo for user output)
+configure_logging(level='INFO', console=False, file=False)
+logger = get_logger(__name__)
 
 # =============================================================================
 # CONSTANTS
@@ -155,7 +156,7 @@ def save_registry(registry: dict) -> None:
 # VALIDATION FUNCTIONS
 # =============================================================================
 
-def validate_date_field(value, field_name: str) -> tuple:
+def validate_date_field(value: Any, field_name: str) -> tuple:
     """
     Validate a date field.
 
@@ -468,106 +469,124 @@ def main(fix, bundle, verbose, check_disk):
         python scripts/validate_bundles.py --bundle X   # Check specific bundle
         python scripts/validate_bundles.py --no-check-disk  # Skip disk checks
     """
-    # Register custom calendars to ensure they're available
-    try:
-        register_custom_calendars()
-    except Exception as e:
-        click.echo(f"Warning: Could not register custom calendars: {e}", err=True)
-
-    registry = load_registry()
-
-    if not registry:
-        click.echo("No bundles found in registry.")
-        click.echo(f"Registry path: {get_registry_path()}")
-        return
-
-    # Filter to specific bundle if requested
-    original_registry = registry.copy()
-    if bundle:
-        if bundle not in registry:
-            click.echo(f"Bundle '{bundle}' not found in registry.")
-            click.echo(f"Available bundles: {', '.join(sorted(registry.keys()))}")
-            sys.exit(1)
-        registry = {bundle: registry[bundle]}
-
-    click.echo(f"Validating {len(registry)} bundle(s)...")
-    click.echo(f"Using {len(VALID_TIMEFRAMES)} valid timeframes: {', '.join(VALID_TIMEFRAMES)}")
-    click.echo(f"Using {len(CUSTOM_CALENDAR_NAMES)} custom calendars: {', '.join(CUSTOM_CALENDAR_NAMES)}")
-    click.echo(f"Using {len(STANDARD_CALENDARS)} standard exchange calendars")
-    click.echo(f"Zipline root: {get_zipline_root()}")
-    click.echo()
-
-    total_issues = 0
-    fixed_issues = 0
-    bundles_with_issues = []
-
-    for bundle_name, meta in sorted(registry.items()):
-        issues = validate_bundle_entry(bundle_name, meta)
+    # Use LogContext for structured logging
+    with LogContext(phase='bundle_validation', bundle=bundle or 'all', fix_mode=fix):
+        logger.info(f"Starting bundle validation (bundle={bundle}, fix={fix}, check_disk={check_disk})")
         
-        # Filter out disk check issues if --no-check-disk
-        if not check_disk:
-            issues = [i for i in issues if i[0] != 'missing_data']
+        # Register custom calendars to ensure they're available
+        try:
+            register_custom_calendars()
+        except Exception as e:
+            logger.warning(f"Could not register custom calendars: {e}")
+            click.echo(f"Warning: Could not register custom calendars: {e}", err=True)
 
-        if issues:
-            bundles_with_issues.append(bundle_name)
-            click.echo(f"❌ {bundle_name}")
-            for issue_type, message, fix_action in issues:
-                total_issues += 1
-                prefix = "  "
+        registry = load_registry()
 
-                if fix and fix_action:
-                    if apply_fix(meta, fix_action):
-                        click.echo(f"{prefix}⚠ {message} [FIXED]")
-                        fixed_issues += 1
-                    else:
-                        click.echo(f"{prefix}✗ {message}")
-                else:
-                    fixable = " [fixable]" if fix_action else ""
-                    click.echo(f"{prefix}✗ {message}{fixable}")
-        else:
-            if verbose:
-                click.echo(f"✓ {bundle_name}")
-                click.echo(f"    symbols: {meta.get('symbols', [])}")
-                click.echo(f"    calendar: {meta.get('calendar_name')}")
-                click.echo(f"    frequency: {meta.get('data_frequency')}")
-                click.echo(f"    timeframe: {meta.get('timeframe')}")
-                click.echo(f"    asset_class: {meta.get('asset_class')}")
-                click.echo(f"    source: {meta.get('source')}")
-                if check_disk:
-                    exists, path, details = check_bundle_data_exists(bundle_name)
-                    click.echo(f"    disk: {details}")
-            else:
-                click.echo(f"✓ {bundle_name}")
+        if not registry:
+            logger.warning("No bundles found in registry")
+            click.echo("No bundles found in registry.")
+            click.echo(f"Registry path: {get_registry_path()}")
+            click.echo("  Ingest data first: python scripts/ingest_data.py --source yahoo --assets equities --symbols SPY", err=True)
+            return
 
-    # Save fixes if any were applied
-    if fix and fixed_issues > 0:
-        # Merge fixes back into full registry if we filtered
+        # Filter to specific bundle if requested
+        original_registry = registry.copy()
         if bundle:
-            original_registry[bundle] = meta
-            save_registry(original_registry)
-        else:
-            save_registry(registry)
-        click.echo(f"\nSaved {fixed_issues} fix(es) to registry.")
+            if bundle not in registry:
+                logger.error(f"Bundle '{bundle}' not found in registry")
+                click.echo(f"✗ Error: Bundle '{bundle}' not found in registry.", err=True)
+                click.echo(f"  Available bundles: {', '.join(sorted(registry.keys()))}", err=True)
+                click.echo(f"  Ingest bundle: python scripts/ingest_data.py --bundle-name {bundle}", err=True)
+                sys.exit(1)
+            registry = {bundle: registry[bundle]}
 
-    # Summary
-    click.echo("\n" + "=" * 50)
-    click.echo("VALIDATION SUMMARY")
-    click.echo("=" * 50)
-    click.echo(f"Total bundles: {len(registry)}")
-    click.echo(f"Bundles with issues: {len(bundles_with_issues)}")
-    click.echo(f"Total issues: {total_issues}")
-    if fix:
-        click.echo(f"Issues fixed: {fixed_issues}")
-        click.echo(f"Issues remaining: {total_issues - fixed_issues}")
+        logger.info(f"Validating {len(registry)} bundle(s)")
+        click.echo(f"Validating {len(registry)} bundle(s)...")
+        click.echo(f"Using {len(VALID_TIMEFRAMES)} valid timeframes: {', '.join(VALID_TIMEFRAMES)}")
+        click.echo(f"Using {len(CUSTOM_CALENDAR_NAMES)} custom calendars: {', '.join(CUSTOM_CALENDAR_NAMES)}")
+        click.echo(f"Using {len(STANDARD_CALENDARS)} standard exchange calendars")
+        click.echo(f"Zipline root: {get_zipline_root()}")
+        click.echo()
 
-    if bundles_with_issues and not fix:
-        fixable_count = sum(
-            1 for bn in bundles_with_issues
-            for issue in validate_bundle_entry(bn, original_registry.get(bn, registry.get(bn, {})))
-            if issue[2] is not None
-        )
-        if fixable_count > 0:
-            click.echo(f"\n{fixable_count} issue(s) can be auto-fixed. Run with --fix to repair.")
+        total_issues = 0
+        fixed_issues = 0
+        bundles_with_issues = []
+
+        for bundle_name, meta in sorted(registry.items()):
+            logger.debug(f"Validating bundle: {bundle_name}")
+            issues = validate_bundle_entry(bundle_name, meta)
+            
+            # Filter out disk check issues if --no-check-disk
+            if not check_disk:
+                issues = [i for i in issues if i[0] != 'missing_data']
+
+            if issues:
+                logger.warning(f"Bundle {bundle_name} has {len(issues)} issue(s)")
+                bundles_with_issues.append(bundle_name)
+                click.echo(f"❌ {bundle_name}")
+                for issue_type, message, fix_action in issues:
+                    total_issues += 1
+                    prefix = "  "
+                    logger.debug(f"  Issue: {issue_type} - {message}")
+
+                    if fix and fix_action:
+                        if apply_fix(meta, fix_action):
+                            logger.info(f"Fixed issue in {bundle_name}: {message}")
+                            click.echo(f"{prefix}⚠ {message} [FIXED]")
+                            fixed_issues += 1
+                        else:
+                            logger.error(f"Failed to fix issue in {bundle_name}: {message}")
+                            click.echo(f"{prefix}✗ {message}")
+                    else:
+                        fixable = " [fixable]" if fix_action else ""
+                        click.echo(f"{prefix}✗ {message}{fixable}")
+            else:
+                logger.debug(f"Bundle {bundle_name} is valid")
+                if verbose:
+                    click.echo(f"✓ {bundle_name}")
+                    click.echo(f"    symbols: {meta.get('symbols', [])}")
+                    click.echo(f"    calendar: {meta.get('calendar_name')}")
+                    click.echo(f"    frequency: {meta.get('data_frequency')}")
+                    click.echo(f"    timeframe: {meta.get('timeframe')}")
+                    click.echo(f"    asset_class: {meta.get('asset_class')}")
+                    click.echo(f"    source: {meta.get('source')}")
+                    if check_disk:
+                        exists, path, details = check_bundle_data_exists(bundle_name)
+                        click.echo(f"    disk: {details}")
+                else:
+                    click.echo(f"✓ {bundle_name}")
+
+        # Save fixes if any were applied
+        if fix and fixed_issues > 0:
+            logger.info(f"Saving {fixed_issues} fix(es) to registry")
+            # Merge fixes back into full registry if we filtered
+            if bundle:
+                original_registry[bundle] = meta
+                save_registry(original_registry)
+            else:
+                save_registry(registry)
+            click.echo(f"\nSaved {fixed_issues} fix(es) to registry.")
+
+        # Summary
+        logger.info(f"Validation complete: {len(bundles_with_issues)} bundles with issues, {total_issues} total issues")
+        click.echo("\n" + "=" * 50)
+        click.echo("VALIDATION SUMMARY")
+        click.echo("=" * 50)
+        click.echo(f"Total bundles: {len(registry)}")
+        click.echo(f"Bundles with issues: {len(bundles_with_issues)}")
+        click.echo(f"Total issues: {total_issues}")
+        if fix:
+            click.echo(f"Issues fixed: {fixed_issues}")
+            click.echo(f"Issues remaining: {total_issues - fixed_issues}")
+
+        if bundles_with_issues and not fix:
+            fixable_count = sum(
+                1 for bn in bundles_with_issues
+                for issue in validate_bundle_entry(bn, original_registry.get(bn, registry.get(bn, {})))
+                if issue[2] is not None
+            )
+            if fixable_count > 0:
+                click.echo(f"\n{fixable_count} issue(s) can be auto-fixed. Run with --fix to repair.")
 
     # Exit with error code if unfixed issues remain
     if total_issues - fixed_issues > 0:
