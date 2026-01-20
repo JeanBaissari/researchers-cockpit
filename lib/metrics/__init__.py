@@ -32,9 +32,7 @@ from .core import (
     MAX_PROFIT_FACTOR,
     PERCENTAGE_METRICS,
     # Helper functions (for internal use, but exposed for testing)
-    _sanitize_value,
     _get_daily_rf,
-    _validate_returns,
     _convert_to_percentages,
     _empty_metrics,
 )
@@ -68,9 +66,7 @@ __all__ = [
     'PERCENTAGE_METRICS',
     # Helper functions (exposed for advanced use)
     '_extract_trades',
-    '_sanitize_value',
     '_get_daily_rf',
-    '_validate_returns',
     '_convert_to_percentages',
     '_empty_metrics',
     '_calculate_max_consecutive_losses',

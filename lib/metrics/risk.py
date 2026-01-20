@@ -10,6 +10,8 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
+from ..data.sanitization import sanitize_value
+
 try:
     import empyrical as ep
     EMPYRICAL_AVAILABLE = True
@@ -19,13 +21,6 @@ except ImportError:
 
 # Minimum periods for reliable calculations
 MIN_PERIODS_FOR_RATIOS = 20
-
-
-def _sanitize_value(value: float, default: float = 0.0) -> float:
-    """Replace NaN/Inf with default value."""
-    if value is None or np.isnan(value) or np.isinf(value):
-        return default
-    return float(value)
 
 
 def _get_daily_rf(annual_rf: float, trading_days: int = 252) -> float:
@@ -49,7 +44,7 @@ def calculate_max_drawdown(returns: pd.Series) -> float:
     if EMPYRICAL_AVAILABLE:
         try:
             max_dd = float(ep.max_drawdown(returns))
-            return _sanitize_value(max_dd)
+            return sanitize_value(max_dd)
         except Exception:
             pass
 
@@ -59,7 +54,7 @@ def calculate_max_drawdown(returns: pd.Series) -> float:
         running_max = cumulative.cummax()
         drawdown = (cumulative - running_max) / running_max
         max_dd = float(drawdown.min())
-        return _sanitize_value(max_dd)
+        return sanitize_value(max_dd)
     except Exception:
         return 0.0
 
@@ -190,7 +185,7 @@ def calculate_alpha_beta(
 
         beta = float(ep.beta(aligned_returns, aligned_benchmark))
 
-        return _sanitize_value(alpha), _sanitize_value(beta, default=1.0)
+        return sanitize_value(alpha), sanitize_value(beta, default=1.0)
 
     except Exception:
         return 0.0, 1.0
@@ -223,7 +218,7 @@ def calculate_omega_ratio(
             required_return=0.0,
             annualization=trading_days_per_year
         ))
-        return _sanitize_value(omega)
+        return sanitize_value(omega)
     except Exception:
         return 0.0
 
@@ -243,7 +238,7 @@ def calculate_tail_ratio(returns: pd.Series) -> float:
 
     try:
         tail_ratio = float(ep.tail_ratio(returns))
-        return _sanitize_value(tail_ratio)
+        return sanitize_value(tail_ratio)
     except Exception:
         return 0.0
 
@@ -265,9 +260,9 @@ def calculate_max_drawdown_duration(returns: pd.Series) -> float:
         max_dd_duration = ep.max_drawdown_duration(returns)
         if max_dd_duration is not None:
             if isinstance(max_dd_duration, pd.Timedelta):
-                return _sanitize_value(max_dd_duration.total_seconds() / (60 * 60 * 24))
+                return sanitize_value(max_dd_duration.total_seconds() / (60 * 60 * 24))
             else:
-                return _sanitize_value(float(max_dd_duration))
+                return sanitize_value(float(max_dd_duration))
         return 0.0
     except Exception:
         return 0.0

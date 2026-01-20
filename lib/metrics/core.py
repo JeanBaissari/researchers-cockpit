@@ -40,9 +40,11 @@ from .performance import (
     calculate_total_return,
     calculate_annual_volatility,
     EMPYRICAL_AVAILABLE,
-    _sanitize_value,
     _get_daily_rf,
 )
+
+# Import sanitization utilities
+from ..data.sanitization import sanitize_series
 from .risk import (
     calculate_max_drawdown,
     calculate_recovery_time,
@@ -72,21 +74,6 @@ PERCENTAGE_METRICS = {
 }
 
 
-def _validate_returns(returns: pd.Series) -> pd.Series:
-    """Validate and clean a returns series."""
-    if returns is None:
-        raise ValueError("Returns series cannot be None")
-
-    if not isinstance(returns, pd.Series):
-        raise ValueError(f"Returns must be a pandas Series, got {type(returns)}")
-
-    # Drop NaN values and convert to float
-    cleaned = returns.dropna().astype(float)
-
-    # Replace infinite values with NaN and drop
-    cleaned = cleaned.replace([np.inf, -np.inf], np.nan).dropna()
-
-    return cleaned
 
 
 def _convert_to_percentages(metrics: Dict[str, Any]) -> Dict[str, Any]:
@@ -159,7 +146,7 @@ def calculate_metrics(
     from .trade import calculate_trade_metrics
 
     # Validate inputs
-    returns = _validate_returns(returns)
+    returns = sanitize_series(returns)
 
     if len(returns) == 0:
         return _empty_metrics()

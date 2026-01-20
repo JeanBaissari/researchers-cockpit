@@ -10,6 +10,8 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
+from ..data.sanitization import sanitize_value
+
 try:
     import empyrical as ep
     EMPYRICAL_AVAILABLE = True
@@ -19,13 +21,6 @@ except ImportError:
 
 # Minimum periods for reliable ratio calculations
 MIN_PERIODS_FOR_RATIOS = 20
-
-
-def _sanitize_value(value: float, default: float = 0.0) -> float:
-    """Replace NaN/Inf with default value."""
-    if value is None or np.isnan(value) or np.isinf(value):
-        return default
-    return float(value)
 
 
 def _get_daily_rf(annual_rf: float, trading_days: int = 252) -> float:
@@ -88,13 +83,13 @@ def calculate_sharpe_ratio(
                 period='daily',
                 annualization=trading_days_per_year
             ))
-            return _sanitize_value(sharpe)
+            return sanitize_value(sharpe)
         except Exception:
             pass
 
     # Manual calculation
     excess_return = annual_return - risk_free_rate
-    sharpe = _sanitize_value(excess_return / annual_volatility)
+    sharpe = sanitize_value(excess_return / annual_volatility)
     return sharpe
 
 
@@ -163,7 +158,7 @@ def calculate_sortino_ratio(
                 annualization=trading_days_per_year
             ))
             # ✅ FIX: Validate empyrical output (defensive programming)
-            sanitized = _sanitize_value(sortino)
+            sanitized = sanitize_value(sortino)
             # Additional check: empyrical might return inf/nan even after our checks
             if not np.isfinite(sanitized) or sanitized < -1e6 or sanitized > 1e6:
                 # Fall back to manual calculation
@@ -175,7 +170,7 @@ def calculate_sortino_ratio(
 
     # Manual calculation (now only reached if empyrical unavailable or returns invalid value)
     excess_annual_return = annual_return - risk_free_rate
-    sortino = _sanitize_value(excess_annual_return / annualized_downside_std)
+    sortino = sanitize_value(excess_annual_return / annualized_downside_std)
     return sortino
 
 
@@ -191,7 +186,7 @@ def calculate_calmar_ratio(annual_return: float, max_drawdown: float) -> float:
         Calmar ratio as float
     """
     if abs(max_drawdown) > 1e-10:
-        return _sanitize_value(annual_return / abs(max_drawdown))
+        return sanitize_value(annual_return / abs(max_drawdown))
     return 0.0
 
 
@@ -217,7 +212,7 @@ def calculate_annual_return(returns: pd.Series, trading_days_per_year: int = 252
         return -1.0
 
     annual_return = float((1 + total_return) ** (trading_days_per_year / n_days) - 1)
-    return _sanitize_value(annual_return)
+    return sanitize_value(annual_return)
 
 
 def calculate_total_return(returns: pd.Series) -> float:
@@ -234,7 +229,7 @@ def calculate_total_return(returns: pd.Series) -> float:
         return 0.0
 
     total_return = float((1 + returns).prod() - 1)
-    return _sanitize_value(total_return)
+    return sanitize_value(total_return)
 
 
 def calculate_annual_volatility(returns: pd.Series, trading_days_per_year: int = 252) -> float:
@@ -256,4 +251,4 @@ def calculate_annual_volatility(returns: pd.Series, trading_days_per_year: int =
         daily_vol = 0.0
 
     volatility = daily_vol * np.sqrt(trading_days_per_year)
-    return _sanitize_value(volatility)
+    return sanitize_value(volatility)
