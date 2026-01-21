@@ -154,8 +154,8 @@ def main(source, assets, symbols, bundle_name, start_date, end_date, calendar, t
         bundles_to_ingest.append(timeframe.lower())
 
     # Use LogContext for structured logging
-    with LogContext(phase='data_ingestion', source=source, assets=assets, timeframe=timeframe):
-        logger.info(f"Starting data ingestion for {len(symbol_list)} symbols")
+    with LogContext(phase='data_ingestion', asset_type=assets, timeframe=timeframe):
+        logger.info(f"Starting data ingestion from {source} for {len(symbol_list)} symbols")
         
         ingested_bundles = []
         for current_timeframe in bundles_to_ingest:
