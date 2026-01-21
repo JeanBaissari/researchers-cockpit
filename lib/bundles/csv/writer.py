@@ -91,14 +91,10 @@ def write_minute_and_daily_bars(
                     if daily_df.empty:
                         continue
 
-                # Gap filling for FOREX and CRYPTO
-                if 'FOREX' in session_mgr.calendar_name.upper() or 'CRYPTO' in session_mgr.calendar_name.upper():
-                    daily_df = apply_gap_filling(
-                        daily_df, session_mgr.calendar,
-                        session_mgr.calendar_name, show_progress, sid
-                    )
-                    if daily_df.empty:
-                        continue
+                # Skip gap filling for CSV sources - data is assumed complete
+                # Gap filling is only needed for API sources (Yahoo) where data may be incomplete
+                # CSV files are pre-validated and complete, so gap filling causes false warnings
+                # with intraday-to-daily aggregated data
 
                 yield sid, daily_df
             except Exception as e:

@@ -9,7 +9,12 @@ from datetime import time
 from typing import List
 
 import pandas as pd
+from pandas.tseries.holiday import (
+    Holiday,
+    GoodFriday,
+)
 from exchange_calendars import ExchangeCalendar
+from exchange_calendars.exchange_calendar import HolidayCalendar
 
 
 class ForexCalendar(ExchangeCalendar):
@@ -60,18 +65,22 @@ class ForexCalendar(ExchangeCalendar):
         return time(23, 59, 59)
 
     @property
-    def regular_holidays(self) -> pd.DatetimeIndex:
+    def regular_holidays(self) -> HolidayCalendar:
         """
         Forex observes major holidays when global banking is closed.
-        
+
         Returns:
-            DatetimeIndex of holidays (currently empty, can be extended)
-            
+            HolidayCalendar with forex market holidays
+
         Note:
-            Forex typically observes: New Year's Day, Christmas, and major US holidays.
-            To add holidays, use: pd.DatetimeIndex([...]) with specific dates
+            Forex typically observes: New Year's Day, Christmas, and Good Friday.
+            Major banks globally close on these days, so forex trading is suspended.
         """
-        return pd.DatetimeIndex([])
+        return HolidayCalendar([
+            Holiday('Christmas', month=12, day=25),
+            Holiday('New Year', month=1, day=1),
+            GoodFriday,
+        ])
 
     @property
     def special_closes(self) -> List:
