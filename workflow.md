@@ -112,7 +112,7 @@ The strategy loads these at initialization:
 
 ```python
 def initialize(context):
-    params = load_params()  # From lib/
+    params = load_params()  # Uses lib/config.load_strategy_params() internally
     context.fast = params['strategy']['fast_period']
     context.slow = params['strategy']['slow_period']
 ```
@@ -125,7 +125,7 @@ This separation enables:
 ### AI Agent Behavior
 When creating a strategy, the agent:
 1. Reads `hypothesis.md` to understand intent
-2. Reads `.agent/strategy_creator.md` for conventions
+2. Reads `.claude/agents/strategy_developer.md` for conventions
 3. Implements `strategy.py` following the template
 4. Validates syntax and imports
 5. Runs a quick smoke test (1 month of data)
@@ -195,7 +195,7 @@ Custom metrics:
 
 ### AI Agent Behavior
 When running a backtest, the agent:
-1. Reads `.agent/backtest_runner.md`
+1. Reads `.claude/agents/backtest_runner.md`
 2. Validates strategy file exists and is syntactically correct
 3. Checks data bundle availability
 4. Executes backtest with appropriate date range
@@ -245,7 +245,7 @@ After analysis, you should know:
 
 ### AI Agent Behavior
 When analyzing results, the agent:
-1. Reads `.agent/analyst.md`
+1. Reads `.claude/agents/analyst.md`
 2. Loads metrics and returns from results directory
 3. Generates standard visualizations
 4. Identifies anomalies or concerns
@@ -325,7 +325,7 @@ After optimization:
 
 ### AI Agent Behavior
 When optimizing, the agent:
-1. Reads `.agent/optimizer.md`
+1. Reads `.claude/agents/optimizer.md`
 2. Loads strategy and current parameters
 3. Requests parameter ranges (or uses defaults from hypothesis)
 4. Runs optimization with specified method
@@ -452,7 +452,7 @@ The catalog (`docs/strategy_catalog.md`) tracks all strategies:
 ```
 config/settings.yaml
         ↓
-config/data_sources.yaml → lib/data_loader.py → data/bundles/
+config/data_sources.yaml → lib/bundles/ → data/bundles/
         ↓
 strategies/{name}/hypothesis.md
         ↓
@@ -460,19 +460,19 @@ strategies/{name}/strategy.py ← strategies/_template/
         ↓
 strategies/{name}/parameters.yaml
         ↓
-lib/backtest.py (Zipline execution)
+lib/backtest/ (Zipline execution)
         ↓
 results/{name}/backtest_{timestamp}/
         ↓
-lib/metrics.py + lib/plots.py
+lib/metrics/ + lib/plots/
         ↓
 results/{name}/optimization_{timestamp}/ (if optimizing)
         ↓
-lib/validate.py
+lib/validate/
         ↓
 results/{name}/walkforward_{timestamp}/ (validation)
         ↓
-lib/report.py
+lib/report/
         ↓
 reports/{name}_report_{date}.md
         ↓

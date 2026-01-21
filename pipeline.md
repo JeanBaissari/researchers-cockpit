@@ -211,20 +211,20 @@ notebooks/03_analyze.ipynb     # Load results, generate visualizations
 
 ### AI Agent Execution
 
-AI agents execute pipelines by following `.agent/` instructions:
+AI agents execute pipelines by following `.claude/agents/` instructions:
 
 **Human Input:**
 "Run full research on btc_momentum hypothesis: BTC trends following 20-day breakouts."
 
 **Agent Execution:**
-1. Read `.agent/strategy_creator.md`
+1. Read `.claude/agents/strategy_developer.md`
 2. Create strategy directory and files
-3. Read `.agent/backtest_runner.md`
+3. Read `.claude/agents/backtest_runner.md`
 4. Execute backtest
-5. Read `.agent/analyst.md`
+5. Read `.claude/agents/analyst.md`
 6. Analyze results
 7. If Sharpe > 0.3, proceed to optimization
-8. Read `.agent/optimizer.md`
+8. Read `.claude/agents/optimizer.md`
 9. Run optimization with walk-forward
 10. Generate report
 11. Update strategy catalog
@@ -339,7 +339,7 @@ Update results/{strategy}/latest symlink
 ```
 results/{strategy}/latest/
         ↓
-lib/report.py (template rendering)
+lib/report/ (template rendering)
         ↓
 reports/{strategy}_report_{date}.md
 ```
@@ -462,13 +462,13 @@ Results go to separate directories. No conflicts.
 1. Document the pattern in this file
 2. Create corresponding notebook (if interactive)
 3. Create corresponding script (if automated)
-4. Add to `.agent/` instructions
+4. Add to `.claude/agents/` instructions
 
 ### Modifying Existing Patterns
 
 1. Update this document
 2. Update any affected notebooks/scripts
-3. Update `.agent/` instructions
+3. Update `.claude/agents/` instructions
 4. Test with a sample strategy
 
 ### Pattern Selection Guide
