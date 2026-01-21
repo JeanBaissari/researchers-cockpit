@@ -568,8 +568,43 @@ The project meets all success criteria:
 - ✅ Documented distinction between `lib/validate/` (strategy validation) and `lib/validation/` (data validation)
 - ✅ Analysis completed for potential future renaming to reduce confusion
 
+### ✅ v1.11.1 Core Library Fixes & Documentation Updates (2026-01-21)
+**Status:** ✅ Complete - Core library fixes and documentation alignment
+
+**Core Library Fixes:**
+- **CSV Bundle Gap Filling** — Removed gap filling for CSV sources in daily aggregation
+  - CSV data is pre-validated and complete, gap filling caused false warnings
+  - Gap filling remains for API sources (Yahoo) where data may be incomplete
+  - Fixes issue with intraday-to-daily aggregated data warnings
+
+- **FOREX Calendar Holidays** — Added proper HolidayCalendar implementation
+  - Replaced empty DatetimeIndex with HolidayCalendar
+  - Added GoodFriday and New Year's Day holidays
+  - Aligns with global banking closures that affect forex trading
+
+**Script Improvements:**
+- **Ingest Data Logging** — Improved LogContext usage
+  - Updated to use asset_type instead of source/assets parameters
+  - Enhanced log messages with source information
+
+**Documentation Updates:**
+- **Workflow & Pipeline Docs** — Updated agent references
+  - Changed `.agent/` references to `.claude/agents/`
+  - Updated parameter loading documentation to reflect lib/config usage
+  - Aligned with v1.11.0+ modular architecture
+
+- **Walkforward Notebook** — Minor updates for future extensions
+
+**Files Changed:**
+- `lib/bundles/csv/writer.py` — Removed CSV gap filling
+- `lib/calendars/forex.py` — Added proper holiday calendar
+- `scripts/ingest_data.py` — Improved logging context
+- `workflow.md` — Updated agent references
+- `pipeline.md` — Updated agent references
+- `notebooks/05_walkforward.ipynb` — Minor updates
+
 ---
 
-**Last Updated:** 2026-01-19
-**Current Version:** v1.11.0
+**Last Updated:** 2026-01-21
+**Current Version:** v1.11.1
 **Status:** ✅ Fully Operational - Zero Legacy Patterns, Modern Architecture Complete, Test Suite Modernized
