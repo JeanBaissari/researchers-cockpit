@@ -20,26 +20,25 @@ from lib.backtest import BacktestConfig
 
 class TestStrategyExecution:
     """Test strategy execution in backtests."""
-    
+
     @pytest.mark.unit
     def test_strategy_file_structure(self, sample_strategy_file):
         """Test strategy file has correct structure."""
         content = sample_strategy_file.read_text()
-        
+
         # Should have imports
-        assert 'import' in content or 'from' in content
-        
+        assert "import" in content or "from" in content
+
         # Should have initialize function
-        assert 'def initialize' in content
-        
+        assert "def initialize" in content
+
         # Should have handle_data function
-        assert 'def handle_data' in content
-    
+        assert "def handle_data" in content
+
     @pytest.mark.unit
     def test_strategy_uses_context(self, sample_strategy_file):
         """Test that strategy uses context object."""
         content = sample_strategy_file.read_text()
-        
-        # Strategy should reference context
-        assert 'context' in content
 
+        # Strategy should reference context
+        assert "context" in content

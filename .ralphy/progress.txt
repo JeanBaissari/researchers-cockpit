@@ -1,0 +1,43 @@
+# Ralphy Progress Log
+
+- [✓] 2026-01-28 00:14 - Create Zipline research agent at `.claude/agents/zipline-researcher.md`
+- [✓] 2026-01-28 00:26 - Research Zipline data access APIs and document in `tasks/ralphy/research/zipline_api_inventory.md`
+- [✓] 2026-01-28 00:30 - Research Zipline Pipeline system and add to inventory
+- [✓] 2026-01-28 00:33 - **Verify agent explicitly targets zipline-reloaded (not legacy Zipline)**
+- [✓] 2026-01-28 00:35 - Research Zipline Reloaded data access APIs and document in `tasks/ralphy/research/zipline_api_inventory.md`
+- [✓] 2026-01-28 00:37 - Research Zipline Reloaded Pipeline system and add to inventory
+- [✓] 2026-01-28 00:40 - Research Zipline Reloaded metrics system and add to inventory
+- [✓] 2026-01-28 00:44 - Research Zipline Reloaded bundle management and add to inventory
+- [✓] 2026-01-28 00:47 - Research Zipline Reloaded order management and add to inventory
+- [✓] 2026-01-28 00:52 - Analyze lib/backtest/ for Zipline Reloaded API wrappers
+- [✓] 2026-01-28 01:00 - Analyze lib/bundles/ for Zipline Reloaded API wrappers
+- [✓] 2026-01-28 01:03 - Analyze lib/metrics/ for Zipline Reloaded duplications
+- [✓] 2026-01-28 01:04 - Analyze lib/pipeline_utils.py for Pipeline wrappers
+- [✓] 2026-01-28 01:07 - Analyze lib/position_sizing.py for order wrappers
+- [✓] 2026-01-28 01:09 - Analyze lib/risk_management.py for order wrappers
+- [✓] 2026-01-28 01:12 - Document duplications in `tasks/ralphy/research/duplication_analysis.md`
+- [✓] 2026-01-28 01:16 - Identify functionality Zipline Reloaded doesn't provide
+- [✓] 2026-01-28 01:22 - Run test suite and collect failures
+- [✓] 2026-01-28 01:30 - Categorize test failures by type
+- [✓] 2026-01-28 01:34 - Document test analysis in `tasks/ralphy/research/test_analysis.md`
+- [✓] 2026-01-28 01:36 - Review pipeline.md for Zipline Reloaded alignment
+- [✓] 2026-01-28 01:39 - Review workflow.md for Zipline Reloaded alignment
+- [✓] 2026-01-28 01:44 - Review strategy template for Zipline Reloaded usage
+- [✓] 2026-01-28 01:48 - Document architecture alignment in `tasks/ralphy/research/architecture_alignment.md`
+- [✓] 2026-01-28 02:56 - Refactor all 3 strategy analyze() functions to use lib/metrics instead of empyrical (strategies/_template/strategy.py, strategies/forex/breakout_intraday/strategy.py, strategies/forex_breakout_test/strategy.py)
+- [✓] 2026-01-28 02:59 - Review lib/position_sizing.py - ensure it complements Zipline's order_target_percent() API
+- [✓] 2026-01-28 03:04 - Document when to use Zipline's order_target_percent() vs lib/position_sizing.py
+- [✓] 2026-01-28 03:13 - Review lib/risk_management.py - ensure it complements Zipline's risk controls (MaxPositionSize, MaxOrderSize, etc.)
+- [✓] 2026-01-28 03:17 - Document when to use Zipline's controls vs lib/risk_management.py utilities
+- [✓] 2026-01-28 03:24 - Review lib/validation/ - ensure it complements Zipline's data quality validation (pre-ingestion vs runtime)
+- [✓] 2026-01-28 03:27 - Document when to use Zipline's filters (isnan, AllPresent) vs lib/validation/ validators
+- [✓] 2026-01-28 03:32 - Review lib/report/ - ensure it complements Zipline's metrics system (MetricsTracker, Performance DataFrame)
+- [✓] 2026-01-28 03:35 - Document integration with Zipline's Performance DataFrame (38+ columns)
+- [✓] 2026-01-28 03:40 - Review lib/config/ - ensure it complements Zipline's SimulationParameters
+- [✓] 2026-01-28 03:44 - Document integration with Zipline's set_commission(), set_slippage() methods
+- [✓] 2026-01-28 03:49 - Review lib/logging/ - ensure it enhances Zipline's standard logging (structured, context-aware)
+- [✓] 2026-01-28 03:54 - Document integration with Zipline's named loggers (Blotter, ZiplineLog, DataPortal)
+- [✓] 2026-01-28 04:02 - Verify lib/pipeline_utils.py doesn't wrap Zipline Pipeline APIs
+- [✓] 2026-01-28 04:32 - Fix logic errors (update assertions for v1.12.0 behavior)
+- [✗] 2026-01-28 04:33 - Verify lib/bundles/ uses Zipline bundle APIs directly (v1.12.0 compliance)
+- [✓] 2026-01-28 04:35 - Create lib/bundles/utils.validate_bundle_exists() function

@@ -14,16 +14,17 @@ from typing import Optional, List
 
 class ProjectRootNotFoundError(Exception):
     """Raised when project root cannot be determined."""
+
     pass
 
 
 # Project marker files in priority order
 PROJECT_MARKERS = [
-    'pyproject.toml',      # Primary Python project marker
-    '.git',                # Git repository root
-    'config/settings.yaml', # Project-specific marker
-    'CLAUDE.md',           # This project's documentation
-    '.project_root',       # Explicit marker (optional)
+    "pyproject.toml",  # Primary Python project marker
+    ".git",  # Git repository root
+    "config/settings.yaml",  # Project-specific marker
+    "CLAUDE.md",  # This project's documentation
+    ".project_root",  # Explicit marker (optional)
 ]
 
 
@@ -52,7 +53,7 @@ def get_project_root() -> Path:
         Set PROJECT_ROOT environment variable to override automatic detection.
     """
     # Check for environment variable override
-    env_root = os.environ.get('PROJECT_ROOT')
+    env_root = os.environ.get("PROJECT_ROOT")
     if env_root:
         env_path = Path(env_root)
         if env_path.exists():
@@ -84,32 +85,32 @@ def get_project_root() -> Path:
 
 def get_strategies_dir() -> Path:
     """Get the strategies directory path."""
-    return get_project_root() / 'strategies'
+    return get_project_root() / "strategies"
 
 
 def get_results_dir() -> Path:
     """Get the results directory path."""
-    return get_project_root() / 'results'
+    return get_project_root() / "results"
 
 
 def get_data_dir() -> Path:
     """Get the data directory path."""
-    return get_project_root() / 'data'
+    return get_project_root() / "data"
 
 
 def get_config_dir() -> Path:
     """Get the config directory path."""
-    return get_project_root() / 'config'
+    return get_project_root() / "config"
 
 
 def get_logs_dir() -> Path:
     """Get the logs directory path."""
-    return get_project_root() / 'logs'
+    return get_project_root() / "logs"
 
 
 def get_reports_dir() -> Path:
     """Get the reports directory path."""
-    return get_project_root() / 'reports'
+    return get_project_root() / "reports"
 
 
 def validate_project_structure() -> List[str]:
@@ -129,11 +130,11 @@ def validate_project_structure() -> List[str]:
 
     # Required directories
     required_dirs = [
-        'strategies',
-        'results',
-        'data',
-        'config',
-        'lib',
+        "strategies",
+        "results",
+        "data",
+        "config",
+        "lib",
     ]
 
     for dir_name in required_dirs:
@@ -143,7 +144,7 @@ def validate_project_structure() -> List[str]:
 
     # Required config files
     required_configs = [
-        'config/settings.yaml',
+        "config/settings.yaml",
     ]
 
     for config_file in required_configs:
@@ -153,9 +154,9 @@ def validate_project_structure() -> List[str]:
 
     # Optional but recommended
     optional_items = [
-        ('strategies/_template', 'Strategy template'),
-        ('logs', 'Logs directory'),
-        ('reports', 'Reports directory'),
+        ("strategies/_template", "Strategy template"),
+        ("logs", "Logs directory"),
+        ("reports", "Reports directory"),
     ]
 
     for item_path, item_name in optional_items:
@@ -174,20 +175,20 @@ def ensure_project_dirs() -> None:
     root = get_project_root()
 
     required_dirs = [
-        'strategies',
-        'strategies/_template',
-        'strategies/crypto',
-        'strategies/forex',
-        'strategies/equities',
-        'results',
-        'data',
-        'data/bundles',
-        'data/cache',
-        'data/processed',  # Staging area for CSV files before bundle ingestion
-        'data/exports',
-        'config',
-        'logs',
-        'reports',
+        "strategies",
+        "strategies/_template",
+        "strategies/crypto",
+        "strategies/forex",
+        "strategies/equities",
+        "results",
+        "data",
+        "data/bundles",
+        "data/cache",
+        "data/processed",  # Staging area for CSV files before bundle ingestion
+        "data/exports",
+        "config",
+        "logs",
+        "reports",
     ]
 
     for dir_name in required_dirs:

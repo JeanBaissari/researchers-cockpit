@@ -24,7 +24,7 @@ _context_lock = threading.RLock()
 def reset_context() -> None:
     """
     Clear all context values at once.
-    
+
     Thread-safe operation useful between backtest runs or test cases.
     """
     with _context_lock:
@@ -42,9 +42,9 @@ def LogContext(
 ) -> Generator[None, None, None]:
     """
     Context manager for adding context to all logs within the block.
-    
+
     Thread-safe context management with automatic cleanup on exit.
-    
+
     Usage:
         with LogContext(
             phase="backtest",
@@ -55,7 +55,7 @@ def LogContext(
             timeframe="daily"
         ):
             run_backtest(...)  # All logs within include full context
-    
+
     Args:
         phase: Pipeline phase (e.g., "hypothesis", "backtest", "optimize", "validate").
         strategy: Optional strategy name.
@@ -66,28 +66,28 @@ def LogContext(
     """
     # Define context fields and their provided values
     context_fields: Dict[str, Any] = {
-        'phase': phase,
-        'strategy': strategy,
-        'run_id': run_id,
-        'asset_type': asset_type,
-        'bundle_name': bundle_name,
-        'timeframe': timeframe,
+        "phase": phase,
+        "strategy": strategy,
+        "run_id": run_id,
+        "asset_type": asset_type,
+        "bundle_name": bundle_name,
+        "timeframe": timeframe,
     }
-    
+
     # Store previous context values (thread-safe)
     prev_values: Dict[str, Any] = {}
     with _context_lock:
         for field, value in context_fields.items():
-            if value is not None or field == 'phase':  # phase is always set
+            if value is not None or field == "phase":  # phase is always set
                 prev_values[field] = get_context_value(field)
-        
+
         # Set new context values
         for field, value in context_fields.items():
             if value is not None:
                 set_context_value(field, value)
-            elif field == 'phase':
+            elif field == "phase":
                 set_context_value(field, value)
-    
+
     try:
         yield
     finally:
@@ -109,18 +109,3 @@ __all__ = [
     "clear_context_value",
     "has_context_value",
 ]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

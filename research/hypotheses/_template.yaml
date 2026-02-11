@@ -1,0 +1,42 @@
+# Hypothesis Template
+# Copy this file and rename to {YYYY-MM}_{slug}.yaml when creating a new hypothesis
+
+id: "2026-02_example_hypothesis"
+created: "2026-02-09"
+updated: "2026-02-09"
+status: "draft"  # draft | testing | validated | rejected
+
+hypothesis:
+  title: "Example: BTC exhibits 20-day momentum persistence"
+  description: |
+    Bitcoin price trends persist for at least 20 trading days.
+    A simple SMA crossover (fast=10, slow=50) should capture this.
+  asset_class: "crypto"  # crypto | forex | equities
+  symbols:
+    - "BTC-USD"
+  timeframe: "daily"  # daily | 1h | 5m | etc.
+
+rationale:
+  why: "Crypto markets are less efficient, trends persist longer"
+  prior_evidence: "Visual inspection of 2023-2024 BTC charts"
+  expected_sharpe: 1.2
+  expected_max_drawdown: 0.25
+
+testing:
+  strategy_name: "btc_sma_cross"
+  backtest_ids: []
+  parameter_ranges:
+    fast_period: [5, 10, 20]
+    slow_period: [30, 50, 100]
+
+results:
+  actual_sharpe: null
+  actual_max_drawdown: null
+  conclusion: null  # "Hypothesis validated" | "Hypothesis rejected: [reason]"
+  learnings: null
+
+tags:
+  - "momentum"
+  - "crypto"
+  - "sma"
+  - "trend-following"

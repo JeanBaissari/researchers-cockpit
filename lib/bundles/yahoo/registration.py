@@ -13,7 +13,6 @@ import pandas as pd
 from zipline.utils.calendar_utils import get_calendar
 
 from ..timeframes import get_timeframe_info, get_minutes_per_day, validate_timeframe_date_range
-from ..registry import unregister_bundle, register_bundle_metadata, add_registered_bundle
 from .fetcher import fetch_yahoo_data
 from .processor import process_yahoo_data, aggregate_to_daily
 from ...data.filters import (
@@ -28,12 +27,12 @@ logger = logging.getLogger(__name__)
 def register_yahoo_bundle(
     bundle_name: str,
     symbols: List[str],
-    calendar_name: str = 'XNYS',
+    calendar_name: str = "XNYS",
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    data_frequency: str = 'daily',
-    timeframe: str = 'daily',
-    force: bool = False
+    data_frequency: str = "daily",
+    timeframe: str = "daily",
+    force: bool = False,
 ):
     """
     Register a Yahoo Finance bundle with multi-timeframe support.
@@ -52,12 +51,12 @@ def register_yahoo_bundle(
         For 4h timeframe, this fetches 1h data from yfinance and aggregates to 4h,
         since yfinance does not natively support 4h intervals.
     """
-    from zipline.data.bundles import register, bundles
+    from zipline.data.bundles import register, bundles, unregister
 
     # Check if already registered
     if bundle_name in bundles:
         if force:
-            unregister_bundle(bundle_name)
+            unregister(bundle_name)  # Direct Zipline API (v1.12.0+)
         else:
             return
 
@@ -71,9 +70,9 @@ def register_yahoo_bundle(
 
     # Get timeframe info
     tf_info = get_timeframe_info(timeframe.lower())
-    yf_interval = tf_info['yf_interval']
-    requires_aggregation = tf_info['requires_aggregation']
-    aggregation_target = tf_info['aggregation_target']
+    yf_interval = tf_info["yf_interval"]
+    requires_aggregation = tf_info["requires_aggregation"]
+    aggregation_target = tf_info["aggregation_target"]
 
     # Capture closure variables
     closure_start_date = adjusted_start_date
@@ -89,9 +88,19 @@ def register_yahoo_bundle(
         mpd = get_minutes_per_day(closure_calendar_name)
 
         @register(bundle_name, calendar_name=closure_calendar_name, minutes_per_day=mpd)
-        def yahoo_ingest(environ, asset_db_writer, minute_bar_writer,
-                         daily_bar_writer, adjustment_writer, calendar,
-                         start_session, end_session, cache, show_progress, timestamp):
+        def yahoo_ingest(
+            environ,
+            asset_db_writer,
+            minute_bar_writer,
+            daily_bar_writer,
+            adjustment_writer,
+            calendar,
+            start_session,
+            end_session,
+            cache,
+            show_progress,
+            timestamp,
+        ):
             """Yahoo Finance bundle ingest function."""
             calendar_obj = get_calendar(closure_calendar_name)
 
@@ -99,9 +108,9 @@ def register_yahoo_bundle(
             def to_utc_midnight(ts):
                 if ts is None:
                     return None
-                if hasattr(ts, 'tz') and ts.tz is not None:
-                    ts = ts.tz_convert('UTC')
-                return pd.Timestamp(ts.date(), tz='UTC')
+                if hasattr(ts, "tz") and ts.tz is not None:
+                    ts = ts.tz_convert("UTC")
+                return pd.Timestamp(ts.date(), tz="UTC")
 
             start_date_utc = to_utc_midnight(start_session)
             end_date_utc = to_utc_midnight(end_session)
@@ -109,22 +118,31 @@ def register_yahoo_bundle(
             # Create asset metadata
             n_symbols = len(symbols_list)
             equities_data = {
-                'symbol': symbols_list,
-                'asset_name': symbols_list,
-                'start_date': [start_date_utc] * n_symbols,
-                'end_date': [end_date_utc] * n_symbols,
-                'exchange': ['NYSE' if closure_calendar_name == 'XNYS' else ('NASDAQ' if closure_calendar_name == 'XNAS' else 'NYSE')] * n_symbols,
-                'country_code': ['US'] * n_symbols,
+                "symbol": symbols_list,
+                "asset_name": symbols_list,
+                "start_date": [start_date_utc] * n_symbols,
+                "end_date": [end_date_utc] * n_symbols,
+                "exchange": [
+                    "NYSE"
+                    if closure_calendar_name == "XNYS"
+                    else ("NASDAQ" if closure_calendar_name == "XNAS" else "NYSE")
+                ]
+                * n_symbols,
+                "country_code": ["US"] * n_symbols,
             }
-            equities_df = pd.DataFrame(equities_data, index=pd.Index(range(n_symbols), name='sid'))
+            equities_df = pd.DataFrame(equities_data, index=pd.Index(range(n_symbols), name="sid"))
             asset_db_writer.write(equities=equities_df)
 
             if show_progress:
-                print(f"Fetching {closure_timeframe} data for {len(symbols_list)} symbols from Yahoo Finance...")
-                if closure_data_frequency == 'minute':
+                print(
+                    f"Fetching {closure_timeframe} data for {len(symbols_list)} symbols from Yahoo Finance..."
+                )
+                if closure_data_frequency == "minute":
                     print(f"  Using minute bar writer (yfinance interval: {closure_yf_interval})")
                 if closure_requires_aggregation:
-                    print(f"  Note: Will aggregate {closure_yf_interval} data to {closure_aggregation_target}")
+                    print(
+                        f"  Note: Will aggregate {closure_yf_interval} data to {closure_aggregation_target}"
+                    )
 
             # Data generator
             def data_gen():
@@ -138,7 +156,7 @@ def register_yahoo_bundle(
                             closure_start_date,
                             closure_end_date,
                             closure_yf_interval,
-                            show_progress
+                            show_progress,
                         )
 
                         # Process data
@@ -152,7 +170,7 @@ def register_yahoo_bundle(
                             closure_requires_aggregation,
                             closure_aggregation_target,
                             symbol,
-                            show_progress
+                            show_progress,
                         )
 
                         successful_fetches += 1
@@ -170,14 +188,16 @@ def register_yahoo_bundle(
                         f"Check that symbols are valid and date range has data."
                     )
 
-            if closure_data_frequency == 'minute':
+            if closure_data_frequency == "minute":
                 # Collect minute data
                 if show_progress:
                     print("  Collecting minute data for aggregation...")
                 all_minute_data = list(data_gen())
 
                 if not all_minute_data:
-                    raise RuntimeError("No minute data was collected. Check symbol validity and date range.")
+                    raise RuntimeError(
+                        "No minute data was collected. Check symbol validity and date range."
+                    )
 
                 # Write minute bars
                 if show_progress:
@@ -194,37 +214,54 @@ def register_yahoo_bundle(
                             daily_df = aggregate_to_daily(minute_df)
 
                             if daily_df.empty:
-                                print(f"  Warning: No daily data after aggregating minute data for SID {sid}")
+                                print(
+                                    f"  Warning: No daily data after aggregating minute data for SID {sid}"
+                                )
                                 continue
 
                             # Ensure UTC and normalize
                             if daily_df.index.tz is None:
-                                daily_df.index = daily_df.index.tz_localize('UTC')
-                            elif str(daily_df.index.tz) != 'UTC':
-                                daily_df.index = daily_df.index.tz_convert('UTC')
+                                daily_df.index = daily_df.index.tz_localize("UTC")
+                            elif str(daily_df.index.tz) != "UTC":
+                                daily_df.index = daily_df.index.tz_convert("UTC")
                             daily_df.index = daily_df.index.normalize()
 
                             # FOREX Sunday consolidation
-                            if 'FOREX' in closure_calendar_name.upper():
-                                daily_df = consolidate_forex_sunday_to_friday(daily_df, calendar_obj, show_progress, sid)
+                            if "FOREX" in closure_calendar_name.upper():
+                                daily_df = consolidate_forex_sunday_to_friday(
+                                    daily_df, calendar_obj, show_progress, sid
+                                )
                                 if daily_df.empty:
                                     continue
 
                             # Calendar session filtering
-                            if 'FOREX' in closure_calendar_name.upper():
-                                daily_df = filter_to_calendar_sessions(daily_df, calendar_obj, show_progress, sid)
+                            if "FOREX" in closure_calendar_name.upper():
+                                daily_df = filter_to_calendar_sessions(
+                                    daily_df, calendar_obj, show_progress, sid
+                                )
                                 if daily_df.empty:
                                     continue
 
                             # Gap filling
-                            if 'FOREX' in closure_calendar_name.upper() or 'CRYPTO' in closure_calendar_name.upper():
-                                daily_df = apply_gap_filling(daily_df, calendar_obj, closure_calendar_name, show_progress, sid)
+                            if (
+                                "FOREX" in closure_calendar_name.upper()
+                                or "CRYPTO" in closure_calendar_name.upper()
+                            ):
+                                daily_df = apply_gap_filling(
+                                    daily_df,
+                                    calendar_obj,
+                                    closure_calendar_name,
+                                    show_progress,
+                                    sid,
+                                )
                                 if daily_df.empty:
                                     continue
 
                             yield sid, daily_df
                         except Exception as agg_err:
-                            print(f"  Warning: Failed to aggregate daily data for SID {sid}: {agg_err}")
+                            print(
+                                f"  Warning: Failed to aggregate daily data for SID {sid}: {agg_err}"
+                            )
                             logger.exception(f"Failed to aggregate daily data for SID {sid}")
                             continue
 
@@ -241,60 +278,34 @@ def register_yahoo_bundle(
         return yahoo_ingest
 
     make_yahoo_ingest(symbols)
-    add_registered_bundle(bundle_name)
-
-    # Persist metadata
-    register_bundle_metadata(
-        bundle_name=bundle_name,
-        symbols=symbols,
-        calendar_name=calendar_name,
-        start_date=start_date,
-        end_date=end_date,
-        data_frequency=data_frequency,
-        timeframe=timeframe
-    )
+    # Note: Bundle is automatically tracked by Zipline after register() call
+    # No need for additional metadata tracking (v1.12.0+ - NO WRAPPERS)
 
 
 def auto_register_yahoo_bundle_if_exists():
-    """Auto-register yahoo_equities_daily bundle if data was ingested."""
-    import logging
+    """
+    Auto-register yahoo_equities_daily bundle if data was ingested.
 
-    zipline_data_dir = Path.home() / '.zipline' / 'data' / 'yahoo_equities_daily'
+    v1.12.0+: No registry tracking - extracts symbols directly from bundle database.
+    """
+    zipline_data_dir = Path.home().joinpath(".zipline", "data", "yahoo_equities_daily")
     if not zipline_data_dir.exists():
         return
 
     try:
         from zipline.data.bundles import bundles
 
-        if 'yahoo_equities_daily' not in bundles:
-            # First try to load from registry
-            from ..registry import load_bundle_registry
-            from ..utils import extract_symbols_from_bundle, is_valid_date_string
-            
-            registry = load_bundle_registry()
-            if 'yahoo_equities_daily' in registry:
-                meta = registry['yahoo_equities_daily']
-                # Validate end_date
-                end_date = meta.get('end_date')
-                if end_date and not is_valid_date_string(end_date):
-                    end_date = None
-                register_yahoo_bundle(
-                    bundle_name='yahoo_equities_daily',
-                    symbols=meta.get('symbols', ['SPY']),
-                    calendar_name=meta.get('calendar_name', 'XNYS'),
-                    start_date=meta.get('start_date'),
-                    end_date=end_date,
-                    data_frequency=meta.get('data_frequency', 'daily'),
-                    timeframe=meta.get('timeframe', 'daily')
-                )
+        if "yahoo_equities_daily" not in bundles:
+            # v1.12.0+: Extract symbols directly from bundle database (no registry)
+            from ..utils import extract_symbols_from_bundle
+
+            symbols = extract_symbols_from_bundle("yahoo_equities_daily")
+            if symbols:
+                register_yahoo_bundle("yahoo_equities_daily", symbols, "XNYS")
             else:
-                # Fallback to extracting symbols from database
-                symbols = extract_symbols_from_bundle('yahoo_equities_daily')
-                if symbols:
-                    register_yahoo_bundle('yahoo_equities_daily', symbols, 'XNYS')
-                else:
-                    register_yahoo_bundle('yahoo_equities_daily', ['SPY'], 'XNYS')
+                # Fallback to default symbol if extraction fails
+                register_yahoo_bundle("yahoo_equities_daily", ["SPY"], "XNYS")
     except ImportError:
         pass  # Zipline not installed
     except Exception as e:
-        logging.getLogger(__name__).warning(f"Auto-registration failed: {e}")
+        logger.warning(f"Auto-registration failed: {e}")

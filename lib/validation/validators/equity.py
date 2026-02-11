@@ -20,7 +20,7 @@ from ..core import ValidationResult, ValidationSeverity
 from ..column_mapping import ColumnMapping
 from ..utils import safe_divide, calculate_z_scores, ensure_timezone
 
-logger = logging.getLogger('cockpit.validation.equity')
+logger = logging.getLogger("cockpit.validation.equity")
 
 
 class EquityValidator(BaseValidator):
@@ -49,10 +49,7 @@ class EquityValidator(BaseValidator):
         ]
 
     def validate(
-        self,
-        df: pd.DataFrame,
-        col_map: ColumnMapping,
-        asset_name: str = "unknown"
+        self, df: pd.DataFrame, col_map: ColumnMapping, asset_name: str = "unknown"
     ) -> ValidationResult:
         """
         Validate equity-specific characteristics.
@@ -66,11 +63,11 @@ class EquityValidator(BaseValidator):
             ValidationResult with equity-specific check outcomes
         """
         result = self._create_result()
-        result.add_metadata('asset_name', asset_name)
-        result.add_metadata('asset_type', 'equity')
+        result.add_metadata("asset_name", asset_name)
+        result.add_metadata("asset_type", "equity")
 
         if df.empty:
-            result.add_check('empty_data', False, f"DataFrame is empty for {asset_name}")
+            result.add_check("empty_data", False, f"DataFrame is empty for {asset_name}")
             return result
 
         # Run registered checks
@@ -81,11 +78,7 @@ class EquityValidator(BaseValidator):
         return result
 
     def _check_volume_spikes(
-        self,
-        result: ValidationResult,
-        df: pd.DataFrame,
-        col_map: ColumnMapping,
-        asset_name: str
+        self, result: ValidationResult, df: pd.DataFrame, col_map: ColumnMapping, asset_name: str
     ) -> ValidationResult:
         """Check for volume spikes using z-score analysis."""
         volume_col = col_map.volume
@@ -96,8 +89,9 @@ class EquityValidator(BaseValidator):
         # Edge case: Single-row or insufficient data
         if len(df) < 3:
             result.add_check(
-                'volume_spikes', True,
-                "Insufficient data for volume spike check (need at least 3 rows)"
+                "volume_spikes",
+                True,
+                "Insufficient data for volume spike check (need at least 3 rows)",
             )
             return result
 
@@ -118,25 +112,23 @@ class EquityValidator(BaseValidator):
             )
 
             result.add_check(
-                'volume_spikes', False, msg,
+                "volume_spikes",
+                False,
+                msg,
                 {
-                    'spike_count': spikes,
-                    'spike_pct': spike_pct,
-                    'max_spike_z': max_spike_z,
-                    'spike_dates': [str(d) for d in spike_dates[:5].tolist()]
+                    "spike_count": spikes,
+                    "spike_pct": spike_pct,
+                    "max_spike_z": max_spike_z,
+                    "spike_dates": [str(d) for d in spike_dates[:5].tolist()],
                 },
-                severity=ValidationSeverity.WARNING
+                severity=ValidationSeverity.WARNING,
             )
         else:
-            result.add_check('volume_spikes', True, "No significant volume spikes detected")
+            result.add_check("volume_spikes", True, "No significant volume spikes detected")
         return result
 
     def _check_potential_splits(
-        self,
-        result: ValidationResult,
-        df: pd.DataFrame,
-        col_map: ColumnMapping,
-        asset_name: str
+        self, result: ValidationResult, df: pd.DataFrame, col_map: ColumnMapping, asset_name: str
     ) -> ValidationResult:
         """
         Detect potential unadjusted stock splits via price drops and volume spikes.
@@ -154,8 +146,9 @@ class EquityValidator(BaseValidator):
         # Edge case: Single-row DataFrame
         if len(df) < 2:
             result.add_check(
-                'potential_splits', True,
-                "Insufficient data for split detection (need at least 2 rows)"
+                "potential_splits",
+                True,
+                "Insufficient data for split detection (need at least 2 rows)",
             )
             return result
 
@@ -163,11 +156,11 @@ class EquityValidator(BaseValidator):
         # Also check 3:2 (33% drop) and 5:4 (25% drop)
         # Reverse splits: 1:2 (100% increase), 1:3 (200% increase)
         split_ratios = [
-            (0.25, 0.28, "5:4"),      # 25% drop ±3% tolerance
-            (0.33, 0.36, "3:2"),      # 33% drop ±3% tolerance
-            (0.50, 0.55, "2:1"),      # 50% drop ±5% tolerance
-            (0.667, 0.70, "3:1"),     # 66.7% drop ±3.3% tolerance
-            (0.75, 0.78, "4:1"),      # 75% drop ±3% tolerance
+            (0.25, 0.28, "5:4"),  # 25% drop ±3% tolerance
+            (0.33, 0.36, "3:2"),  # 33% drop ±3% tolerance
+            (0.50, 0.55, "2:1"),  # 50% drop ±5% tolerance
+            (0.667, 0.70, "3:1"),  # 66.7% drop ±3.3% tolerance
+            (0.75, 0.78, "4:1"),  # 75% drop ±3% tolerance
             (1.00, 1.10, "1:2 reverse"),  # 100% increase ±10% tolerance
             (2.00, 2.20, "1:3 reverse"),  # 200% increase ±20% tolerance
         ]
@@ -207,13 +200,15 @@ class EquityValidator(BaseValidator):
                         # Flag if price drop matches split pattern (with or without volume spike)
                         # Volume spike strengthens the signal but isn't required
                         if has_volume_spike or volume_z_scores is None:
-                            potential_splits.append({
-                                'date': str(date),
-                                'price_change_pct': float(pct_change * 100),
-                                'split_ratio': ratio_name,
-                                'volume_z_score': volume_z,
-                                'has_volume_spike': has_volume_spike
-                            })
+                            potential_splits.append(
+                                {
+                                    "date": str(date),
+                                    "price_change_pct": float(pct_change * 100),
+                                    "split_ratio": ratio_name,
+                                    "volume_z_score": volume_z,
+                                    "has_volume_spike": has_volume_spike,
+                                }
+                            )
                         break
 
             # Check for upward price jumps (reverse splits)
@@ -228,13 +223,15 @@ class EquityValidator(BaseValidator):
                             has_volume_spike = volume_z > volume_spike_threshold
 
                         if has_volume_spike or volume_z_scores is None:
-                            potential_splits.append({
-                                'date': str(date),
-                                'price_change_pct': float(pct_change * 100),
-                                'split_ratio': ratio_name,
-                                'volume_z_score': volume_z,
-                                'has_volume_spike': has_volume_spike
-                            })
+                            potential_splits.append(
+                                {
+                                    "date": str(date),
+                                    "price_change_pct": float(pct_change * 100),
+                                    "split_ratio": ratio_name,
+                                    "volume_z_score": volume_z,
+                                    "has_volume_spike": has_volume_spike,
+                                }
+                            )
                         break
 
         if potential_splits:
@@ -245,23 +242,21 @@ class EquityValidator(BaseValidator):
             )
 
             result.add_check(
-                'potential_splits', False, msg,
+                "potential_splits",
+                False,
+                msg,
                 {
-                    'potential_split_count': len(potential_splits),
-                    'potential_splits': potential_splits[:10]  # Limit to first 10
+                    "potential_split_count": len(potential_splits),
+                    "potential_splits": potential_splits[:10],  # Limit to first 10
                 },
-                severity=ValidationSeverity.WARNING
+                severity=ValidationSeverity.WARNING,
             )
         else:
-            result.add_check('potential_splits', True, "No potential unadjusted splits detected")
+            result.add_check("potential_splits", True, "No potential unadjusted splits detected")
         return result
 
     def _check_price_jumps(
-        self,
-        result: ValidationResult,
-        df: pd.DataFrame,
-        col_map: ColumnMapping,
-        asset_name: str
+        self, result: ValidationResult, df: pd.DataFrame, col_map: ColumnMapping, asset_name: str
     ) -> ValidationResult:
         """Check for sudden large price jumps."""
         close_col = col_map.close
@@ -272,8 +267,7 @@ class EquityValidator(BaseValidator):
         # Edge case: Single-row DataFrame
         if len(df) < 2:
             result.add_check(
-                'price_jumps', True,
-                "Insufficient data for price jump check (need at least 2 rows)"
+                "price_jumps", True, "Insufficient data for price jump check (need at least 2 rows)"
             )
             return result
 
@@ -292,16 +286,18 @@ class EquityValidator(BaseValidator):
                 f"Review these dates for data quality issues or verify if splits/adjustments are needed."
             )
             result.add_check(
-                'price_jumps', False, msg,
+                "price_jumps",
+                False,
+                msg,
                 {
-                    'jump_count': len(large_jumps),
-                    'jump_pct': jump_pct,
-                    'max_jump_pct': float(pct_changes.max()),
-                    'jump_dates': [str(d) for d in jump_dates_list],
-                    'jump_values': jump_values
+                    "jump_count": len(large_jumps),
+                    "jump_pct": jump_pct,
+                    "max_jump_pct": float(pct_changes.max()),
+                    "jump_dates": [str(d) for d in jump_dates_list],
+                    "jump_values": jump_values,
                 },
-                severity=self.config.get_severity()
+                severity=self.config.get_severity(),
             )
         else:
-            result.add_check('price_jumps', True, "No excessive price jumps detected")
+            result.add_check("price_jumps", True, "No excessive price jumps detected")
         return result

@@ -10,15 +10,15 @@ from typing import Optional, List
 from .core import ValidationResult
 from .base import BaseValidator
 
-logger = logging.getLogger('cockpit.validation')
+logger = logging.getLogger("cockpit.validation")
 
 
 class CompositeValidator:
     """
     Combines multiple validators for comprehensive validation.
-    
+
     Implements the Composite pattern to run validation pipelines.
-    
+
     Example:
         >>> composite = CompositeValidator([
         ...     DataValidator(timeframe='1d'),
@@ -30,19 +30,19 @@ class CompositeValidator:
     def __init__(self, validators: Optional[List[BaseValidator]] = None):
         """
         Initialize composite validator.
-        
+
         Args:
             validators: List of validators to run
         """
         self.validators: List[BaseValidator] = validators or []
 
-    def add_validator(self, validator: BaseValidator) -> 'CompositeValidator':
+    def add_validator(self, validator: BaseValidator) -> "CompositeValidator":
         """
         Add a validator to the pipeline.
-        
+
         Args:
             validator: Validator to add
-            
+
         Returns:
             Self for method chaining
         """
@@ -52,16 +52,16 @@ class CompositeValidator:
     def validate(self, *args, **kwargs) -> ValidationResult:
         """
         Run all validators and merge results.
-        
+
         Args:
             *args, **kwargs: Arguments passed to each validator
-            
+
         Returns:
             Merged ValidationResult
         """
         result = ValidationResult()
-        result.add_metadata('validator', 'CompositeValidator')
-        result.add_metadata('validator_count', len(self.validators))
+        result.add_metadata("validator", "CompositeValidator")
+        result.add_metadata("validator_count", len(self.validators))
 
         for i, validator in enumerate(self.validators):
             try:
@@ -75,18 +75,3 @@ class CompositeValidator:
                 logger.warning(f"Composite validation error: {e}", exc_info=True)
 
         return result
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

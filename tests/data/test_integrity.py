@@ -13,6 +13,7 @@ Verify data consistency:
 import sys
 import json
 from pathlib import Path
+from unittest.mock import patch, MagicMock
 
 # Third-party imports
 import pytest
@@ -33,30 +34,69 @@ from lib.bundles import list_bundles
 
 
 @pytest.mark.unit
-def test_verify_bundle_dates():
-    """Test bundle date range verification."""
+@patch('lib.bundles.utils.ensure_bundle_registered')
+def test_verify_bundle_dates(mock_ensure_registered):
+    """Test bundle date range verification uses ensure_bundle_registered."""
+    from lib.validation.core import ValidationResult
+    
     bundles = list_bundles()
     
     if len(bundles) == 0:
         pytest.skip("No bundles available for testing")
     
     bundle = bundles[0]
+    mock_ensure_registered.return_value = True
     
-    # Test with valid dates (within bundle range)
-    # verify_bundle_dates now returns ValidationResult object
-    from lib.validation.core import ValidationResult
-    result = verify_bundle_dates(bundle, '2020-01-01', '2020-12-31')
-    assert isinstance(result, ValidationResult), "Should return ValidationResult"
-    # May be invalid if bundle doesn't cover these dates, that's OK
+    # Mock load_bundle to avoid actual bundle loading
+    # v1.12.0+: load_bundle is imported from lib.bundles.api inside verify_bundle_dates
+    with patch('lib.bundles.api.load_bundle') as mock_load:
+        mock_bundle_data = MagicMock()
+        mock_bundle_data.equity_daily_bar_reader.sessions = pd.date_range('2020-01-01', '2020-12-31', freq='D')
+        mock_load.return_value = mock_bundle_data
+        
+        # Test with valid dates (within bundle range)
+        result = verify_bundle_dates(bundle, '2020-01-01', '2020-12-31')
+        assert isinstance(result, ValidationResult), "Should return ValidationResult"
+        
+        # Verify ensure_bundle_registered was called
+        mock_ensure_registered.assert_called_once_with(
+            bundle,
+            raise_on_missing=True,
+            exception_type=FileNotFoundError,
+            start_date_hint="2020-01-01",
+            end_date_hint="2020-12-31",
+        )
     
     # Test with invalid dates (far future)
+    mock_ensure_registered.reset_mock()
+    mock_ensure_registered.return_value = True
+    
+    with patch('lib.bundles.api.load_bundle') as mock_load:
+        mock_bundle_data = MagicMock()
+        mock_bundle_data.equity_daily_bar_reader.sessions = pd.date_range('2020-01-01', '2020-12-31', freq='D')
+        mock_load.return_value = mock_bundle_data
+        
+        result_future = verify_bundle_dates(bundle, '2099-01-01', '2099-12-31')
+        assert isinstance(result_future, ValidationResult), "Should return ValidationResult"
+        # Future dates should either fail validation or have error messages
+        if not result_future.passed:
+            assert len(result_future.errors) > 0 or len(result_future.checks) > 0, \
+                "Future dates should produce error messages or failed checks"
+
+@pytest.mark.unit
+@patch('lib.bundles.utils.ensure_bundle_registered')
+def test_verify_bundle_dates_not_found(mock_ensure_registered):
+    """Test verify_bundle_dates handles FileNotFoundError from ensure_bundle_registered."""
     from lib.validation.core import ValidationResult
-    result_future = verify_bundle_dates(bundle, '2099-01-01', '2099-12-31')
-    assert isinstance(result_future, ValidationResult), "Should return ValidationResult"
-    # Future dates should either fail validation or have error messages
-    if not result_future.passed:
-        assert len(result_future.errors) > 0 or len(result_future.checks) > 0, \
-            "Future dates should produce error messages or failed checks"
+    
+    mock_ensure_registered.side_effect = FileNotFoundError("Bundle 'missing' not found")
+    
+    result = verify_bundle_dates('missing', '2020-01-01', '2020-12-31')
+    
+    assert isinstance(result, ValidationResult)
+    assert not result.passed
+    # Should have a check indicating bundle load failed
+    assert len(result.checks) > 0
 
 
 @pytest.mark.unit

@@ -9,15 +9,15 @@ from .config import get_logger
 
 
 # Module-level loggers for common namespaces
-data_logger = get_logger('data')
-strategy_logger = get_logger('strategy')
-backtest_logger = get_logger('backtest')
-metrics_logger = get_logger('metrics')
-validation_logger = get_logger('validation')
-report_logger = get_logger('report')
-optimization_logger = get_logger('optimization')
-pipeline_logger = get_logger('pipeline')
-ingestion_logger = get_logger('ingestion')
+data_logger = get_logger("data")
+strategy_logger = get_logger("strategy")
+backtest_logger = get_logger("backtest")
+metrics_logger = get_logger("metrics")
+validation_logger = get_logger("validation")
+report_logger = get_logger("report")
+optimization_logger = get_logger("optimization")
+pipeline_logger = get_logger("pipeline")
+ingestion_logger = get_logger("ingestion")
 
 
 # Public exports
@@ -32,18 +32,3 @@ __all__ = [
     "pipeline_logger",
     "ingestion_logger",
 ]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

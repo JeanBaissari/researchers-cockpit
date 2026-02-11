@@ -6,18 +6,3 @@ This directory contains tests for:
 - Report catalog
 - Report formatters
 """
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

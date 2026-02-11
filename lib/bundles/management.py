@@ -1,8 +1,13 @@
 """
-Bundle management functions for The Researcher's Cockpit.
+Bundle management functions for The Researcher's Cockpit (v1.12.0+).
 
-Handles bundle ingestion, updates, and deletion operations.
+Note: CSV bundle registration removed in v1.12.0.
+- For CSV bundles, register directly in ~/.zipline/extension.py using csvdir_equities()
+- This function now only supports Yahoo Finance source
+- Registry tracking removed (use Zipline's bundles dict directly)
+
 Extracted from api.py as part of v1.0.11 refactoring.
+Updated for v1.12.0 NO WRAPPERS directive.
 """
 
 import logging
@@ -11,9 +16,7 @@ from typing import List, Optional
 
 from ..config import get_data_source
 from .timeframes import get_timeframe_info
-from .registry import add_registered_bundle
 from .yahoo import register_yahoo_bundle
-from .csv import register_csv_bundle
 from ..calendars import register_custom_calendars
 from ..calendars import get_calendar_for_asset_class
 
@@ -28,9 +31,9 @@ def ingest_bundle(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     calendar_name: Optional[str] = None,
-    timeframe: str = 'daily',
+    timeframe: str = "daily",
     force: bool = False,
-    **kwargs
+    **kwargs,
 ) -> str:
     """
     Ingest data from a source into a Zipline bundle.
@@ -68,63 +71,65 @@ def ingest_bundle(
         raise ValueError(str(e))
 
     # Reject weekly/monthly
-    if timeframe in ('weekly', '1wk', 'monthly', '1mo'):
+    if timeframe in ("weekly", "1wk", "monthly", "1mo"):
         raise ValueError(
             f"Timeframe '{timeframe}' is not compatible with Zipline bundles. "
             f"For weekly/monthly data, ingest daily data and use aggregation functions."
         )
 
     # Validate source
-    if source != 'csv':
+    if source != "csv":
         try:
             source_config = get_data_source(source)
         except KeyError:
             raise ValueError(
-                f"Unsupported data source: {source}. "
-                f"Supported sources: yahoo, binance, oanda, csv"
+                f"Unsupported data source: {source}. Supported sources: yahoo, binance, oanda, csv"
             )
 
-        if not source_config.get('enabled', False):
+        if not source_config.get("enabled", False):
             raise ValueError(f"Data source '{source}' is not enabled in config/data_sources.yaml")
 
     # Determine asset class
-    asset_class = assets[0] if assets else 'equities'
+    asset_class = assets[0] if assets else "equities"
 
     # Auto-generate bundle name
     if bundle_name is None:
-        tf_normalized = {
-            '1d': 'daily', '1wk': 'weekly', '1mo': 'monthly'
-        }.get(timeframe, timeframe)
+        tf_normalized = {"1d": "daily", "1wk": "weekly", "1mo": "monthly"}.get(timeframe, timeframe)
         bundle_name = f"{source}_{asset_class}_{tf_normalized}"
 
     # Auto-detect calendar
     if calendar_name is None:
-        if 'crypto' in assets:
-            calendar_name = 'CRYPTO'
-        elif 'forex' in assets:
-            calendar_name = 'FOREX'
+        if "crypto" in assets:
+            calendar_name = "CRYPTO"
+        elif "forex" in assets:
+            calendar_name = "FOREX"
         else:
-            calendar_name = 'XNYS'
+            calendar_name = "XNYS"
 
     # Register custom calendars if needed
-    if calendar_name in ['CRYPTO', 'FOREX']:
+    if calendar_name in ["CRYPTO", "FOREX"]:
         register_custom_calendars(calendars=[calendar_name])
 
     # Set default start date
     if start_date is None:
-        if source == 'csv':
-            start_date = '2020-01-01'  # Default for CSV
-        elif tf_info['data_limit_days']:
-            earliest = datetime.now().date() - timedelta(days=tf_info['data_limit_days'])
+        if source == "csv":
+            start_date = "2020-01-01"  # Default for CSV
+        elif tf_info["data_limit_days"]:
+            earliest = datetime.now().date() - timedelta(days=tf_info["data_limit_days"])
             start_date = earliest.isoformat()
         else:
-            start_date = '2020-01-01'
+            start_date = "2020-01-01"
 
     # Get Zipline data frequency
-    data_frequency = tf_info['data_frequency']
+    data_frequency = tf_info["data_frequency"]
 
     # Auto-exclude current day for FOREX intraday (API sources only)
-    if calendar_name == 'FOREX' and data_frequency == 'minute' and end_date is None and source != 'csv':
+    if (
+        calendar_name == "FOREX"
+        and data_frequency == "minute"
+        and end_date is None
+        and source != "csv"
+    ):
         yesterday = (datetime.now().date() - timedelta(days=1)).isoformat()
         logger.info(
             f"FOREX intraday (API source): Auto-excluding current day. "
@@ -139,14 +144,14 @@ def ingest_bundle(
         f"(timeframe={timeframe}, frequency={data_frequency})"
     )
 
-    if tf_info['requires_aggregation']:
+    if tf_info["requires_aggregation"]:
         logger.info(
             f"Timeframe {timeframe} requires aggregation from {tf_info['yf_interval']} "
             f"to {tf_info['aggregation_target']}"
         )
 
     # Register and ingest based on source
-    if source == 'yahoo':
+    if source == "yahoo":
         try:
             register_yahoo_bundle(
                 bundle_name=bundle_name,
@@ -156,10 +161,11 @@ def ingest_bundle(
                 end_date=end_date,
                 data_frequency=data_frequency,
                 timeframe=timeframe,
-                force=force
+                force=force,
             )
 
             from zipline.data.bundles import ingest
+
             ingest(bundle_name, show_progress=True)
 
             return bundle_name
@@ -168,33 +174,48 @@ def ingest_bundle(
             logger.exception(f"Failed to ingest Yahoo Finance bundle: {bundle_name}")
             raise RuntimeError(f"Failed to ingest Yahoo Finance bundle: {e}") from e
 
-    elif source == 'binance':
+    elif source == "binance":
         raise NotImplementedError("Binance bundle ingestion not yet implemented")
 
-    elif source == 'oanda':
+    elif source == "oanda":
         raise NotImplementedError("OANDA bundle ingestion not yet implemented")
 
-    elif source == 'csv':
-        try:
-            register_csv_bundle(
-                bundle_name=bundle_name,
-                symbols=symbols,
-                calendar_name=calendar_name,
-                timeframe=timeframe,
-                asset_class=asset_class,
-                start_date=start_date,
-                end_date=end_date,
-                force=force
+    elif source == "csv":
+        # CSV bundles must be registered in ~/.zipline/extension.py (v1.12.0+)
+        # Check if bundle already registered
+        from zipline.data.bundles import bundles, ingest
+
+        if bundle_name not in bundles:
+            raise ValueError(
+                f"CSV bundle '{bundle_name}' not registered.\n\n"
+                f"To register CSV bundles (v1.12.0+):\n"
+                f"1. Add data to data/csvdir/{timeframe}/ directory (e.g., data/csvdir/1m/EURUSD.csv)\n"
+                f"2. Register bundle in ~/.zipline/extension.py:\n\n"
+                f"   from zipline.data.bundles import register\n"
+                f"   from zipline.data.bundles.csvdir import csvdir_equities\n"
+                f"   import pandas as pd\n\n"
+                f"   register(\n"
+                f"       '{bundle_name}',\n"
+                f"       csvdir_equities(['{'minute' if data_frequency == 'minute' else 'daily'}'], '/path/to/csvdir/{timeframe}'),\n"
+                f"       calendar_name='{calendar_name}',\n"
+                f"       start_session=pd.Timestamp('2020-01-01', tz='utc'),\n"
+                f"       end_session=pd.Timestamp('2025-12-31', tz='utc')\n"
+                f"   )\n\n"
+                f"3. Then run: zipline ingest -b {bundle_name}\n\n"
+                f"See docs/CSV_INGESTION_BEST_PRACTICES.md for details."
             )
-            from zipline.data.bundles import ingest
+
+        # Bundle already registered, just ingest
+        try:
+            logger.info(f"Ingesting CSV bundle: {bundle_name} (already registered in extension.py)")
             ingest(bundle_name, show_progress=True)
             return bundle_name
         except Exception as e:
-            logger.exception(f"Failed to ingest local CSV bundle: {bundle_name}")
-            raise RuntimeError(f"Failed to ingest local CSV bundle: {e}") from e
+            logger.exception(f"Failed to ingest CSV bundle: {bundle_name}")
+            raise RuntimeError(f"Failed to ingest CSV bundle: {e}") from e
 
     else:
         raise ValueError(
             f"Unsupported data source: {source}. "
-            f"Supported sources: yahoo, binance, oanda, csv"
+            f"Supported sources: yahoo, csv (binance/oanda not yet implemented)"
         )

@@ -7,18 +7,3 @@ This directory contains tests for:
 - Edge case handling
 - Deprecated code detection
 """
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

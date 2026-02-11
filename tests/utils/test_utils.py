@@ -26,15 +26,14 @@ class TestUtilityFunctions:
     @pytest.mark.unit
     def test_normalize_to_utc(self):
         """Test normalize_to_utc function."""
-        dt = pd.Timestamp('2024-01-01 12:00:00', tz='UTC')
+        dt = pd.Timestamp("2024-01-01 12:00:00", tz="UTC")
         result = normalize_to_utc(dt)
 
         assert result.tz is None, "Result should be timezone-naive"
-    
+
     @pytest.mark.unit
     def test_get_project_root(self):
         """Test get_project_root function."""
         root = get_project_root()
         assert root is not None
         assert root.exists()
-

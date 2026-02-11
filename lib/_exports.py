@@ -115,9 +115,14 @@ try:
 except ImportError:
     pass
 
-# Validation methods
+# Strategy validation methods (walk-forward, Monte Carlo)
 try:
-    from .validate import walk_forward, monte_carlo, calculate_overfit_probability, calculate_walk_forward_efficiency
+    from .strategy_validation import (
+        walk_forward,
+        monte_carlo,
+        calculate_overfit_probability,
+        calculate_walk_forward_efficiency,
+    )
 except ImportError:
     pass
 
@@ -153,13 +158,26 @@ from .validation import (
 )
 
 # Bundles package
+# Note (v1.12.0): unregister_bundle removed - use zipline.data.bundles.unregister
+# - Use: from zipline.data.bundles import bundles (for direct access)
+# - Use: from zipline.data.bundles import unregister (for unregister)
 from .bundles import (
     ingest_bundle,
     load_bundle,
     list_bundles,
-    unregister_bundle,
     get_bundle_symbols,
     VALID_TIMEFRAMES,
     TIMEFRAME_DATA_LIMITS,
     VALID_SOURCES,
+)
+
+# Research package (hypothesis tracking)
+from .research import (
+    HypothesisStatus,
+    Hypothesis,
+    create_hypothesis,
+    save_hypothesis,
+    load_hypothesis,
+    list_hypotheses,
+    link_backtest,
 )

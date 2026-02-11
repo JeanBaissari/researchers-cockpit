@@ -6,6 +6,31 @@ This document provides 5 complete validation examples covering different asset c
 
 ---
 
+## Purpose
+
+This walkthrough guides you through complete end-to-end system validation for the Researcher's Cockpit. It demonstrates the entire research pipeline from hypothesis to validated strategy across multiple asset classes and timeframes.
+
+---
+
+## Scope
+
+**What this covers:**
+- Complete research pipeline validation (hypothesis → strategy → backtest → optimize → validate → report)
+- Multiple asset classes (equities, crypto, forex)
+- Different timeframes (daily, intraday)
+- Data ingestion verification
+- Backtest execution and metrics calculation
+- Parameter optimization workflows
+- Walk-forward and Monte Carlo validation
+
+**What this does NOT cover:**
+- Individual API usage details (see `docs/api/`)
+- Troubleshooting specific errors (see `docs/troubleshooting/`)
+- Strategy development patterns (see `.claude/skills/`)
+- Live trading or production deployment
+
+---
+
 ## Validation Philosophy
 
 **Goal:** Verify every component of the research journey works correctly:
@@ -872,3 +897,18 @@ The Researcher's Cockpit v1.0 provides a **solid foundation** for algorithmic tr
 - ❌ Live trading (out of scope)
 
 The system is **production-ready for daily strategy research** and can be extended for more advanced use cases as needed.
+
+---
+
+## Related Documentation
+
+- [Validation API](../api/validation.md) - Data validation reference
+- [Bundles API](../api/bundles.md) - Bundle management
+- [Troubleshooting: Data Validation](../troubleshooting/data_validation.md)
+- [Validation Architecture](../validation/validation_architecture.md)
+
+---
+
+**Last Updated:** 2026-02-09
+**Version:** v1.12.0
+**Status:** NO WRAPPERS Architecture

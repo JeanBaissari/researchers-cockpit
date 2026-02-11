@@ -659,8 +659,38 @@ logs/
 
 ---
 
+## Zipline Logger Integration
+
+The project provides utilities to integrate Zipline-Reloaded's named loggers (Blotter, ZiplineLog, DataPortal, AlgoWarning) with the project logging system.
+
+**Quick Example:**
+```python
+from lib.logging import configure_logging, integrate_zipline_loggers
+
+# Configure project logging
+configure_logging(level="INFO", console=True, file=True)
+
+# Integrate Zipline loggers
+integrate_zipline_loggers(
+    blotter_level="INFO",   # Capture order execution
+    zipline_level="WARNING", # Only framework warnings
+    portal_level="INFO",     # Capture data access
+    algo_warning_level="WARNING",  # User-facing warnings (partial fills, cancels, etc.)
+)
+
+# Now Zipline logs will appear in project logs
+```
+
+**See Also:**
+- [Zipline Logger Integration](zipline_loggers.md) - Complete integration guide
+- `integrate_zipline_loggers()` - Integration function
+- `get_zipline_loggers()` - Access Zipline logger instances
+
+---
+
 ## See Also
 
+- [Zipline Logger Integration](zipline_loggers.md) - Integration with Zipline's named loggers
 - [Error Handling Standards](../.cursor/rules/error-handling.mdc) - Error handling patterns
 - [Logging Standards](../.cursor/rules/logging.mdc) - Logging patterns and standards
 - [Backtest API](backtest.md) - Backtest execution (uses logging)

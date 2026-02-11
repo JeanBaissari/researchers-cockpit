@@ -61,19 +61,17 @@ MAX_PROFIT_FACTOR = 999.0
 
 # Metrics that should be displayed as percentages
 PERCENTAGE_METRICS = {
-    'total_return',
-    'annual_return',
-    'annual_volatility',
-    'max_drawdown',
-    'win_rate',
-    'avg_trade_return',
-    'avg_win',
-    'avg_loss',
-    'max_win',
-    'max_loss',
+    "total_return",
+    "annual_return",
+    "annual_volatility",
+    "max_drawdown",
+    "win_rate",
+    "avg_trade_return",
+    "avg_win",
+    "avg_loss",
+    "max_win",
+    "max_loss",
 }
-
-
 
 
 def _convert_to_percentages(metrics: Dict[str, Any]) -> Dict[str, Any]:
@@ -88,30 +86,30 @@ def _convert_to_percentages(metrics: Dict[str, Any]) -> Dict[str, Any]:
 def _empty_metrics() -> Dict[str, float]:
     """Return empty metrics dictionary with all values as valid floats."""
     return {
-        'total_return': 0.0,
-        'annual_return': 0.0,
-        'annual_volatility': 0.0,
-        'sharpe': 0.0,
-        'sortino': 0.0,
-        'max_drawdown': 0.0,
-        'calmar': 0.0,
-        'alpha': 0.0,
-        'beta': 1.0,
-        'omega': 0.0,
-        'tail_ratio': 0.0,
-        'max_drawdown_duration': 0.0,
-        'recovery_time': 0.0,
-        'trade_count': 0,
-        'win_rate': 0.0,
-        'profit_factor': 0.0,
-        'avg_trade_return': 0.0,
-        'avg_win': 0.0,
-        'avg_loss': 0.0,
-        'max_win': 0.0,
-        'max_loss': 0.0,
-        'max_consecutive_losses': 0,
-        'avg_trade_duration': 0.0,
-        'trades_per_month': 0.0,
+        "total_return": 0.0,
+        "annual_return": 0.0,
+        "annual_volatility": 0.0,
+        "sharpe": 0.0,
+        "sortino": 0.0,
+        "max_drawdown": 0.0,
+        "calmar": 0.0,
+        "alpha": 0.0,
+        "beta": 1.0,
+        "omega": 0.0,
+        "tail_ratio": 0.0,
+        "max_drawdown_duration": 0.0,
+        "recovery_time": 0.0,
+        "trade_count": 0,
+        "win_rate": 0.0,
+        "profit_factor": 0.0,
+        "avg_trade_return": 0.0,
+        "avg_win": 0.0,
+        "avg_loss": 0.0,
+        "max_win": 0.0,
+        "max_loss": 0.0,
+        "max_consecutive_losses": 0,
+        "avg_trade_duration": 0.0,
+        "trades_per_month": 0.0,
     }
 
 
@@ -121,7 +119,7 @@ def calculate_metrics(
     benchmark_returns: Optional[pd.Series] = None,
     risk_free_rate: float = 0.04,
     trading_days_per_year: int = 252,
-    convert_to_percentages: bool = True
+    convert_to_percentages: bool = True,
 ) -> Dict[str, float]:
     """
     Calculate comprehensive performance metrics from returns.
@@ -160,50 +158,49 @@ def calculate_metrics(
     metrics = {}
 
     # Calculate return metrics
-    metrics['total_return'] = calculate_total_return(returns)
-    metrics['annual_return'] = calculate_annual_return(returns, trading_days_per_year)
-    metrics['annual_volatility'] = calculate_annual_volatility(returns, trading_days_per_year)
+    metrics["total_return"] = calculate_total_return(returns)
+    metrics["annual_return"] = calculate_annual_return(returns, trading_days_per_year)
+    metrics["annual_volatility"] = calculate_annual_volatility(returns, trading_days_per_year)
 
     # Calculate ratio metrics
-    metrics['sharpe'] = calculate_sharpe_ratio(
+    metrics["sharpe"] = calculate_sharpe_ratio(
         returns,
         risk_free_rate,
         trading_days_per_year,
-        metrics['annual_return'],
-        metrics['annual_volatility']
+        metrics["annual_return"],
+        metrics["annual_volatility"],
     )
 
-    metrics['sortino'] = calculate_sortino_ratio(
-        returns,
-        risk_free_rate,
-        trading_days_per_year,
-        metrics['annual_return']
+    metrics["sortino"] = calculate_sortino_ratio(
+        returns, risk_free_rate, trading_days_per_year, metrics["annual_return"]
     )
 
     # Calculate risk metrics
-    metrics['max_drawdown'] = calculate_max_drawdown(returns)
-    metrics['calmar'] = calculate_calmar_ratio(metrics['annual_return'], metrics['max_drawdown'])
+    metrics["max_drawdown"] = calculate_max_drawdown(returns)
+    metrics["calmar"] = calculate_calmar_ratio(metrics["annual_return"], metrics["max_drawdown"])
 
     # Calculate alpha and beta if benchmark provided
     if benchmark_returns is not None and len(benchmark_returns) > 0:
-        alpha, beta = calculate_alpha_beta(returns, benchmark_returns, risk_free_rate, trading_days_per_year)
-        metrics['alpha'] = alpha
-        metrics['beta'] = beta
+        alpha, beta = calculate_alpha_beta(
+            returns, benchmark_returns, risk_free_rate, trading_days_per_year
+        )
+        metrics["alpha"] = alpha
+        metrics["beta"] = beta
     else:
-        metrics['alpha'] = 0.0
-        metrics['beta'] = 1.0
+        metrics["alpha"] = 0.0
+        metrics["beta"] = 1.0
 
     # Additional risk metrics
-    metrics['omega'] = calculate_omega_ratio(returns, risk_free_rate, trading_days_per_year)
-    metrics['tail_ratio'] = calculate_tail_ratio(returns)
-    metrics['max_drawdown_duration'] = calculate_max_drawdown_duration(returns)
+    metrics["omega"] = calculate_omega_ratio(returns, risk_free_rate, trading_days_per_year)
+    metrics["tail_ratio"] = calculate_tail_ratio(returns)
+    metrics["max_drawdown_duration"] = calculate_max_drawdown_duration(returns)
 
     # Recovery time
     recovery_time = calculate_recovery_time(returns)
     if recovery_time is not None:
-        metrics['recovery_time'] = recovery_time.total_seconds() / (60 * 60 * 24)
+        metrics["recovery_time"] = recovery_time.total_seconds() / (60 * 60 * 24)
     else:
-        metrics['recovery_time'] = 0.0
+        metrics["recovery_time"] = 0.0
 
     # Trade-level metrics if transactions provided
     if transactions is not None:
@@ -213,22 +210,24 @@ def calculate_metrics(
                 metrics.update(trade_metrics)
             except Exception:
                 # If trade metrics fail, add empty trade metrics
-                metrics.update({
-                    'trade_count': 0,
-                    'win_rate': 0.0,
-                    'profit_factor': 0.0,
-                    'avg_trade_return': 0.0,
-                    'avg_win': 0.0,
-                    'avg_loss': 0.0,
-                    'max_win': 0.0,
-                    'max_loss': 0.0,
-                    'max_consecutive_losses': 0,
-                    'avg_trade_duration': 0.0,
-                    'trades_per_month': 0.0,
-                })
+                metrics.update(
+                    {
+                        "trade_count": 0,
+                        "win_rate": 0.0,
+                        "profit_factor": 0.0,
+                        "avg_trade_return": 0.0,
+                        "avg_win": 0.0,
+                        "avg_loss": 0.0,
+                        "max_win": 0.0,
+                        "max_loss": 0.0,
+                        "max_consecutive_losses": 0,
+                        "avg_trade_duration": 0.0,
+                        "trades_per_month": 0.0,
+                    }
+                )
         else:
             # Empty transactions DataFrame
-            metrics['trade_count'] = 0
+            metrics["trade_count"] = 0
 
     # Convert to percentages if requested
     if convert_to_percentages:

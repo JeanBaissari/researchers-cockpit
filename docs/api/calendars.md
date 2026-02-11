@@ -2,22 +2,26 @@
 
 Module for trading calendar management and session alignment in The Researcher's Cockpit.
 
-**Location:** `lib/calendars/`  
-**CLI Equivalent:** N/A (used automatically by bundles and backtest)  
-**Version:** v1.11.0
+**Location:** `lib/calendars/`
+**CLI Equivalent:** N/A (used automatically by bundles and backtest)
+**Version:** v1.12.0
 
 ---
 
 ## Overview
 
-The calendars module provides custom trading calendars for different asset classes and a session management system for ensuring calendar alignment between bundle ingestion and backtest execution.
+The calendars module provides custom trading calendars for different asset classes with direct Zipline integration.
+
+**v1.12.0 Changes:**
+- **SessionManager removed** → Use Zipline's `get_calendar()` directly
+- **FOREX calendar updated** → Sundays now included in weekmask (root cause fix)
+- **Direct calendar access** → No wrapper functions (AD-001)
 
 **Key Features:**
-- Custom calendars: `CryptoCalendar` (24/7) and `ForexCalendar` (24/5)
+- Custom calendars: `CryptoCalendar` (24/7) and `ForexCalendar` (24/5 + Sundays)
 - Automatic calendar registration with Zipline
-- Session management for bundle-calendar alignment (v1.1.0)
 - Asset class to calendar mapping
-- Calendar registry system
+- Direct `get_calendar()` usage throughout codebase
 
 **Supported Calendars:**
 - `CRYPTO` - 24/7 trading (365 days/year, no holidays)
@@ -60,17 +64,17 @@ forex_cal = get_calendar_for_asset_class('forex')    # Returns 'FOREX'
 equity_cal = get_calendar_for_asset_class('equity')  # Returns None (uses XNYS)
 ```
 
-### Use Session Manager for Alignment
+### Direct Calendar Access (v1.12.0+)
 
 ```python
-from lib.calendars.sessions import SessionManager
+from zipline.utils.calendar_utils import get_calendar
+import pandas as pd
 
-# Create session manager for asset class
-session_mgr = SessionManager.for_asset_class('forex')
+# Get calendar directly from Zipline
+forex_cal = get_calendar('FOREX')
 
 # Get trading sessions for date range
-import pandas as pd
-sessions = session_mgr.get_sessions(
+sessions = forex_cal.sessions_in_range(
     start=pd.Timestamp('2024-01-01'),
     end=pd.Timestamp('2024-01-31')
 )
@@ -336,196 +340,39 @@ resolve_calendar_name('CURRENCY')  # 'FOREX'
 
 ---
 
-### Session Management (v1.1.0)
+### Session Management (v1.12.0 - Removed)
 
-#### `SessionManager`
+**Note:** SessionManager has been removed in v1.12.0. Use Zipline's `get_calendar()` directly:
 
-Centralized session manager for trading calendars. Ensures bundle ingestion and backtest execution use identical session logic.
-
-**Class Methods:**
-
-##### `SessionManager.for_asset_class()`
-
-Create SessionManager for a specific asset class.
-
-**Signature:**
 ```python
-@classmethod
-def for_asset_class(cls, asset_class: str) -> 'SessionManager'
-```
-
-**Parameters:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `asset_class` | str | required | Asset class (`'forex'`, `'crypto'`, `'equity'`) |
-
-**Returns:**
-- `SessionManager`: Session manager instance
-
-**Raises:**
-- `ValueError`: If asset class is unknown
-
-**Example:**
-```python
-from lib.calendars.sessions import SessionManager
-
-# Create session manager for forex
-session_mgr = SessionManager.for_asset_class('forex')
-```
-
----
-
-##### `SessionManager.for_bundle()`
-
-Create SessionManager based on bundle metadata.
-
-**Signature:**
-```python
-@classmethod
-def for_bundle(cls, bundle_name: str) -> 'SessionManager'
-```
-
-**Parameters:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `bundle_name` | str | required | Bundle name (e.g., `'csv_eurusd_1m'`) |
-
-**Returns:**
-- `SessionManager`: Session manager instance
-
-**Raises:**
-- `ValueError`: If bundle not found in registry
-
-**Example:**
-```python
-from lib.calendars.sessions import SessionManager
-
-# Create session manager from bundle
-session_mgr = SessionManager.for_bundle('csv_eurusd_1m')
-```
-
----
-
-**Instance Methods:**
-
-##### `get_sessions()`
-
-Get trading sessions for date range (canonical method).
-
-**Signature:**
-```python
-def get_sessions(
-    start: pd.Timestamp,
-    end: pd.Timestamp
-) -> pd.DatetimeIndex
-```
-
-**Parameters:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `start` | pd.Timestamp | required | Start date |
-| `end` | pd.Timestamp | required | End date |
-
-**Returns:**
-- `pd.DatetimeIndex`: Trading sessions in the date range
-
-**Note:** Both bundle ingestion and backtest execution MUST use this method to ensure session alignment.
-
-**Example:**
-```python
+from zipline.utils.calendar_utils import get_calendar
 import pandas as pd
-from lib.calendars.sessions import SessionManager
 
-session_mgr = SessionManager.for_asset_class('forex')
-sessions = session_mgr.get_sessions(
+# Get calendar
+calendar = get_calendar('FOREX')
+
+# Get trading sessions
+sessions = calendar.sessions_in_range(
     start=pd.Timestamp('2024-01-01'),
     end=pd.Timestamp('2024-01-31')
 )
-print(f"Trading sessions: {len(sessions)}")
+
+# Check if date is trading day
+is_trading_day = calendar.is_session(pd.Timestamp('2024-01-15'))
+
+# Get all trading days in range
+trading_days = calendar.sessions_in_range(start, end)
 ```
+
+**Why Removed:**
+- FOREX calendar now includes Sundays (root cause fixed)
+- No session alignment workarounds needed
+- Direct Zipline calendar API is simpler and more maintainable
+- Eliminates wrapper layer (AD-001: NO WRAPPERS)
 
 ---
 
-##### `validate_bundle_sessions()`
-
-Validate that bundle has correct sessions for date range (pre-flight check).
-
-**Signature:**
-```python
-def validate_bundle_sessions(
-    bundle_name: str,
-    start_date: pd.Timestamp,
-    end_date: pd.Timestamp
-) -> tuple[bool, str]
-```
-
-**Parameters:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `bundle_name` | str | required | Bundle name |
-| `start_date` | pd.Timestamp | required | Start date |
-| `end_date` | pd.Timestamp | required | End date |
-
-**Returns:**
-- `tuple[bool, str]`: `(is_valid, error_message)`
-
-**Example:**
-```python
-import pandas as pd
-from lib.calendars.sessions import SessionManager
-
-session_mgr = SessionManager.for_bundle('csv_eurusd_1m')
-is_valid, message = session_mgr.validate_bundle_sessions(
-    bundle_name='csv_eurusd_1m',
-    start_date=pd.Timestamp('2024-01-01'),
-    end_date=pd.Timestamp('2024-01-31')
-)
-
-if not is_valid:
-    print(f"Session mismatch: {message}")
-```
-
----
-
-##### `apply_filters()`
-
-Apply all session filters to DataFrame in order defined by strategy.
-
-**Signature:**
-```python
-def apply_filters(
-    df: pd.DataFrame,
-    show_progress: bool = False,
-    **kwargs: Any
-) -> pd.DataFrame
-```
-
-**Parameters:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `df` | pd.DataFrame | required | DataFrame to filter |
-| `show_progress` | bool | False | Show progress messages |
-| `**kwargs` | Any | - | Additional filter parameters |
-
-**Returns:**
-- `pd.DataFrame`: Filtered DataFrame
-
-**Example:**
-```python
-from lib.calendars.sessions import SessionManager
-
-session_mgr = SessionManager.for_asset_class('forex')
-filtered_df = session_mgr.apply_filters(df, show_progress=True)
-```
-
----
-
-## Module Structure
+## Module Structure (v1.12.0)
 
 The calendars package is organized into focused submodules:
 
@@ -533,14 +380,13 @@ The calendars package is organized into focused submodules:
 lib/calendars/
 ├── __init__.py               # Public API exports
 ├── crypto.py                 # CryptoCalendar (24/7)
-├── forex.py                  # ForexCalendar (24/5)
+├── forex.py                  # ForexCalendar (24/5 + Sundays)
 ├── registry.py               # Calendar registration
-├── utils.py                  # Calendar utilities
-└── sessions/                 # Session management (v1.1.0)
-    ├── manager.py            # SessionManager
-    ├── strategies.py         # Loading strategies
-    └── validation.py         # Session alignment validation
+└── utils.py                  # Calendar utilities
 ```
+
+**v1.12.0 Removals:**
+- ~~sessions/~~ — Deleted (use direct `get_calendar()` instead)
 
 ---
 
@@ -576,32 +422,28 @@ for asset_class in asset_classes:
 # equity: None
 ```
 
-### Session Management for Bundle Alignment
+### Direct Calendar Usage (v1.12.0+)
 
 ```python
 import pandas as pd
-from lib.calendars.sessions import SessionManager
+from zipline.utils.calendar_utils import get_calendar
 
-# Create session manager for forex
-session_mgr = SessionManager.for_asset_class('forex')
+# Get calendar directly
+forex_cal = get_calendar('FOREX')
 
-# Get expected sessions
-expected_sessions = session_mgr.get_sessions(
+# Get trading sessions
+sessions = forex_cal.sessions_in_range(
     start=pd.Timestamp('2024-01-01'),
     end=pd.Timestamp('2024-01-31')
 )
+print(f"Trading sessions: {len(sessions)}")
 
-# Validate bundle sessions
-is_valid, message = session_mgr.validate_bundle_sessions(
-    bundle_name='csv_eurusd_1m',
-    start_date=pd.Timestamp('2024-01-01'),
-    end_date=pd.Timestamp('2024-01-31')
-)
+# Check if specific date is trading day
+is_trading = forex_cal.is_session(pd.Timestamp('2024-01-15'))
 
-if is_valid:
-    print("Bundle sessions aligned with calendar")
-else:
-    print(f"Session mismatch: {message}")
+# Get all sessions between dates
+all_sessions = forex_cal.all_sessions
+print(f"Total sessions: {len(all_sessions)}")
 ```
 
 ### Using Calendars in Bundle Ingestion
@@ -655,25 +497,30 @@ from lib.calendars import register_custom_calendars
 register_custom_calendars(['CRYPTO', 'FOREX'])
 ```
 
-### Session Alignment
+### Calendar Alignment (v1.12.0+)
 
-The SessionManager ensures that:
-- Bundle ingestion uses the same session logic as backtest execution
-- Session counts match between calendar and bundle data
-- Pre-flight validation catches session mismatches before backtest execution
+Direct calendar usage ensures consistent session handling:
 
-**Usage Pattern:**
 ```python
-# During bundle ingestion
-session_mgr = SessionManager.for_asset_class('forex')
-sessions = session_mgr.get_sessions(start, end)
-# Use sessions for data filtering
+from zipline.utils.calendar_utils import get_calendar
+import pandas as pd
 
-# During backtest execution
-session_mgr = SessionManager.for_bundle('csv_eurusd_1m')
-is_valid, message = session_mgr.validate_bundle_sessions(...)
-# Validate before running backtest
+# Get calendar for asset class
+calendar = get_calendar('FOREX')  # or 'CRYPTO', 'XNYS'
+
+# Get sessions for date range
+sessions = calendar.sessions_in_range(
+    start=pd.Timestamp('2024-01-01'),
+    end=pd.Timestamp('2024-01-31')
+)
+
+# Use in bundle registration (in ~/.zipline/extension.py)
+register('eurusd_1m', csvdir_equities(['EURUSD'], ...),  calendar_name='FOREX')
+
+# Calendar automatically used during backtest execution
 ```
+
+**Note:** SessionManager removed in v1.12.0. FOREX calendar now includes Sundays, eliminating need for session alignment workarounds.
 
 ---
 
@@ -739,6 +586,7 @@ if not is_valid:
 
 ## Version History
 
+- **v1.12.0**: NO WRAPPERS refactoring - Removed SessionManager (use get_calendar() directly), FOREX calendar includes Sundays, direct calendar access throughout
 - **v1.1.0**: Session management system for bundle-calendar alignment
 - **v1.0.3**: Custom calendar system (CRYPTO, FOREX) with registry
 - **v1.0.0**: Initial calendar support

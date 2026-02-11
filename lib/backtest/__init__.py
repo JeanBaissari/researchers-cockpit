@@ -22,24 +22,9 @@ from .config import BacktestConfig
 from .strategy import StrategyModule
 
 __all__ = [
-    'run_backtest',
-    'save_results',
-    'validate_strategy_symbols',
-    'BacktestConfig',
-    'StrategyModule',
+    "run_backtest",
+    "save_results",
+    "validate_strategy_symbols",
+    "BacktestConfig",
+    "StrategyModule",
 ]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

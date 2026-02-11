@@ -20,19 +20,19 @@ from .optimization import _plot_optimization_heatmap, _plot_monte_carlo_distribu
 
 __all__ = [
     # Equity visualization
-    'plot_equity_curve',
-    'plot_drawdown',
+    "plot_equity_curve",
+    "plot_drawdown",
     # Returns visualization
-    'plot_monthly_returns',
+    "plot_monthly_returns",
     # Trade visualization
-    'plot_trade_analysis',
+    "plot_trade_analysis",
     # Rolling metrics visualization
-    'plot_rolling_metrics',
+    "plot_rolling_metrics",
     # Orchestration
-    'plot_all',
+    "plot_all",
     # Optimization visualization (internal)
-    '_plot_optimization_heatmap',
-    '_plot_monte_carlo_distribution',
+    "_plot_optimization_heatmap",
+    "_plot_monte_carlo_distribution",
 ]
 
 
@@ -41,11 +41,11 @@ def plot_all(
     save_dir: Path,
     portfolio_value: Optional[pd.Series] = None,
     transactions: Optional[pd.DataFrame] = None,
-    strategy_name: str = 'Strategy'
+    strategy_name: str = "Strategy",
 ) -> None:
     """
     Generate all standard plots and save to directory.
-    
+
     Args:
         returns: Series of daily returns
         portfolio_value: Optional Series of portfolio values
@@ -55,55 +55,38 @@ def plot_all(
     """
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Equity curve
     plot_equity_curve(
         returns,
         portfolio_value=portfolio_value,
-        save_path=save_dir / 'equity_curve.png',
-        title=f'{strategy_name} - Equity Curve'
+        save_path=save_dir / "equity_curve.png",
+        title=f"{strategy_name} - Equity Curve",
     )
-    
+
     # Drawdown
     plot_drawdown(
-        returns,
-        save_path=save_dir / 'drawdown.png',
-        title=f'{strategy_name} - Drawdown Chart'
+        returns, save_path=save_dir / "drawdown.png", title=f"{strategy_name} - Drawdown Chart"
     )
-    
+
     # Monthly returns
     plot_monthly_returns(
         returns,
-        save_path=save_dir / 'monthly_returns.png',
-        title=f'{strategy_name} - Monthly Returns'
+        save_path=save_dir / "monthly_returns.png",
+        title=f"{strategy_name} - Monthly Returns",
     )
-    
+
     # Rolling metrics
     plot_rolling_metrics(
         returns,
-        save_path=save_dir / 'rolling_metrics.png',
-        title=f'{strategy_name} - Rolling Metrics'
+        save_path=save_dir / "rolling_metrics.png",
+        title=f"{strategy_name} - Rolling Metrics",
     )
-    
+
     # Trade analysis (if transactions provided)
     if transactions is not None and len(transactions) > 0:
         plot_trade_analysis(
             transactions,
-            save_path=save_dir / 'trade_analysis.png',
-            title=f'{strategy_name} - Trade Analysis'
+            save_path=save_dir / "trade_analysis.png",
+            title=f"{strategy_name} - Trade Analysis",
         )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

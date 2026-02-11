@@ -34,32 +34,34 @@ class TestDateNormalization:
     @pytest.mark.unit
     def test_normalize_timezone_aware(self):
         """Test normalizing timezone-aware datetime to timezone-naive UTC."""
-        dt = pd.Timestamp('2024-01-01 12:00:00', tz='UTC')
+        dt = pd.Timestamp("2024-01-01 12:00:00", tz="UTC")
         result = normalize_to_utc(dt)
 
         assert result.tz is None, "Result should be timezone-naive"
         # normalize_to_utc strips timezone but preserves time
-        assert result.time() == pd.Timestamp('12:00:00').time(), "Time should be preserved"
-        assert result.date() == pd.Timestamp('2024-01-01').date(), "Date should be preserved"
+        assert result.time() == pd.Timestamp("12:00:00").time(), "Time should be preserved"
+        assert result.date() == pd.Timestamp("2024-01-01").date(), "Date should be preserved"
 
     @pytest.mark.unit
     def test_normalize_timezone_naive(self):
         """Test normalizing timezone-naive datetime (no-op except type conversion)."""
-        dt = pd.Timestamp('2024-01-01 12:00:00')
+        dt = pd.Timestamp("2024-01-01 12:00:00")
         result = normalize_to_utc(dt)
 
         assert result.tz is None, "Result should be timezone-naive"
         # normalize_to_utc preserves time for naive inputs
-        assert result.time() == pd.Timestamp('12:00:00').time(), "Time should be preserved"
+        assert result.time() == pd.Timestamp("12:00:00").time(), "Time should be preserved"
 
     @pytest.mark.unit
     def test_normalize_string_date(self):
         """Test normalizing string date."""
-        result = normalize_to_utc('2024-01-01')
+        result = normalize_to_utc("2024-01-01")
 
         assert result.tz is None, "Result should be timezone-naive"
         # String date without time defaults to midnight
-        assert result.time() == pd.Timestamp('00:00:00').time(), "Should be midnight for date-only string"
+        assert result.time() == pd.Timestamp("00:00:00").time(), (
+            "Should be midnight for date-only string"
+        )
 
 
 class TestCalendarConsistency:
@@ -75,9 +77,12 @@ class TestCalendarConsistency:
         # but we can verify the function signature expects exchange_calendars codes
         # Default parameter should be 'XNYS', not 'NYSE'
         import inspect
+
         sig = inspect.signature(_register_yahoo_bundle)
-        default_calendar = sig.parameters['calendar_name'].default
-        assert default_calendar == 'XNYS', f"Default calendar should be 'XNYS', got '{default_calendar}'"
+        default_calendar = sig.parameters["calendar_name"].default
+        assert default_calendar == "XNYS", (
+            f"Default calendar should be 'XNYS', got '{default_calendar}'"
+        )
 
 
 class TestAPIImports:
@@ -88,6 +93,7 @@ class TestAPIImports:
         """Test run_algorithm import."""
         try:
             from zipline import run_algorithm
+
             assert callable(run_algorithm), "run_algorithm should be callable"
         except ImportError:
             pytest.skip("zipline-reloaded not installed")
@@ -104,6 +110,7 @@ class TestAPIImports:
                 date_rules,
                 time_rules,
             )
+
             assert callable(symbol)
             assert callable(order_target_percent)
             assert callable(record)
@@ -116,8 +123,9 @@ class TestAPIImports:
         """Test zipline.finance imports."""
         try:
             from zipline.finance import commission, slippage
-            assert hasattr(commission, 'PerShare')
-            assert hasattr(slippage, 'VolumeShareSlippage')
+
+            assert hasattr(commission, "PerShare")
+            assert hasattr(slippage, "VolumeShareSlippage")
         except ImportError:
             pytest.skip("zipline-reloaded not installed")
 
@@ -135,7 +143,7 @@ class TestBundlePatterns:
     def test_bundle_loading_error_handling(self):
         """Test bundle loading handles missing bundles gracefully."""
         with pytest.raises(FileNotFoundError):
-            load_bundle('nonexistent_bundle_12345')
+            load_bundle("nonexistent_bundle_12345")
 
 
 class TestDataAccessPatterns:
@@ -144,10 +152,11 @@ class TestDataAccessPatterns:
     @pytest.mark.unit
     def test_strategy_template_imports(self):
         """Test that strategy template can be imported."""
-        template_path = project_root / 'strategies' / '_template' / 'strategy.py'
+        template_path = project_root / "strategies" / "_template" / "strategy.py"
         if template_path.exists():
             # Just verify it can be imported without errors
             import importlib.util
+
             spec = importlib.util.spec_from_file_location("template_strategy", template_path)
             if spec and spec.loader:
                 module = importlib.util.module_from_spec(spec)
@@ -179,5 +188,5 @@ class TestEndToEndIntegration:
         pass
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

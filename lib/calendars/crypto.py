@@ -21,7 +21,7 @@ class CryptoCalendar(ExchangeCalendar):
     This calendar reflects that reality with no off days.
 
     For minute data: 24 hours * 60 minutes = 1440 minutes per day.
-    
+
     Attributes:
         name: Calendar identifier ('CRYPTO')
         tz: Timezone (UTC)
@@ -40,7 +40,7 @@ class CryptoCalendar(ExchangeCalendar):
     def open_time_default(cls) -> time:
         """
         Default market open time.
-        
+
         Returns:
             Midnight (00:00:00)
         """
@@ -50,7 +50,7 @@ class CryptoCalendar(ExchangeCalendar):
     def close_time_default(cls) -> time:
         """
         Default market close time.
-        
+
         Returns:
             End of day (23:59:59)
         """
@@ -60,7 +60,7 @@ class CryptoCalendar(ExchangeCalendar):
     def regular_holidays(self) -> pd.DatetimeIndex:
         """
         Crypto markets don't observe holidays.
-        
+
         Returns:
             Empty DatetimeIndex
         """
@@ -70,12 +70,11 @@ class CryptoCalendar(ExchangeCalendar):
     def special_closes(self) -> List:
         """
         No special closing times.
-        
+
         Returns:
             Empty list
         """
         return []
 
 
-__all__ = ['CryptoCalendar']
-
+__all__ = ["CryptoCalendar"]

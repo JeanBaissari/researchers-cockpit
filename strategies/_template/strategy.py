@@ -1,13 +1,74 @@
 """
-Strategy Template for The Researcher's Cockpit
+Strategy Template - Direct Zipline API Usage (v1.12.0+)
 ==============================================================================
 This is the canonical starting point for all new strategies.
 
-To create a new strategy:
-1. Copy this entire _template/ directory to strategies/{asset_class}/{strategy_name}/
+IMPORTANT - v1.12.0 Changes (NO WRAPPERS Directive):
+- NO wrapper functions (aggregate_ohlcv, SessionManager, etc.)
+- Use direct Zipline APIs: data.history(), symbol(), schedule_function()
+- Use direct pandas for aggregation: df.resample().agg({...})
+- All bundle registration in .zipline/extension.py
+
+Quick Start:
+1. Copy this template:
+   cp -r strategies/_template strategies/{asset_class}/{strategy_name}
+
 2. Edit hypothesis.md with your trading rationale
+
 3. Configure parameters.yaml with your parameter values
-4. Implement your strategy logic below
+
+4. Implement your strategy logic in compute_signals()
+
+5. Run backtest:
+   python scripts/run_backtest.py --strategy {asset_class}/{strategy_name}
+
+Key Patterns:
+
+1. Get Price Data (Direct Zipline):
+   prices = data.history(asset, 'close', 100, '1m')
+
+2. Aggregate Timeframes (Direct Pandas):
+   hourly = minute_prices.resample('1h').last()
+
+   # Or with OHLCV:
+   hourly_ohlcv = minute_data.resample('1h').agg({
+       'open': 'first', 'high': 'max', 'low': 'min',
+       'close': 'last', 'volume': 'sum'
+   })
+
+3. Calendar Access (Direct Zipline):
+   from zipline.utils.calendar_utils import get_calendar
+   calendar = get_calendar('FOREX')
+   sessions = calendar.sessions_in_range(start, end)
+
+4. Check Tradeable (Direct Zipline):
+   if data.can_trade(asset):
+       order_target_percent(asset, 1.0)
+
+What NOT to Do:
+- ❌ from lib.data.aggregation import aggregate_ohlcv
+- ❌ from lib.calendars.sessions import SessionManager
+- ❌ from lib.bundles.csv import register_csv_bundle
+- ❌ Any wrapper functions around Zipline/pandas
+
+Migrating from v1.11.x:
+
+1. Remove aggregate_ohlcv():
+   Before: daily = aggregate_ohlcv(minute_df, 'daily')
+   After:  daily = minute_df.resample('1d').agg({
+               'open': 'first', 'high': 'max', 'low': 'min',
+               'close': 'last', 'volume': 'sum'
+           })
+
+2. Remove SessionManager (if used):
+   Before: session_mgr = SessionManager.for_asset_class('forex')
+           sessions = session_mgr.get_sessions(start, end)
+   After:  calendar = get_calendar('FOREX')
+           sessions = calendar.sessions_in_range(start, end)
+
+3. Update Bundle Names:
+   Before: bundle='csv_forex_1m'
+   After:  bundle='eurusd_1m'  # Symbol-based naming
 
 CRITICAL RULES:
 - NO hardcoded parameters in this file - all params come from parameters.yaml
@@ -16,17 +77,21 @@ CRITICAL RULES:
 - Follow naming conventions from .agent/conventions.md
 
 REQUIREMENTS:
-- This template requires v1.11.0 or later of The Researcher's Cockpit
+- This template requires v1.12.0 or later of The Researcher's Cockpit
 - The lib/ package uses modular architecture (v1.11.0+)
 - The lib/ package must be properly installed and available
 
-MODULAR ARCHITECTURE (v1.11.0+):
-- lib/bundles/ - Data bundle management (replaces lib/data_loader.py)
-- lib/validation/ - Data validation (replaces lib/data_validation.py)
-- lib/calendars/ - Trading calendars (replaces lib/extension.py)
+MODULAR ARCHITECTURE (v1.12.0+):
+- lib/bundles/ - Data bundle management (direct Zipline usage)
+- lib/validation/ - Data validation (data quality assurance)
+- lib/calendars/ - Trading calendars (custom 24/7 and 24/5 calendars)
 - lib/config/ - Configuration loading with validation
 - lib/strategies/ - Strategy management utilities
 All imports use canonical paths from lib/_exports.py
+
+Architecture:
+- PDR.md: AD-001 (NO WRAPPERS directive)
+- MVP.md: Section 5 (Strategy template examples)
 ==============================================================================
 """
 
@@ -39,10 +104,17 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from zipline.api import (
-    symbol, order_target_percent, record,
-    schedule_function, date_rules, time_rules,
-    set_commission, set_slippage, set_benchmark,
-    get_open_orders, cancel_order,
+    symbol,
+    order_target_percent,
+    record,
+    schedule_function,
+    date_rules,
+    time_rules,
+    set_commission,
+    set_slippage,
+    set_benchmark,
+    get_open_orders,
+    cancel_order,
 )
 from zipline.finance import commission, slippage
 
@@ -53,12 +125,15 @@ try:
     from zipline.api import attach_pipeline, pipeline_output
     from zipline.pipeline import Pipeline
     from zipline.pipeline.factors import SimpleMovingAverage
+
     # Two-level fallback: prefer EquityPricing (Zipline-Reloaded 3.x), fall back to USEquityPricing
     try:
         from zipline.pipeline.data import EquityPricing
+
         _PRICING_CLASS = EquityPricing
     except ImportError:
         from zipline.pipeline.data import USEquityPricing
+
         _PRICING_CLASS = USEquityPricing
     _PIPELINE_AVAILABLE = True
 except ImportError:
@@ -70,6 +145,8 @@ from lib.config import load_strategy_params, get_warmup_days, validate_strategy_
 from lib.position_sizing import compute_position_size
 from lib.risk_management import check_exit_conditions, get_exit_type_code
 from lib.pipeline_utils import setup_pipeline
+from lib.metrics.performance import calculate_sharpe_ratio, calculate_sortino_ratio
+from lib.metrics.risk import calculate_max_drawdown
 
 # =============================================================================
 # IMPORT NOTES (v1.11.0 Modular Architecture)
@@ -95,17 +172,17 @@ if str(_project_root) not in sys.path:
 def load_params():
     """
     Load parameters from parameters.yaml file using lib.config.
-    
+
     Requires v1.11.0+ with lib.config.load_strategy_params() available.
     Uses modular architecture for configuration loading.
-    
+
     Returns:
         dict: Strategy parameters
-        
+
     Raises:
         FileNotFoundError: If parameters.yaml file is not found
         ValueError: If asset_class cannot be inferred from path
-        
+
     See Also:
         lib.config.load_strategy_params - Main configuration loader
         lib.config.validate_strategy_params - Parameter validation
@@ -113,17 +190,17 @@ def load_params():
     # Extract strategy name from path: strategies/{asset_class}/{name}/strategy.py
     strategy_path = Path(__file__).parent
     strategy_name = strategy_path.name
-    
+
     # Try to infer asset_class from parent directory
     asset_class = strategy_path.parent.name
-    
+
     # Validate asset_class
-    if asset_class in ('strategies', '_template'):
+    if asset_class in ("strategies", "_template"):
         raise ValueError(
             f"Cannot infer asset_class from path {strategy_path}. "
             "Strategy must be in strategies/{{asset_class}}/{{name}}/"
         )
-    
+
     try:
         return load_strategy_params(strategy_name, asset_class)
     except FileNotFoundError as e:
@@ -168,7 +245,7 @@ def _get_required_param(params: dict, *keys, default=None, error_msg: str = None
     if value is None:
         if default is not None:
             return default
-        path_str = '.'.join(path)
+        path_str = ".".join(path)
         msg = error_msg or (
             f"Missing required parameter '{path_str}' in parameters.yaml. "
             f"Please add this parameter to your strategy configuration."
@@ -187,11 +264,11 @@ def initialize(context):
     """
     # Load parameters from YAML
     params = load_params()
-    
+
     # Extract strategy name for validation
     strategy_path = Path(__file__).parent
     strategy_name = strategy_path.name
-    
+
     # Validate parameter structure
     is_valid, errors = validate_strategy_params(params, strategy_name)
     if not is_valid:
@@ -206,132 +283,144 @@ def initialize(context):
     context.required_warmup_days = get_warmup_days(params)
 
     # Validate warmup configuration
-    configured_warmup = params.get('backtest', {}).get('warmup_days')
+    configured_warmup = params.get("backtest", {}).get("warmup_days")
     if configured_warmup is not None and configured_warmup < context.required_warmup_days:
         warnings.warn(
             f"Configured warmup_days ({configured_warmup}) is less than calculated "
             f"required warmup ({context.required_warmup_days}) based on indicator periods. "
             f"Consider increasing warmup_days in parameters.yaml to avoid insufficient data.",
             UserWarning,
-            stacklevel=2
+            stacklevel=2,
         )
 
     # Get data frequency from parameters, default to 'daily'
-    context.data_frequency = _get_required_param(params, 'backtest', 'data_frequency', default='daily')
+    context.data_frequency = _get_required_param(
+        params, "backtest", "data_frequency", default="daily"
+    )
 
     # Get asset symbol from parameters (required)
     asset_symbol = _get_required_param(
-        params, 'strategy', 'asset_symbol',
+        params,
+        "strategy",
+        "asset_symbol",
         error_msg="Missing required parameter 'strategy.asset_symbol' in parameters.yaml. "
-                  "Example: asset_symbol: SPY (for equities), BTC-USD (for crypto), EURUSD=X (for forex)"
+        "Example: asset_symbol: SPY (for equities), BTC-USD (for crypto), EURUSD=X (for forex)",
     )
-    
+
     # Validate asset symbol is not a placeholder
-    if asset_symbol in ['SPY', 'PLACEHOLDER', '']:
+    if asset_symbol in ["SPY", "PLACEHOLDER", ""]:
         warnings.warn(
             f"Asset symbol '{asset_symbol}' appears to be a placeholder. "
             "Please update strategy.asset_symbol in parameters.yaml with your actual trading symbol.",
             UserWarning,
-            stacklevel=2
+            stacklevel=2,
         )
-    
+
     context.asset = symbol(asset_symbol)
-    
+
     # Initialize strategy state
     context.in_position = False
     context.entry_price = 0.0
     context.highest_price = 0.0  # For trailing stop tracking (initialized here)
     context.day_count = 0  # For explicit warmup tracking
-    
+
     # Set benchmark
     set_benchmark(context.asset)
 
     # Set up pipeline using library function
     context.use_pipeline = setup_pipeline(context, params, make_pipeline)
-    
+
     # Configure commission model
-    commission_config = params.get('costs', {}).get('commission', {})
+    commission_config = params.get("costs", {}).get("commission", {})
     set_commission(
         us_equities=commission.PerShare(
-            cost=commission_config.get('per_share', 0.005),
-            min_trade_cost=commission_config.get('min_cost', 1.0)
+            cost=commission_config.get("per_share", 0.005),
+            min_trade_cost=commission_config.get("min_cost", 1.0),
         )
     )
-    
+
     # Configure slippage model
-    slippage_config = params.get('costs', {}).get('slippage', {})
+    slippage_config = params.get("costs", {}).get("slippage", {})
     set_slippage(
         us_equities=slippage.VolumeShareSlippage(
-            volume_limit=slippage_config.get('volume_limit', 0.025),
-            price_impact=slippage_config.get('price_impact', 0.1)
+            volume_limit=slippage_config.get("volume_limit", 0.025),
+            price_impact=slippage_config.get("price_impact", 0.1),
         )
     )
-    
+
     # Schedule main trading function
-    rebalance_frequency = params.get('strategy', {}).get('rebalance_frequency', 'daily')
-    
+    rebalance_frequency = params.get("strategy", {}).get("rebalance_frequency", "daily")
+
     # Validate rebalance frequency
-    valid_frequencies = ['daily', 'weekly', 'monthly']
+    valid_frequencies = ["daily", "weekly", "monthly"]
     if rebalance_frequency not in valid_frequencies:
         warnings.warn(
             f"Invalid rebalance_frequency '{rebalance_frequency}'. "
             f"Must be one of: {valid_frequencies}. Defaulting to 'daily'.",
             UserWarning,
-            stacklevel=2
+            stacklevel=2,
         )
-        rebalance_frequency = 'daily'
-    
-    if rebalance_frequency == 'daily':
+        rebalance_frequency = "daily"
+
+    if rebalance_frequency == "daily":
         schedule_function(
             rebalance,
             date_rule=date_rules.every_day(),
-            time_rule=time_rules.market_open(minutes=params.get('strategy', {}).get('minutes_after_open', 30))
+            time_rule=time_rules.market_open(
+                minutes=params.get("strategy", {}).get("minutes_after_open", 30)
+            ),
         )
-    elif rebalance_frequency == 'weekly':
+    elif rebalance_frequency == "weekly":
         schedule_function(
             rebalance,
             date_rule=date_rules.week_start(days_offset=0),
-            time_rule=time_rules.market_open(minutes=params.get('strategy', {}).get('minutes_after_open', 30))
+            time_rule=time_rules.market_open(
+                minutes=params.get("strategy", {}).get("minutes_after_open", 30)
+            ),
         )
-    elif rebalance_frequency == 'monthly':
+    elif rebalance_frequency == "monthly":
         schedule_function(
             rebalance,
             date_rule=date_rules.month_start(days_offset=0),
-            time_rule=time_rules.market_open(minutes=params.get('strategy', {}).get('minutes_after_open', 30))
+            time_rule=time_rules.market_open(
+                minutes=params.get("strategy", {}).get("minutes_after_open", 30)
+            ),
         )
-    
+
     # Schedule risk management checks if enabled
-    risk_params = params.get('risk', {})
-    if (risk_params.get('use_stop_loss', False) or 
-        risk_params.get('use_trailing_stop', False) or 
-        risk_params.get('use_take_profit', False)):
+    risk_params = params.get("risk", {})
+    if (
+        risk_params.get("use_stop_loss", False)
+        or risk_params.get("use_trailing_stop", False)
+        or risk_params.get("use_take_profit", False)
+    ):
         schedule_function(
             check_stop_loss,
             date_rule=date_rules.every_day(),
-            time_rule=time_rules.market_open(minutes=1)
+            time_rule=time_rules.market_open(minutes=1),
         )
 
     # Schedule before_trading_start explicitly for cross-version compatibility
     # This ensures pipeline data is fetched before rebalance runs
     # Use minutes=1 for minute data (Zipline requires at least 1 minute offset)
-    before_open_minutes = 1 if context.data_frequency == 'minute' else 0
+    before_open_minutes = 1 if context.data_frequency == "minute" else 0
     schedule_function(
         before_trading_start,
         date_rule=date_rules.every_day(),
-        time_rule=time_rules.market_open(minutes=before_open_minutes)
+        time_rule=time_rules.market_open(minutes=before_open_minutes),
     )
 
 
 def make_pipeline():
     """
     Create Pipeline with generic pricing data.
-    
+
     This is an example pipeline. Customize based on your strategy needs.
     The window_length should be parameterized in your actual implementation.
-    
+
     NOTE: Pipeline API is primarily designed for US equities. For crypto/forex,
     consider using direct price data access via data.history() instead.
-    
+
     See Also:
         lib.pipeline_utils.setup_pipeline - Pipeline setup helper
         lib.pipeline_utils.validate_pipeline_config - Pipeline validation
@@ -342,7 +431,8 @@ def make_pipeline():
     # In your actual strategy, parameterize this based on your needs
     window_length = 30  # Example value - parameterize this in your strategy
     sma = SimpleMovingAverage(inputs=[_PRICING_CLASS.close], window_length=window_length)
-    return Pipeline(columns={'sma': sma}, screen=sma.isfinite())
+    return Pipeline(columns={"sma": sma}, screen=sma.isfinite())
+
 
 def before_trading_start(context, data):
     """
@@ -352,7 +442,7 @@ def before_trading_start(context, data):
     """
     if context.use_pipeline and _PIPELINE_AVAILABLE:
         try:
-            context.pipeline_data = pipeline_output('my_pipeline')
+            context.pipeline_data = pipeline_output("my_pipeline")
             # Example: Store the list of assets in our universe
             context.pipeline_universe = context.pipeline_data.index.tolist()
         except (KeyError, AttributeError, ValueError) as e:
@@ -361,73 +451,74 @@ def before_trading_start(context, data):
             context.pipeline_data = None
             context.pipeline_universe = []
 
+
 def compute_signals(context, data):
     """
     Compute trading signals based on your strategy logic.
-    
+
     This is where you implement your trading hypothesis.
-    
+
     COMMON PATTERNS:
-    
+
     1. Momentum (Trend Following):
        - Price above/below moving average
        - Breakout above resistance
        - Rate of change indicators
        Example: Buy when price > SMA(50) and price crosses above SMA(20)
-    
+
     2. Mean Reversion:
        - Price deviation from mean
        - RSI oversold/overbought
        - Bollinger Band extremes
        Example: Buy when RSI < 30, sell when RSI > 70
-    
+
     3. Multi-Asset (Pipeline-based):
        - Use context.pipeline_data for factor-based selection
        - Rank assets by factor values
        - Select top/bottom N assets
        Example: Rank by momentum factor, select top 5 assets
-    
+
     ASSET CLASS EXAMPLES:
-    
+
     Equities: Use Pipeline API for multi-asset strategies
         - Access to fundamental data and factors
         - Screen large universes efficiently
         - Example: Select top 20 stocks by momentum factor
-    
+
     Crypto: Direct price/indicator strategies (no Pipeline)
         - Use data.history() for price data
         - Calculate technical indicators directly
         - Example: BTC/USD momentum using SMA crossover
-    
+
     Forex: Direct price/indicator strategies (no Pipeline)
         - Use data.history() for price data
         - Consider session-based patterns
         - Example: EUR/USD mean reversion using Bollinger Bands
-    
+
     TROUBLESHOOTING:
-    
+
     - If data.history() fails: Check that lookback period <= available data
     - If pipeline_data is None: Ensure use_pipeline: true and pipeline is attached
     - If signals are always 0: Verify indicator calculations and thresholds
-    
+
     See docs/code_patterns/ for detailed examples and best practices.
-    
+
     See Also:
         lib.bundles.ingest_bundle - For data ingestion before backtest
         lib.validation.validate_bundle - For bundle validation
         lib.calendars.get_calendar_for_asset_class - For calendar selection
-    
+
     Args:
         context: Zipline context object with params attribute
         data: Zipline data object for price history and current prices
-        
+
     Returns:
         tuple: (signal, additional_data)
             - signal: 1 for buy, -1 for sell, 0 for hold
             - additional_data: dict of values to record (e.g., {'sma': 100.5, 'rsi': 45.2})
     """
     # TODO: Implement your strategy logic here
-    # 
+    #
     # EXAMPLE PATTERNS:
     #
     # Pattern 1: Pipeline-based strategy (if use_pipeline: true)
@@ -451,36 +542,144 @@ def compute_signals(context, data):
     additional_data = {}
 
     # Example: Simple price-based signal (works for all asset classes)
+    # This demonstrates direct Zipline API usage (v1.12.0+)
+
+    # Check if asset is tradeable using direct Zipline API
     if not data.can_trade(context.asset):
         return 0, additional_data
-    
-    current_price = data.current(context.asset, 'price')
-    
+
+    # Get current price using direct Zipline-Reloaded API
+    # Signature: data.current(assets, fields)
+    # Field 'price' returns last known close (adjusted, forward-filled)
+    # Returns: scalar float (or NaN if asset never traded)
+    current_price = data.current(context.asset, "price")
+
+    # Handle NaN case (asset not tradeable or no data)
+    if pd.isna(current_price):
+        return 0, additional_data
+
     # Example: Simple momentum signal (replace with your logic)
     # This is a placeholder - implement your actual strategy here
-    lookback = context.params.get('strategy', {}).get('lookback_period', 30)
-    threshold_pct = context.params.get('strategy', {}).get('signal_threshold_pct', 0.02)
-    
+    lookback = context.params.get("strategy", {}).get("lookback_period", 30)
+    threshold_pct = context.params.get("strategy", {}).get("signal_threshold_pct", 0.02)
+
     try:
-        prices = data.history(context.asset, 'price', lookback, '1d')
+        # Get historical prices using direct Zipline-Reloaded data.history() API
+        # Signature: data.history(assets, fields, bar_count, frequency)
+        # Returns: pd.Series (single asset + single field) with DatetimeIndex
+        # Field 'price' returns adjusted close, forward-filled
+        # NO wrapper functions - direct Zipline API only
+        prices = data.history(context.asset, "price", lookback, "1d")
+
+        # Alternative: Get OHLCV data (returns DataFrame)
+        # ohlcv = data.history(context.asset, ['open', 'high', 'low', 'close', 'volume'], lookback, '1d')
+        # prices = ohlcv['close']  # Extract close prices
+
+        # If you need minute data and want to aggregate to hourly:
+        # minute_prices = data.history(context.asset, 'price', lookback * 60, '1m')
+        # hourly_prices = minute_prices.resample('1h').last()  # Direct pandas (NO wrapper)
+
+        # Check if we have sufficient data (may be less than requested if data is limited)
         if len(prices) >= lookback:
             sma = prices.mean()
             if current_price > sma * (1 + threshold_pct):
                 signal = 1
             elif current_price < sma * (1 - threshold_pct):
                 signal = -1
-            additional_data['sma'] = sma
+            additional_data["sma"] = sma
+        else:
+            # Insufficient data - return neutral signal
+            warnings.warn(
+                f"Insufficient data for {context.asset}: got {len(prices)} bars, need {lookback}",
+                UserWarning,
+                stacklevel=2,
+            )
     except (KeyError, ValueError, AttributeError) as e:
         # If history fails (insufficient data, invalid asset, etc.), return neutral signal
+        # Common causes:
+        # - Asset not in bundle
+        # - Requested bar_count exceeds available data
+        # - Invalid frequency for bundle type
         # Log error for debugging (using warnings since logging may not be configured)
         warnings.warn(
-            f"Error computing signals for {context.asset}: {e}. "
-            "Returning neutral signal.",
+            f"Error computing signals for {context.asset}: {e}. Returning neutral signal.",
             UserWarning,
-            stacklevel=2
+            stacklevel=2,
         )
 
     return signal, additional_data
+
+
+def analyze_multi_timeframe(context, data, lookback_minutes=1440):
+    """
+    Example: Multi-timeframe analysis using direct pandas.
+
+    Demonstrates proper aggregation WITHOUT aggregate_ohlcv wrapper.
+    This is the CORRECT way to aggregate timeframes in v1.12.0+ (NO WRAPPERS directive).
+
+    Args:
+        context: Zipline context object
+        data: Zipline data object
+        lookback_minutes: Number of minutes of data to fetch (default: 1440 = 24 hours)
+
+    Returns:
+        tuple: (hourly, four_hour, daily) DataFrames with OHLCV data
+        Each DataFrame has DatetimeIndex and columns: ['open', 'high', 'low', 'close', 'volume']
+
+    Example Usage in compute_signals():
+        hourly, four_hour, daily = analyze_multi_timeframe(context, data)
+        # Analyze signals across multiple timeframes
+        hourly_trend = hourly['close'].iloc[-1] > hourly['close'].mean()
+        daily_trend = daily['close'].iloc[-1] > daily['close'].mean()
+        # Generate signal only when both timeframes align
+        if hourly_trend and daily_trend:
+            signal = 1
+
+    Note:
+        - Requires minute-level data bundle (data_frequency='minute')
+        - Uses direct pandas resample() - NO wrapper functions
+        - Zipline-Reloaded API: data.history() with multiple fields returns DataFrame
+    """
+    # Get minute data using direct Zipline-Reloaded API
+    # Multiple fields returns DataFrame: index=DatetimeIndex, columns=['open','high','low','close','volume']
+    minute_data = data.history(
+        context.asset, ["open", "high", "low", "close", "volume"], lookback_minutes, "1m"
+    )
+
+    # Handle empty data case
+    if minute_data.empty:
+        warnings.warn(f"No minute data available for {context.asset}", UserWarning, stacklevel=2)
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+
+    # Aggregate to different timeframes using DIRECT pandas resample()
+    # NO aggregate_ohlcv() wrapper - this is the v1.12.0+ pattern (AD-001: NO WRAPPERS)
+    # Direct pandas API: df.resample(freq).agg(dict) - standard pandas pattern
+
+    # Hourly aggregation
+    # resample('1h') groups by hour, agg() applies aggregation functions per group
+    hourly = minute_data.resample("1h").agg(
+        {
+            "open": "first",  # First open price in the hour
+            "high": "max",  # Maximum high price in the hour
+            "low": "min",  # Minimum low price in the hour
+            "close": "last",  # Last close price in the hour
+            "volume": "sum",  # Sum of volume in the hour
+        }
+    )
+
+    # 4-hour aggregation
+    four_hour = minute_data.resample("4h").agg(
+        {"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"}
+    )
+
+    # Daily aggregation (from minute data)
+    # Note: For daily data, consider using data.history(..., '1d') directly if available
+    # This aggregation is useful when you need daily bars from minute data
+    daily = minute_data.resample("1d").agg(
+        {"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"}
+    )
+
+    return hourly, four_hour, daily
 
 
 def rebalance(context, data):
@@ -497,7 +696,7 @@ def rebalance(context, data):
     context.day_count += 1
 
     # Skip warmup period - ensures sufficient data for indicators
-    warmup_days = context.params.get('backtest', {}).get('warmup_days')
+    warmup_days = context.params.get("backtest", {}).get("warmup_days")
     if warmup_days is None:
         warmup_days = context.required_warmup_days
 
@@ -509,14 +708,10 @@ def rebalance(context, data):
     if signal is None:
         return
 
-    current_price = data.current(context.asset, 'price')
+    current_price = data.current(context.asset, "price")
 
     # Record metrics
-    record(
-        signal=signal,
-        price=current_price,
-        **additional_data
-    )
+    record(signal=signal, price=current_price, **additional_data)
 
     # Cancel any open orders
     for order in get_open_orders(context.asset):
@@ -554,21 +749,21 @@ def check_stop_loss(context, data):
     Called separately from rebalance to check stops more frequently.
     """
     # Use library function to check exit conditions
-    exit_type = check_exit_conditions(context, data, context.params.get('risk', {}))
-    
+    exit_type = check_exit_conditions(context, data, context.params.get("risk", {}))
+
     if exit_type:
         # Execute exit
         order_target_percent(context.asset, 0)
         context.in_position = False
         context.entry_price = 0.0
         context.highest_price = 0.0
-        
+
         # Record exit type using library helper
         exit_type_code = get_exit_type_code(exit_type)
         record(
-            stop_triggered=1 if exit_type != 'take_profit' else 0,
-            take_profit_triggered=1 if exit_type == 'take_profit' else 0,
-            exit_type=exit_type_code
+            stop_triggered=1 if exit_type != "take_profit" else 0,
+            take_profit_triggered=1 if exit_type == "take_profit" else 0,
+            exit_type=exit_type_code,
         )
     else:
         record(stop_triggered=0, take_profit_triggered=0)
@@ -577,7 +772,7 @@ def check_stop_loss(context, data):
 def handle_data(context, data):
     """
     Called every bar.
-    
+
     Use this for intra-bar logic or recording. For most strategies,
     schedule_function in initialize() is preferred.
     """
@@ -602,23 +797,19 @@ def analyze(context, perf):
     params = load_params()
 
     # Get strategy configuration
-    strategy_config = params.get('strategy', {})
-    asset_symbol = strategy_config.get('asset_symbol', 'UNKNOWN')
-    asset_class = strategy_config.get('asset_class', 'equities')
+    strategy_config = params.get("strategy", {})
+    asset_symbol = strategy_config.get("asset_symbol", "UNKNOWN")
+    asset_class = strategy_config.get("asset_class", "equities")
 
     # Get risk-free rate and trading days from backtest config
-    backtest_config = params.get('backtest', {})
-    risk_free_rate = backtest_config.get('risk_free_rate', 0.04)
+    backtest_config = params.get("backtest", {})
+    risk_free_rate = backtest_config.get("risk_free_rate", 0.04)
 
     # Trading days varies by asset class - use config or default by asset class
-    trading_days_defaults = {'equities': 252, 'forex': 260, 'crypto': 365}
+    trading_days_defaults = {"equities": 252, "forex": 260, "crypto": 365}
     trading_days = backtest_config.get(
-        'trading_days_per_year',
-        trading_days_defaults.get(asset_class, 252)
+        "trading_days_per_year", trading_days_defaults.get(asset_class, 252)
     )
-
-    # Calculate daily risk-free rate
-    daily_rf = risk_free_rate / trading_days
 
     print("\n" + "=" * 60)
     print(f"STRATEGY RESULTS: {asset_symbol}")
@@ -627,56 +818,42 @@ def analyze(context, perf):
     # Calculate basic metrics
     # v1.11.0: Handle case where returns column is missing (when metrics_set='none')
     # Calculate returns from portfolio_value if needed
-    if 'returns' in perf.columns:
-        returns = perf['returns'].dropna()
-    elif 'portfolio_value' in perf.columns:
+    if "returns" in perf.columns:
+        returns = perf["returns"].dropna()
+    elif "portfolio_value" in perf.columns:
         # Calculate returns from portfolio_value
-        pv = perf['portfolio_value'].dropna()
+        pv = perf["portfolio_value"].dropna()
         if len(pv) > 1:
             returns = pv.pct_change().dropna()
         else:
             returns = pd.Series(dtype=float)
     else:
         returns = pd.Series(dtype=float)
-    
+
     total_return = (1 + returns).prod() - 1 if len(returns) > 0 else 0.0
-    capital_base = context.portfolio.starting_cash if hasattr(context.portfolio, 'starting_cash') else context.portfolio.portfolio_value
-    final_value = perf['portfolio_value'].iloc[-1] if 'portfolio_value' in perf.columns else capital_base
+    capital_base = (
+        context.portfolio.starting_cash
+        if hasattr(context.portfolio, "starting_cash")
+        else context.portfolio.portfolio_value
+    )
+    final_value = (
+        perf["portfolio_value"].iloc[-1] if "portfolio_value" in perf.columns else capital_base
+    )
 
-    # Use empyrical for consistent Sharpe/Sortino calculation (matches lib/metrics.py)
-    # Note: lib/metrics.calculate_metrics() provides the same functionality
-    # and is used by the backtest runner for standardized metric calculation
-    try:
-        import empyrical as ep
-        sharpe = float(ep.sharpe_ratio(
-            returns,
-            risk_free=daily_rf,
-            period='daily',
-            annualization=trading_days
-        ))
-        sortino = float(ep.sortino_ratio(
-            returns,
-            required_return=daily_rf,
-            period='daily',
-            annualization=trading_days
-        ))
-        max_dd = float(ep.max_drawdown(returns))
-
-        # Validate metrics (handle edge cases)
-        if not np.isfinite(sharpe):
-            sharpe = 0.0
-        if not np.isfinite(sortino):
-            sortino = 0.0
-    except ImportError:
-        # Fallback if empyrical not available
-        if len(returns) > 0 and returns.std() > 0:
-            excess_return = returns.mean() - daily_rf
-            sharpe = np.sqrt(trading_days) * excess_return / returns.std()
-        else:
-            sharpe = 0.0
-        sortino = 0.0  # Sortino requires empyrical for proper downside deviation
-        cumulative = (1 + returns).cumprod()
-        max_dd = ((cumulative.cummax() - cumulative) / cumulative.cummax()).max()
+    # Use lib/metrics for consistent Sharpe/Sortino/MaxDrawdown calculation
+    # These functions handle edge cases and provide consistent results across the codebase
+    if len(returns) > 0:
+        sharpe = calculate_sharpe_ratio(
+            returns, risk_free_rate=risk_free_rate, trading_days_per_year=trading_days
+        )
+        sortino = calculate_sortino_ratio(
+            returns, risk_free_rate=risk_free_rate, trading_days_per_year=trading_days
+        )
+        max_dd = calculate_max_drawdown(returns)
+    else:
+        sharpe = 0.0
+        sortino = 0.0
+        max_dd = 0.0
 
     # Print results
     print(f"Total Return: {total_return:.2%}")
@@ -687,4 +864,3 @@ def analyze(context, perf):
     print("-" * 60)
     print(f"Config: risk_free_rate={risk_free_rate:.2%}, trading_days={trading_days}")
     print("=" * 60)
-

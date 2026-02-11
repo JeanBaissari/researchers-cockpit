@@ -7,18 +7,3 @@ This directory contains tests for:
 - Overfitting detection
 - Optimization results
 """
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -15,9 +15,9 @@ from .core import ValidationResult, ValidationSeverity
 class SchemaValidator:
     """
     Validates DataFrame schemas against expected specifications.
-    
+
     Useful for ensuring data conforms to expected structure before processing.
-    
+
     Example:
         >>> schema = SchemaValidator(
         ...     required_columns=['open', 'high', 'low', 'close', 'volume'],
@@ -33,11 +33,11 @@ class SchemaValidator:
         optional_columns: Optional[List[str]] = None,
         column_types: Optional[Dict[str, type]] = None,
         index_type: Optional[type] = None,
-        allow_extra_columns: bool = True
+        allow_extra_columns: bool = True,
     ):
         """
         Initialize schema validator.
-        
+
         Args:
             required_columns: Columns that must be present
             optional_columns: Columns that may be present
@@ -54,17 +54,17 @@ class SchemaValidator:
     def validate(self, df: pd.DataFrame) -> ValidationResult:
         """
         Validate DataFrame against schema.
-        
+
         Args:
             df: DataFrame to validate
-            
+
         Returns:
             ValidationResult
         """
         result = ValidationResult()
-        result.add_metadata('validator', 'SchemaValidator')
-        result.add_metadata('row_count', len(df))
-        result.add_metadata('column_count', len(df.columns))
+        result.add_metadata("validator", "SchemaValidator")
+        result.add_metadata("row_count", len(df))
+        result.add_metadata("column_count", len(df.columns))
 
         # Check required columns
         df_cols = set(df.columns)
@@ -72,15 +72,17 @@ class SchemaValidator:
 
         if missing:
             result.add_check(
-                'required_columns', False,
+                "required_columns",
+                False,
                 f"Missing required columns: {sorted(missing)}",
-                {'missing_columns': sorted(missing)}
+                {"missing_columns": sorted(missing)},
             )
         else:
             result.add_check(
-                'required_columns', True,
+                "required_columns",
+                True,
                 "All required columns present",
-                {'required_columns': sorted(self.required_columns)}
+                {"required_columns": sorted(self.required_columns)},
             )
 
         # Check for unexpected columns
@@ -90,13 +92,14 @@ class SchemaValidator:
 
             if unexpected:
                 result.add_check(
-                    'no_unexpected_columns', False,
+                    "no_unexpected_columns",
+                    False,
                     f"Unexpected columns: {sorted(unexpected)}",
-                    {'unexpected_columns': sorted(unexpected)},
-                    severity=ValidationSeverity.WARNING
+                    {"unexpected_columns": sorted(unexpected)},
+                    severity=ValidationSeverity.WARNING,
                 )
             else:
-                result.add_check('no_unexpected_columns', True, "No unexpected columns")
+                result.add_check("no_unexpected_columns", True, "No unexpected columns")
 
         # Check column types
         for col, expected_type in self.column_types.items():
@@ -104,41 +107,32 @@ class SchemaValidator:
                 actual_type = df[col].dtype
                 if not np.issubdtype(actual_type, expected_type):
                     result.add_check(
-                        f'column_type_{col}', False,
+                        f"column_type_{col}",
+                        False,
                         f"Column '{col}' has type {actual_type}, expected {expected_type}",
-                        {'column': col, 'actual_type': str(actual_type), 'expected_type': str(expected_type)},
-                        severity=ValidationSeverity.WARNING
+                        {
+                            "column": col,
+                            "actual_type": str(actual_type),
+                            "expected_type": str(expected_type),
+                        },
+                        severity=ValidationSeverity.WARNING,
                     )
                 else:
-                    result.add_check(
-                        f'column_type_{col}', True,
-                        f"Column '{col}' has correct type"
-                    )
+                    result.add_check(f"column_type_{col}", True, f"Column '{col}' has correct type")
 
         # Check index type
         if self.index_type is not None:
             if not isinstance(df.index, self.index_type):
                 result.add_check(
-                    'index_type', False,
+                    "index_type",
+                    False,
                     f"Index has type {type(df.index).__name__}, expected {self.index_type.__name__}",
-                    {'actual_type': type(df.index).__name__, 'expected_type': self.index_type.__name__}
+                    {
+                        "actual_type": type(df.index).__name__,
+                        "expected_type": self.index_type.__name__,
+                    },
                 )
             else:
-                result.add_check('index_type', True, "Index type is correct")
+                result.add_check("index_type", True, "Index type is correct")
 
         return result
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

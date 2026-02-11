@@ -1,21 +1,38 @@
 """
 Position sizing utilities for trading strategies.
 
+This module COMPLEMENTS Zipline-Reloaded's order_target_percent() API by providing
+advanced position sizing algorithms. It does NOT wrap or replace Zipline's order
+functions - it calculates position sizes that are then passed to order_target_percent().
+
 Provides functions to calculate position sizes based on various methods:
-- Fixed position sizing
-- Volatility-scaled position sizing
-- Kelly Criterion position sizing
+- Fixed position sizing: Returns a fixed percentage of portfolio
+- Volatility-scaled position sizing: Scales position inversely with volatility
+- Kelly Criterion position sizing: Uses Kelly formula with fractional sizing
+
+Usage Pattern:
+    >>> from zipline.api import order_target_percent
+    >>> from lib.position_sizing import compute_position_size
+    >>>
+    >>> # Calculate position size using advanced algorithm
+    >>> position_size = compute_position_size(context, data, context.params)
+    >>>
+    >>> # Execute order using Zipline's native API
+    >>> order_target_percent(context.asset, position_size)
 
 This module follows the Single Responsibility Principle by focusing solely
 on position sizing calculations, making it reusable across all strategies.
+It uses Zipline-Reloaded APIs directly (data.history(), data.can_trade()) with
+no wrapper functions, following the NO WRAPPERS architecture (v1.12.0+).
 """
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 import numpy as np
+
+from lib.logging.config import get_logger
 
 if TYPE_CHECKING:
     # Avoid circular imports - these are Zipline types
@@ -23,12 +40,16 @@ if TYPE_CHECKING:
     from zipline.data.data_portal import DataPortal
 
 # Configure logging
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
-def compute_position_size(context: 'Context', data: 'DataPortal', params: dict) -> float:
+def compute_position_size(context: "Context", data: "DataPortal", params: dict) -> float:
     """
     Calculate position size based on the configured method.
+
+    This function COMPLEMENTS Zipline's order_target_percent() by providing
+    advanced position sizing calculations. The returned value should be passed
+    directly to order_target_percent() to execute the order.
 
     Supports three methods:
     - 'fixed': Returns max_position_pct directly
@@ -37,71 +58,75 @@ def compute_position_size(context: 'Context', data: 'DataPortal', params: dict) 
 
     Args:
         context: Zipline context object with params attribute
-        data: Zipline data object for price history
+        data: Zipline data object for price history (uses data.history() directly)
         params: Strategy parameters dictionary (can also use context.params)
 
     Returns:
-        Position size as float (0.0 to max_position_pct)
+        Position size as float (0.0 to max_position_pct) - compatible with
+        order_target_percent() API
 
     Raises:
         ValueError: If position sizing configuration is invalid
 
     Example:
+        >>> from zipline.api import order_target_percent
+        >>>
+        >>> # Calculate position size
         >>> position_size = compute_position_size(context, data, context.params)
+        >>>
+        >>> # Execute order using Zipline's native API
         >>> order_target_percent(context.asset, position_size)
+
+    Note:
+        This function uses Zipline-Reloaded APIs directly (data.history(),
+        data.can_trade()) with no wrapper functions, following NO WRAPPERS
+        architecture (v1.12.0+).
     """
     # Use params if provided, otherwise fall back to context.params
     if params is None:
-        params = getattr(context, 'params', {})
-    
-    pos_config = params.get('position_sizing', {})
-    method = pos_config.get('method', 'fixed')
-    max_position = pos_config.get('max_position_pct', 0.95)
-    min_position = pos_config.get('min_position_pct', 0.10)
+        params = getattr(context, "params", {})
+
+    pos_config = params.get("position_sizing", {})
+    method = pos_config.get("method", "fixed")
+    max_position = pos_config.get("max_position_pct", 0.95)
+    min_position = pos_config.get("min_position_pct", 0.10)
 
     # Validate bounds
     if not (0.0 <= max_position <= 1.0):
-        raise ValueError(
-            f"max_position_pct must be between 0.0 and 1.0. Got: {max_position}"
-        )
+        raise ValueError(f"max_position_pct must be between 0.0 and 1.0. Got: {max_position}")
     if not (0.0 <= min_position <= 1.0):
-        raise ValueError(
-            f"min_position_pct must be between 0.0 and 1.0. Got: {min_position}"
-        )
+        raise ValueError(f"min_position_pct must be between 0.0 and 1.0. Got: {min_position}")
     if min_position > max_position:
         raise ValueError(
             f"min_position_pct ({min_position}) cannot be greater than "
             f"max_position_pct ({max_position})"
         )
 
-    if method == 'fixed':
+    if method == "fixed":
         return float(max_position)
 
-    elif method == 'volatility_scaled':
+    elif method == "volatility_scaled":
         return _compute_volatility_scaled_size(
             context, data, params, pos_config, max_position, min_position
         )
 
-    elif method == 'kelly':
-        return _compute_kelly_size(
-            pos_config, max_position, min_position
-        )
+    elif method == "kelly":
+        return _compute_kelly_size(pos_config, max_position, min_position)
 
     else:
         logger.warning(
-            f"Unknown position sizing method '{method}'. "
-            f"Falling back to 'fixed' method."
+            f"Unknown position sizing method '{method}'. Falling back to 'fixed' method."
         )
         return float(max_position)
 
 
 def _compute_volatility_scaled_size(
-    context: 'Context',
-    data: 'DataPortal',
+    context: "Context",
+    data: "DataPortal",
     params: dict,
     pos_config: dict,
     max_position: float,
-    min_position: float
+    min_position: float,
 ) -> float:
     """
     Compute volatility-scaled position size.
@@ -120,8 +145,8 @@ def _compute_volatility_scaled_size(
     Returns:
         Position size as float
     """
-    vol_lookback = pos_config.get('volatility_lookback', 20)
-    vol_target = pos_config.get('volatility_target', 0.15)
+    vol_lookback = pos_config.get("volatility_lookback", 20)
+    vol_target = pos_config.get("volatility_target", 0.15)
 
     # Validate volatility parameters
     if vol_lookback < 1:
@@ -136,7 +161,7 @@ def _compute_volatility_scaled_size(
         return float(max_position)
 
     try:
-        prices = data.history(context.asset, 'price', vol_lookback + 1, '1d')
+        prices = data.history(context.asset, "price", vol_lookback + 1, "1d")
         if len(prices) < vol_lookback + 1:
             logger.debug(
                 f"Insufficient price history ({len(prices)} bars). "
@@ -153,8 +178,8 @@ def _compute_volatility_scaled_size(
             return float(max_position)
 
         # Annualized volatility (trading days varies by asset class)
-        asset_class = params.get('strategy', {}).get('asset_class', 'equities')
-        trading_days = {'equities': 252, 'forex': 260, 'crypto': 365}.get(asset_class, 252)
+        asset_class = params.get("strategy", {}).get("asset_class", "equities")
+        trading_days = {"equities": 252, "forex": 260, "crypto": 365}.get(asset_class, 252)
         current_vol = returns.std() * np.sqrt(trading_days)
 
         if current_vol > 0:
@@ -172,17 +197,12 @@ def _compute_volatility_scaled_size(
 
     except Exception as e:
         logger.warning(
-            f"Error computing volatility-scaled size: {e}. "
-            f"Falling back to max_position."
+            f"Error computing volatility-scaled size: {e}. Falling back to max_position."
         )
         return float(max_position)
 
 
-def _compute_kelly_size(
-    pos_config: dict,
-    max_position: float,
-    min_position: float
-) -> float:
+def _compute_kelly_size(pos_config: dict, max_position: float, min_position: float) -> float:
     """
     Compute position size using Kelly Criterion.
 
@@ -199,23 +219,21 @@ def _compute_kelly_size(
     Returns:
         Position size as float
     """
-    kelly_config = pos_config.get('kelly', {})
-    win_rate = kelly_config.get('win_rate_estimate', 0.55)
-    win_loss_ratio = kelly_config.get('avg_win_loss_ratio', 1.5)
-    kelly_fraction = kelly_config.get('kelly_fraction', 0.25)
-    kelly_min = kelly_config.get('min_position_pct', min_position)
+    kelly_config = pos_config.get("kelly", {})
+    win_rate = kelly_config.get("win_rate_estimate", 0.55)
+    win_loss_ratio = kelly_config.get("avg_win_loss_ratio", 1.5)
+    kelly_fraction = kelly_config.get("kelly_fraction", 0.25)
+    kelly_min = kelly_config.get("min_position_pct", min_position)
 
     # Validate Kelly parameters
     if not (0.0 < win_rate < 1.0):
         logger.warning(
-            f"Invalid win_rate_estimate: {win_rate}. Must be between 0 and 1. "
-            f"Using default: 0.55"
+            f"Invalid win_rate_estimate: {win_rate}. Must be between 0 and 1. Using default: 0.55"
         )
         win_rate = 0.55
     if win_loss_ratio <= 0:
         logger.warning(
-            f"Invalid avg_win_loss_ratio: {win_loss_ratio}. Must be positive. "
-            f"Using default: 1.5"
+            f"Invalid avg_win_loss_ratio: {win_loss_ratio}. Must be positive. Using default: 1.5"
         )
         win_loss_ratio = 1.5
     if not (0.0 < kelly_fraction <= 1.0):
@@ -247,4 +265,3 @@ def _compute_kelly_size(
         f"(full_kelly={full_kelly:.4f}, fraction={kelly_fraction:.4f})"
     )
     return clipped_size
-

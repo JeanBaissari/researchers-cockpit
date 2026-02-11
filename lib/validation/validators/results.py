@@ -1,7 +1,24 @@
 """
 Backtest results validation and verification functions.
 
-Validates backtest outputs and verifies metric calculations:
+Validates backtest RESULTS after execution. This complements Zipline's runtime
+validation that occurs during backtest execution.
+
+**What We Validate (Post-Backtest):**
+- Metrics consistency (Sharpe, Sortino, returns calculations)
+- Position/transaction matching (positions match transaction history)
+- Returns calculation (returns match equity curve)
+- Data integrity (no NaN or infinite values in results)
+
+**What Zipline Validates (Runtime):**
+- Data availability (data exists for requested dates)
+- Calendar alignment (backtest dates align with bundle calendar)
+- Symbol resolution (symbols can be resolved to assets)
+- Bar access (data.history() requests are valid)
+
+See docs/validation/validation_architecture.md for complete distinction.
+
+Functions:
 - validate_backtest_results(): Full backtest results validation
 - verify_metrics_calculation(): Metric sanity checks
 - verify_returns_calculation(): Returns data quality checks
@@ -18,7 +35,7 @@ from ..core import ValidationResult
 from ..config import ValidationConfig
 from ..backtest_validator import BacktestValidator
 
-logger = logging.getLogger('cockpit.validation')
+logger = logging.getLogger("cockpit.validation")
 
 
 def validate_backtest_results(
@@ -26,7 +43,7 @@ def validate_backtest_results(
     returns: Optional[pd.Series] = None,
     transactions: Optional[pd.DataFrame] = None,
     positions: Optional[pd.DataFrame] = None,
-    config: Optional[ValidationConfig] = None
+    config: Optional[ValidationConfig] = None,
 ) -> ValidationResult:
     """
     Validate backtest results.
@@ -46,9 +63,7 @@ def validate_backtest_results(
 
 
 def verify_metrics_calculation(
-    metrics: Dict[str, Any],
-    returns: pd.Series,
-    transactions: Optional[pd.DataFrame] = None
+    metrics: Dict[str, Any], returns: pd.Series, transactions: Optional[pd.DataFrame] = None
 ) -> Tuple[bool, List[str]]:
     """
     Verify that calculated metrics are within valid ranges.
@@ -64,32 +79,31 @@ def verify_metrics_calculation(
     discrepancies: List[str] = []
 
     # Sharpe ratio bounds
-    sharpe = metrics.get('sharpe', metrics.get('sharpe_ratio'))
+    sharpe = metrics.get("sharpe", metrics.get("sharpe_ratio"))
     if sharpe is not None and not -10 <= sharpe <= 10:
         discrepancies.append(f"Sharpe ratio {sharpe} outside expected range [-10, 10]")
 
     # Sortino ratio bounds
-    sortino = metrics.get('sortino', metrics.get('sortino_ratio'))
+    sortino = metrics.get("sortino", metrics.get("sortino_ratio"))
     if sortino is not None and not -10 <= sortino <= 10:
         discrepancies.append(f"Sortino ratio {sortino} outside expected range [-10, 10]")
 
     # Max drawdown sign
-    max_dd = metrics.get('max_drawdown')
+    max_dd = metrics.get("max_drawdown")
     if max_dd is not None and max_dd > 0:
         discrepancies.append(f"Max drawdown {max_dd} should be <= 0")
 
     # Total return consistency
-    if 'total_return' in metrics and len(returns) > 0:
+    if "total_return" in metrics and len(returns) > 0:
         calculated = (1 + returns).prod() - 1
-        reported = metrics['total_return']
+        reported = metrics["total_return"]
         if abs(calculated - reported) > 0.001:
             discrepancies.append(
-                f"Total return mismatch: calculated={calculated:.4f}, "
-                f"reported={reported:.4f}"
+                f"Total return mismatch: calculated={calculated:.4f}, reported={reported:.4f}"
             )
 
     # Win rate bounds
-    win_rate = metrics.get('win_rate')
+    win_rate = metrics.get("win_rate")
     if win_rate is not None and not 0 <= win_rate <= 1:
         discrepancies.append(f"Win rate {win_rate} should be between 0 and 1")
 
@@ -97,8 +111,7 @@ def verify_metrics_calculation(
 
 
 def verify_returns_calculation(
-    returns: pd.Series,
-    transactions: pd.DataFrame
+    returns: pd.Series, transactions: pd.DataFrame
 ) -> Tuple[bool, Optional[str]]:
     """
     Verify returns are consistent with transactions.
@@ -132,8 +145,7 @@ def verify_returns_calculation(
 
 
 def verify_positions_match_transactions(
-    positions_df: pd.DataFrame,
-    transactions_df: pd.DataFrame
+    positions_df: pd.DataFrame, transactions_df: pd.DataFrame
 ) -> Tuple[bool, Optional[str]]:
     """
     Verify that positions are consistent with transactions.
@@ -149,14 +161,14 @@ def verify_positions_match_transactions(
         return True, None
 
     # Check transaction columns
-    expected_cols = ['amount', 'price']
+    expected_cols = ["amount", "price"]
     missing_cols = [c for c in expected_cols if c not in transactions_df.columns]
     if missing_cols:
         return False, f"Missing transaction columns: {missing_cols}"
 
     # Check for negative prices
-    if 'price' in transactions_df.columns:
-        neg_prices = (transactions_df['price'] < 0).sum()
+    if "price" in transactions_df.columns:
+        neg_prices = (transactions_df["price"] < 0).sum()
         if neg_prices > 0:
             return False, f"Found {neg_prices} transactions with negative prices"
 

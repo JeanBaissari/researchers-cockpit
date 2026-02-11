@@ -16,7 +16,6 @@ from ..calendars import register_custom_calendars, get_calendar_for_asset_class
 from .strategy import _load_strategy_module
 from .config import BacktestConfig, _prepare_backtest_config, _validate_warmup_period
 from .preprocessing import (
-    validate_calendar_consistency,
     validate_session_alignment,
     validate_strategy_symbols,
     validate_bundle_date_range,
@@ -38,6 +37,7 @@ def _deep_merge_params(base: Dict[str, Any], overrides: Dict[str, Any]) -> Dict[
         Merged dictionary with overrides applied
     """
     import copy
+
     result = copy.deepcopy(base)
 
     for key, value in overrides.items():
@@ -55,10 +55,10 @@ def run_backtest(
     end_date: Optional[str] = None,
     capital_base: Optional[float] = None,
     bundle: Optional[str] = None,
-    data_frequency: str = 'daily',
+    data_frequency: str = "daily",
     asset_class: Optional[str] = None,
     custom_params: Optional[Dict[str, Any]] = None,
-    validate_calendar: bool = False
+    validate_calendar: bool = False,
 ) -> Tuple[pd.DataFrame, Any]:
     """
     Run a backtest for a strategy.
@@ -92,8 +92,7 @@ def run_backtest(
         from zipline import run_algorithm
     except ImportError:
         raise ImportError(
-            "zipline-reloaded not installed. "
-            "Install with: pip install zipline-reloaded"
+            "zipline-reloaded not installed. Install with: pip install zipline-reloaded"
         )
 
     # === STEP 1: LOAD STRATEGY AND PARAMETERS ===
@@ -109,7 +108,9 @@ def run_backtest(
 
         is_valid, errors = validate_strategy_params(params, strategy_name)
         if not is_valid:
-            error_msg = f"Invalid parameters for strategy '{strategy_name}':\n" + "\n".join(f"  - {e}" for e in errors)
+            error_msg = f"Invalid parameters for strategy '{strategy_name}':\n" + "\n".join(
+                f"  - {e}" for e in errors
+            )
             raise ValueError(error_msg)
     except FileNotFoundError:
         # Parameters file doesn't exist - strategy might load params differently
@@ -123,12 +124,7 @@ def run_backtest(
     # === STEP 3: PRE-FLIGHT VALIDATIONS ===
     # Warmup validation
     if params:
-        _validate_warmup_period(
-            config.start_date,
-            config.end_date,
-            params,
-            strategy_name
-        )
+        _validate_warmup_period(config.start_date, config.end_date, params, strategy_name)
 
     # Symbol validation (ensures strategy symbols exist in bundle)
     validate_strategy_symbols(strategy_name, config.bundle, config.asset_class)
@@ -142,9 +138,6 @@ def run_backtest(
     # Get trading calendar
     trading_calendar = get_trading_calendar(config.bundle, config.asset_class)
 
-    # Validate calendar consistency
-    validate_calendar_consistency(config.bundle, trading_calendar)
-
     # Validate bundle and get timestamps
     start_ts, end_ts = validate_bundle_date_range(
         config.bundle, config.start_date, config.end_date, config.data_frequency, trading_calendar
@@ -154,7 +147,7 @@ def run_backtest(
     assert start_ts.tz is None, "Start date must be timezone-naive"
     assert end_ts.tz is None, "End date must be timezone-naive"
 
-    # v1.1.0: Validate session alignment using SessionManager
+    # v1.12.0: Validate bundle exists and is registered with Zipline
     validate_session_alignment(config.bundle, start_ts, end_ts, validate_calendar)
 
     # === STEP 4: EXECUTE BACKTEST ===
@@ -168,7 +161,7 @@ def run_backtest(
         trading_calendar=trading_calendar,
         strategy_name=strategy_name,
         asset_class=config.asset_class,
-        params=params if params else None
+        params=params if params else None,
     )
 
     return perf, trading_calendar

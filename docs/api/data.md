@@ -2,18 +2,22 @@
 
 Module for OHLCV data aggregation, normalization, filtering, and FOREX-specific processing in The Researcher's Cockpit.
 
-**Location:** `lib/data/`  
-**CLI Equivalent:** N/A (used internally by bundles and backtest)  
-**Version:** v1.11.0
+**Location:** `lib/data/`
+**CLI Equivalent:** N/A (used internally by bundles and backtest)
+**Version:** v1.12.0
 
 ---
 
 ## Overview
 
-The data processing module provides utilities for transforming and cleaning market data before ingestion into Zipline bundles. All functions normalize data to UTC and handle asset-class-specific quirks.
+The data processing module provides utilities for transforming and cleaning market data. All functions normalize data to UTC and handle asset-class-specific quirks.
+
+**v1.12.0 Changes:**
+- **aggregate_ohlcv() removed** → Use direct `pandas.resample().agg()` instead
+- **Multi-timeframe aggregation** → Use pandas directly in strategies
+- **Direct pandas usage** → No wrapper functions (AD-001)
 
 **Key Features:**
-- Multi-timeframe aggregation (1m → 5m → 1h → daily)
 - UTC timezone normalization
 - FOREX-specific processing (Sunday consolidation, pre-session filtering)
 - Calendar-based filtering and gap filling
@@ -21,7 +25,7 @@ The data processing module provides utilities for transforming and cleaning mark
 
 **Processing Pipeline:**
 1. **Normalization** - Convert to UTC, ensure consistent timezone
-2. **Aggregation** - Resample to target timeframe
+2. **Aggregation** - Direct pandas resample (no wrappers)
 3. **Filtering** - Apply calendar-based filters
 4. **Gap Filling** - Fill missing sessions according to trading calendar
 
@@ -40,16 +44,24 @@ The data processing module provides utilities for transforming and cleaning mark
 
 ## Quick Start
 
-### Basic Aggregation
+### Basic Aggregation (v1.12.0+ - Direct pandas)
 
 ```python
-from lib.data import aggregate_ohlcv
-
+# Direct pandas resample (NO wrappers)
 # Aggregate 1-minute data to 5-minute
-df_5m = aggregate_ohlcv(df_1m, target_timeframe='5m')
+df_5m = df_1m.resample('5min').agg({
+    'open': 'first',
+    'high': 'max',
+    'low': 'min',
+    'close': 'last',
+    'volume': 'sum'
+})
 
 # Aggregate to hourly
-df_1h = aggregate_ohlcv(df_1m, target_timeframe='1h')
+df_1h = df_1m.resample('1h').agg({
+    'open': 'first', 'high': 'max', 'low': 'min',
+    'close': 'last', 'volume': 'sum'
+})
 ```
 
 ### Timezone Normalization
@@ -86,118 +98,67 @@ df_filtered = filter_to_calendar_sessions(df, calendar)
 
 ## Public API Reference
 
-### Aggregation Functions
+### Aggregation Functions (v1.12.0 - Removed)
 
-#### `aggregate_ohlcv()`
+**Note:** Aggregation wrapper functions have been removed in v1.12.0. Use direct pandas `resample()` instead.
 
-Aggregate OHLCV data to a higher timeframe.
+#### Direct Pandas Aggregation (Replacement)
 
-**Signature:**
+**Standard OHLCV Aggregation:**
 ```python
-def aggregate_ohlcv(
-    df: pd.DataFrame,
-    target_timeframe: str,
-    method: str = 'standard'
-) -> pd.DataFrame
-```
-
-**Parameters:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `df` | pd.DataFrame | required | DataFrame with DatetimeIndex and OHLCV columns |
-| `target_timeframe` | str | required | Target timeframe (`'5m'`, `'15m'`, `'1h'`, `'daily'`, etc.) |
-| `method` | str | `'standard'` | Aggregation method (currently only `'standard'` supported) |
-
-**Returns:**
-- `pd.DataFrame`: DataFrame with aggregated OHLCV data at target timeframe
-
-**Raises:**
-- `ValueError`: If required columns are missing
-
-**Aggregation Rules:**
-- `open`: First price in period
-- `high`: Maximum high in period
-- `low`: Minimum low in period
-- `close`: Last price in period
-- `volume`: Sum of volumes in period
-
-**Supported Timeframes:**
-- Minutes: `'1m'`, `'2m'`, `'5m'`, `'10m'`, `'15m'`, `'30m'`
-- Hours: `'1h'`, `'2h'`, `'4h'`
-- Daily: `'daily'`, `'1d'`, `'D'`
-- Weekly: `'weekly'`, `'1w'`, `'W'`
-
-**Example:**
-```python
-from lib.data import aggregate_ohlcv
-
 # Aggregate 1-minute to 5-minute
-df_5m = aggregate_ohlcv(df_1m, target_timeframe='5m')
+df_5m = df_1m.resample('5min').agg({
+    'open': 'first',   # First price in period
+    'high': 'max',     # Maximum high in period
+    'low': 'min',      # Minimum low in period
+    'close': 'last',   # Last price in period
+    'volume': 'sum'    # Sum of volumes
+})
 
 # Aggregate to hourly
-df_1h = aggregate_ohlcv(df_1m, target_timeframe='1h')
+df_1h = df_1m.resample('1h').agg({
+    'open': 'first', 'high': 'max', 'low': 'min',
+    'close': 'last', 'volume': 'sum'
+})
 
 # Aggregate to daily
-df_daily = aggregate_ohlcv(df_1h, target_timeframe='daily')
+df_daily = df_1h.resample('1D').agg({
+    'open': 'first', 'high': 'max', 'low': 'min',
+    'close': 'last', 'volume': 'sum'
+})
 ```
 
----
+**Supported Pandas Resample Rules:**
+- Minutes: `'1min'`, `'5min'`, `'15min'`, `'30min'`
+- Hours: `'1h'`, `'2h'`, `'4h'`
+- Daily: `'1D'`, `'D'`
+- Weekly: `'1W'`, `'W'`
 
-#### `resample_to_timeframe()`
-
-Resample OHLCV data from one timeframe to another.
-
-**Signature:**
+**Multi-Timeframe Analysis:**
 ```python
-def resample_to_timeframe(
-    df: pd.DataFrame,
-    source_timeframe: str,
-    target_timeframe: str
-) -> pd.DataFrame
+# Create multiple timeframes from minute data
+minute_data = df_1m  # Source data
+
+# Aggregate to different timeframes
+hourly = minute_data.resample('1h').agg({
+    'open': 'first', 'high': 'max', 'low': 'min',
+    'close': 'last', 'volume': 'sum'
+})
+
+four_hour = minute_data.resample('4h').agg({
+    'open': 'first', 'high': 'max', 'low': 'min',
+    'close': 'last', 'volume': 'sum'
+})
+
+daily = minute_data.resample('1D').agg({
+    'open': 'first', 'high': 'max', 'low': 'min',
+    'close': 'last', 'volume': 'sum'
+})
+
+# All timeframes now available for analysis
 ```
 
-**Parameters:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `df` | pd.DataFrame | required | DataFrame with DatetimeIndex and OHLCV columns |
-| `source_timeframe` | str | required | Source timeframe (e.g., `'1m'`, `'5m'`) |
-| `target_timeframe` | str | required | Target timeframe (e.g., `'1h'`, `'daily'`) |
-
-**Returns:**
-- `pd.DataFrame`: DataFrame with resampled OHLCV data
-
-**Raises:**
-- `ValueError`: If trying to downsample (e.g., 1h to 1m) or unknown timeframe
-
-**Example:**
-```python
-from lib.data import resample_to_timeframe
-
-# Resample from 1-minute to hourly
-df_hourly = resample_to_timeframe(df_minute, '1m', '1h')
-
-# Resample from 5-minute to daily
-df_daily = resample_to_timeframe(df_5m, '5m', 'daily')
-```
-
-**Note:** This function validates that aggregation is valid (can only aggregate up, not down).
-
----
-
-#### `create_multi_timeframe_data()`
-
-Create multiple timeframe views of the same data.
-
-**Signature:**
-```python
-def create_multi_timeframe_data(
-    df: pd.DataFrame,
-    source_timeframe: str,
-    target_timeframes: List[str]
-) -> Dict[str, pd.DataFrame]
-```
+See strategy template for complete multi-timeframe examples.
 
 **Parameters:**
 
@@ -738,6 +699,7 @@ if timeframe not in supported:
 
 ## Version History
 
+- **v1.12.0**: NO WRAPPERS refactoring - Removed aggregate_ohlcv() and resample functions (use pandas.resample() directly), removed multi-timeframe wrappers
 - **v1.11.0**: Modular refactoring (filters split into specialized modules)
 - **v1.0.6**: Multi-timeframe aggregation support
 - **v1.0.5**: FOREX Sunday consolidation and gap filling

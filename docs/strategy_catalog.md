@@ -2,6 +2,30 @@
 
 > Comprehensive index of all strategies with performance metrics, validation status, and trade statistics.
 
+---
+
+## Purpose
+
+This catalog provides a centralized index of all trading strategies in the Researcher's Cockpit with their performance metrics, validation status, and current development stage. It serves as the single source of truth for strategy inventory and performance tracking.
+
+---
+
+## Scope
+
+**What this covers:**
+- Complete list of all strategies (development to live)
+- Performance metrics (Sharpe, drawdown, win rate, etc.)
+- Validation status (walk-forward, Monte Carlo)
+- Data context (bundles, timeframes, date ranges)
+- Strategy versioning and parameter sets
+
+**What this does NOT cover:**
+- Strategy implementation details (see strategy directories)
+- Detailed backtest reports (see `results/` directories)
+- Strategy creation process (see `.claude/skills/04-zrl-strategy-scaffold`)
+
+---
+
 ## Quick Summary
 
 | Strategy | Asset | Status | Sharpe | MaxDD | Win Rate | Last Updated |
@@ -51,6 +75,30 @@
 
 ---
 
+
+## How to Use This Catalog
+
+**Adding a new strategy:**
+1. Create strategy in `strategies/{asset_class}/{name}/`
+2. Run backtest with `python scripts/run_backtest.py --strategy {name}`
+3. Update this catalog with performance metrics
+4. Run validation (walk-forward, Monte Carlo)
+5. Update validation status
+
+**Updating metrics:**
+```bash
+# After backtest completion
+python scripts/generate_report.py --strategy {name}
+# Metrics will be in results/{name}/latest/metrics.json
+```
+
+**Strategy status workflow:**
+```
+development → backtested → validated → paper → live
+```
+
+---
+
 ## Metrics Reference
 
 ### Status Definitions
@@ -78,3 +126,19 @@
 | **Win Rate** | Winning trades / Total trades | > 50% |
 | **Walk-Forward Efficiency** | OOS performance / IS performance | > 0.5 |
 | **Overfit Probability** | Likelihood of curve-fitting | < 30% |
+
+---
+
+## Related Documentation
+
+- [Creating Strategies](../.claude/skills/04-zrl-strategy-scaffold.md) - Strategy scaffolding skill
+- [Strategy Template](../strategies/_template/) - Template for new strategies
+- [Backtest API](api/backtest.md) - Running backtests
+- [Metrics API](api/metrics.md) - Performance metrics
+- [Optimization API](api/optimize.md) - Parameter optimization
+
+---
+
+**Last Updated:** 2026-02-09
+**Version:** v1.12.0
+**Status:** NO WRAPPERS Architecture

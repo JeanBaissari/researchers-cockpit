@@ -14,6 +14,7 @@ from ..data.sanitization import sanitize_value
 
 try:
     import empyrical as ep
+
     EMPYRICAL_AVAILABLE = True
 except ImportError:
     EMPYRICAL_AVAILABLE = False
@@ -90,7 +91,7 @@ def calculate_recovery_time(returns: pd.Series) -> Optional[pd.Timedelta]:
         running_max = cumulative_returns.cummax()
 
         # Calculate drawdowns
-        with np.errstate(divide='ignore', invalid='ignore'):
+        with np.errstate(divide="ignore", invalid="ignore"):
             drawdown = (cumulative_returns - running_max) / running_max
             drawdown = drawdown.replace([np.inf, -np.inf], 0).fillna(0)
 
@@ -139,7 +140,7 @@ def calculate_alpha_beta(
     returns: pd.Series,
     benchmark_returns: pd.Series,
     risk_free_rate: float = 0.04,
-    trading_days_per_year: int = 252
+    trading_days_per_year: int = 252,
 ) -> tuple[float, float]:
     """
     Calculate alpha and beta against a benchmark.
@@ -165,23 +166,28 @@ def calculate_alpha_beta(
             return 0.0, 1.0
 
         # Align returns and benchmark
-        aligned_returns, aligned_benchmark = returns.align(benchmark_returns, join='inner')
+        aligned_returns, aligned_benchmark = returns.align(benchmark_returns, join="inner")
         aligned_returns = aligned_returns.dropna()
         aligned_benchmark = aligned_benchmark.dropna()
 
-        if len(aligned_returns) < MIN_PERIODS_FOR_RATIOS or len(aligned_benchmark) < MIN_PERIODS_FOR_RATIOS:
+        if (
+            len(aligned_returns) < MIN_PERIODS_FOR_RATIOS
+            or len(aligned_benchmark) < MIN_PERIODS_FOR_RATIOS
+        ):
             return 0.0, 1.0
 
         # Calculate alpha and beta
         daily_rf = _get_daily_rf(risk_free_rate, trading_days_per_year)
 
-        alpha = float(ep.alpha(
-            aligned_returns,
-            aligned_benchmark,
-            risk_free=daily_rf,
-            period='daily',
-            annualization=trading_days_per_year
-        ))
+        alpha = float(
+            ep.alpha(
+                aligned_returns,
+                aligned_benchmark,
+                risk_free=daily_rf,
+                period="daily",
+                annualization=trading_days_per_year,
+            )
+        )
 
         beta = float(ep.beta(aligned_returns, aligned_benchmark))
 
@@ -192,9 +198,7 @@ def calculate_alpha_beta(
 
 
 def calculate_omega_ratio(
-    returns: pd.Series,
-    risk_free_rate: float = 0.04,
-    trading_days_per_year: int = 252
+    returns: pd.Series, risk_free_rate: float = 0.04, trading_days_per_year: int = 252
 ) -> float:
     """
     Calculate Omega ratio.
@@ -212,12 +216,14 @@ def calculate_omega_ratio(
 
     try:
         daily_rf = _get_daily_rf(risk_free_rate, trading_days_per_year)
-        omega = float(ep.omega_ratio(
-            returns,
-            risk_free=daily_rf,
-            required_return=0.0,
-            annualization=trading_days_per_year
-        ))
+        omega = float(
+            ep.omega_ratio(
+                returns,
+                risk_free=daily_rf,
+                required_return=0.0,
+                annualization=trading_days_per_year,
+            )
+        )
         return sanitize_value(omega)
     except Exception:
         return 0.0

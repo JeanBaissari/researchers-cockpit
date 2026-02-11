@@ -11,7 +11,7 @@ from .access import load_bundle, get_bundle_symbols
 
 # Public API exports
 __all__ = [
-    'ingest_bundle',
-    'load_bundle',
-    'get_bundle_symbols',
+    "ingest_bundle",
+    "load_bundle",
+    "get_bundle_symbols",
 ]
