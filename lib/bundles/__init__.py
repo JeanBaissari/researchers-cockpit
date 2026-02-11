@@ -1,12 +1,17 @@
 """
-Bundle management for The Researcher's Cockpit.
+Bundle management for The Researcher's Cockpit (v1.12.0+).
 
-Provides functions to ingest data from various sources into Zipline bundles
-and manage cached API responses. Supports multiple timeframes including:
-- daily (1d): Full historical data
-- 1h: Up to 730 days (yfinance limit)
-- 30m, 15m, 5m: Up to 60 days (yfinance limit)
-- 1m: Up to 7 days (yfinance limit)
+Note: v1.12.0 removed wrapper modules in favor of direct Zipline usage.
+- lib.bundles.csv.* → Use csvdir_equities() in extension.py
+- lib.bundles.registry.* → Use Zipline's bundles dict directly
+- lib.bundles.guard.* → Zipline validates during ingestion
+
+For bundle registration, edit ~/.zipline/extension.py to use csvdir_equities() directly.
+
+Remaining utilities:
+- Timeframe configuration (VALID_TIMEFRAMES, TIMEFRAME_DATA_LIMITS)
+- Bundle ingestion helper (ingest_bundle from api.py)
+- Yahoo Finance bundle support (register_yahoo_bundle)
 """
 
 # Core timeframe configuration
@@ -22,32 +27,13 @@ from .timeframes import (
     validate_timeframe_date_range,
 )
 
-# Bundle registry management
-from .registry import (
-    get_bundle_registry_path,
-    load_bundle_registry,
-    save_bundle_registry,
-    register_bundle_metadata,
-    get_bundle_path,
-    list_bundles,
-    unregister_bundle,
-    get_registered_bundles,
-    add_registered_bundle,
-    discard_registered_bundle,
-)
-
 # Bundle utilities
 from .utils import (
     aggregate_to_4h,
     is_valid_date_string,
     extract_symbols_from_bundle,
-)
-
-# CSV bundle registration (new modular structure - v1.1.0)
-from .csv import (
-    register_csv_bundle,
-    normalize_csv_columns,
-    parse_csv_filename,
+    validate_bundle_exists,
+    ensure_bundle_registered,
 )
 
 # Yahoo Finance bundle registration
@@ -70,67 +56,40 @@ except ImportError:
 # Main bundle API
 from .api import (
     ingest_bundle,
+)
+from .access import (
     load_bundle,
+    list_bundles,
     get_bundle_symbols,
 )
 
 # Valid data sources
-VALID_SOURCES = ['yahoo', 'binance', 'oanda', 'csv']
+VALID_SOURCES = ["yahoo", "binance", "oanda", "csv"]
 
 __all__ = [
     # Timeframe configuration
-    'TIMEFRAME_TO_YF_INTERVAL',
-    'TIMEFRAMES_REQUIRING_AGGREGATION',
-    'TIMEFRAME_DATA_LIMITS',
-    'TIMEFRAME_TO_DATA_FREQUENCY',
-    'VALID_TIMEFRAMES',
-    'CALENDAR_MINUTES_PER_DAY',
-    'VALID_SOURCES',
-    'get_minutes_per_day',
-    'get_timeframe_info',
-    'validate_timeframe_date_range',
-    # Registry
-    'get_bundle_registry_path',
-    'load_bundle_registry',
-    'save_bundle_registry',
-    'register_bundle_metadata',
-    'get_bundle_path',
-    'list_bundles',
-    'unregister_bundle',
-    'get_registered_bundles',
-    'add_registered_bundle',
-    'discard_registered_bundle',
+    "TIMEFRAME_TO_YF_INTERVAL",
+    "TIMEFRAMES_REQUIRING_AGGREGATION",
+    "TIMEFRAME_DATA_LIMITS",
+    "TIMEFRAME_TO_DATA_FREQUENCY",
+    "VALID_TIMEFRAMES",
+    "CALENDAR_MINUTES_PER_DAY",
+    "VALID_SOURCES",
+    "get_minutes_per_day",
+    "get_timeframe_info",
+    "validate_timeframe_date_range",
     # Utils
-    'aggregate_to_4h',
-    'is_valid_date_string',
-    'extract_symbols_from_bundle',
-    # CSV bundle
-    'register_csv_bundle',
-    'normalize_csv_columns',
-    'parse_csv_filename',
+    "aggregate_to_4h",
+    "is_valid_date_string",
+    "extract_symbols_from_bundle",
+    "validate_bundle_exists",
+    "ensure_bundle_registered",
     # Yahoo bundle
-    'register_yahoo_bundle',
-    'auto_register_yahoo_bundle_if_exists',
-    # Cache (optional)
-    # 'cache_api_data',  # Optional - module may not exist
-    # 'clear_cache',  # Optional - module may not exist
+    "register_yahoo_bundle",
+    "auto_register_yahoo_bundle_if_exists",
     # Main API
-    'ingest_bundle',
-    'load_bundle',
-    'get_bundle_symbols',
+    "ingest_bundle",
+    "load_bundle",
+    "list_bundles",
+    "get_bundle_symbols",
 ]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

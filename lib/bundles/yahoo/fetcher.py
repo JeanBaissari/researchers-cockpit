@@ -19,7 +19,7 @@ def fetch_yahoo_data(
     start_date: Optional[str],
     end_date: Optional[str],
     interval: str,
-    show_progress: bool = False
+    show_progress: bool = False,
 ) -> pd.DataFrame:
     """
     Fetch data from Yahoo Finance for a single symbol.
@@ -65,7 +65,7 @@ def fetch_multiple_symbols(
     start_date: Optional[str],
     end_date: Optional[str],
     interval: str,
-    show_progress: bool = False
+    show_progress: bool = False,
 ) -> dict:
     """
     Fetch data for multiple symbols from Yahoo Finance.
@@ -97,8 +97,7 @@ def fetch_multiple_symbols(
 
     if not results:
         raise RuntimeError(
-            f"Failed to fetch data for all symbols. "
-            f"Attempted: {symbols}, Failed: {failed}"
+            f"Failed to fetch data for all symbols. Attempted: {symbols}, Failed: {failed}"
         )
 
     if failed and show_progress:

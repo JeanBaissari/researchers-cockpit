@@ -26,15 +26,16 @@ logger = logging.getLogger(__name__)
 _PIPELINE_AVAILABLE = False
 try:
     from zipline.api import attach_pipeline
+
     _PIPELINE_AVAILABLE = True
 except ImportError:
     pass
 
 
 def setup_pipeline(
-    context: 'Context',
+    context: "Context",
     params: dict,
-    make_pipeline_func: Optional[Callable[[], Optional['Pipeline']]] = None
+    make_pipeline_func: Optional[Callable[[], Optional["Pipeline"]]] = None,
 ) -> bool:
     """
     Set up pipeline if enabled and available.
@@ -67,43 +68,43 @@ def setup_pipeline(
     # Initialize pipeline state in context
     context.pipeline_data = None
     context.pipeline_universe = []
-    
+
     # Check if pipeline is enabled in parameters
-    use_pipeline = params.get('strategy', {}).get('use_pipeline', False)
-    
+    use_pipeline = params.get("strategy", {}).get("use_pipeline", False)
+
     if not use_pipeline:
         context.use_pipeline = False
         logger.debug("Pipeline disabled in parameters")
         return False
-    
+
     # Validate pipeline availability
     if not _PIPELINE_AVAILABLE:
         warnings.warn(
             "Pipeline API not available in this Zipline version. "
             "Setting use_pipeline to False. Pipeline is primarily designed for US equities.",
             UserWarning,
-            stacklevel=2
+            stacklevel=2,
         )
         context.use_pipeline = False
         return False
-    
+
     # Validate asset class compatibility
-    asset_class = params.get('strategy', {}).get('asset_class', 'equities')
-    if asset_class != 'equities':
+    asset_class = params.get("strategy", {}).get("asset_class", "equities")
+    if asset_class != "equities":
         warnings.warn(
             f"Pipeline API is primarily designed for US equities, but asset_class is '{asset_class}'. "
             "Consider setting use_pipeline: false for crypto/forex strategies.",
             UserWarning,
-            stacklevel=2
+            stacklevel=2,
         )
         # Don't disable pipeline, just warn - user may have valid use case
-    
+
     # Attach pipeline if make_pipeline function is provided
     if make_pipeline_func is not None:
         try:
             pipeline = make_pipeline_func()
             if pipeline is not None:
-                attach_pipeline(pipeline, 'my_pipeline')
+                attach_pipeline(pipeline, "my_pipeline")
                 context.use_pipeline = True
                 logger.debug("Pipeline attached successfully")
                 return True
@@ -116,7 +117,7 @@ def setup_pipeline(
             warnings.warn(
                 f"Failed to create pipeline: {e}. Setting use_pipeline to False.",
                 UserWarning,
-                stacklevel=2
+                stacklevel=2,
             )
             context.use_pipeline = False
             return False
@@ -161,27 +162,25 @@ def validate_pipeline_config(params: dict) -> tuple[bool, list[str]]:
         ...         print(f"Warning: {warning}")
     """
     warnings_list = []
-    use_pipeline = params.get('strategy', {}).get('use_pipeline', False)
-    
+    use_pipeline = params.get("strategy", {}).get("use_pipeline", False)
+
     if not use_pipeline:
         return True, warnings_list
-    
+
     # Check availability
     if not _PIPELINE_AVAILABLE:
         warnings_list.append(
-            "Pipeline API not available in this Zipline version. "
-            "Pipeline will be disabled."
+            "Pipeline API not available in this Zipline version. Pipeline will be disabled."
         )
         return False, warnings_list
-    
+
     # Check asset class
-    asset_class = params.get('strategy', {}).get('asset_class', 'equities')
-    if asset_class != 'equities':
+    asset_class = params.get("strategy", {}).get("asset_class", "equities")
+    if asset_class != "equities":
         warnings_list.append(
             f"Pipeline API is primarily designed for US equities, but asset_class is '{asset_class}'. "
             "Consider setting use_pipeline: false for crypto/forex strategies."
         )
         # Not a fatal error, just a warning
-    
-    return True, warnings_list
 
+    return True, warnings_list

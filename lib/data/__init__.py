@@ -1,17 +1,25 @@
 """
 Data processing utilities for The Researcher's Cockpit.
 
-Provides functions for OHLCV data aggregation, normalization,
-filtering, and FOREX-specific processing.
-"""
+Note: aggregation.py removed in v1.12.0.
 
-# Aggregation utilities
-from .aggregation import (
-    aggregate_ohlcv,
-    resample_to_timeframe,
-    create_multi_timeframe_data,
-    get_timeframe_multiplier,
-)
+For minute → daily aggregation:
+- Bundle ingestion: Zipline aggregates automatically (BcolzDailyBarWriter)
+- Strategy code: Use pandas.resample() directly
+
+Migration:
+    # Before (v1.11.x):
+    from lib.data.aggregation import aggregate_ohlcv
+    daily = aggregate_ohlcv(minute_df, 'daily')
+
+    # After (v1.12.0):
+    daily = minute_df.resample('1D').agg({
+        'open': 'first', 'high': 'max', 'low': 'min',
+        'close': 'last', 'volume': 'sum'
+    })
+
+Provides functions for data normalization, filtering, and FOREX-specific processing.
+"""
 
 # Normalization utilities
 from .normalization import (
@@ -34,11 +42,6 @@ from .filters import (
 )
 
 __all__ = [
-    # Aggregation
-    'aggregate_ohlcv',
-    'resample_to_timeframe',
-    'create_multi_timeframe_data',
-    'get_timeframe_multiplier',
     # Normalization
     'normalize_to_utc',
     'fill_data_gaps',

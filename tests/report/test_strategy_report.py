@@ -20,18 +20,18 @@ from lib.report import generate_report
 
 class TestReportGeneration:
     """Test report generation."""
-    
+
     @pytest.mark.integration
     @pytest.mark.slow
     def test_generate_report_exists(self):
         """Test that generate_report function exists."""
         assert generate_report is not None
         assert callable(generate_report)
-        
+
         import inspect
+
         sig = inspect.signature(generate_report)
         params = list(sig.parameters.keys())
-        
+
         # Should have parameters
         assert len(params) > 0
-

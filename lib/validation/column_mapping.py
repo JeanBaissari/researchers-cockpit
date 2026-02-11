@@ -16,10 +16,11 @@ from .core import REQUIRED_OHLCV_COLUMNS, COLUMN_ALIASES
 class ColumnMapping:
     """
     Immutable mapping of canonical column names to actual DataFrame columns.
-    
+
     Provides a clean interface for accessing OHLCV columns regardless of
     their actual naming convention in the source data.
     """
+
     open: Optional[str] = None
     high: Optional[str] = None
     low: Optional[str] = None
@@ -41,26 +42,24 @@ class ColumnMapping:
     def to_dict(self) -> Dict[str, Optional[str]]:
         """Convert to dictionary."""
         return {
-            'open': self.open,
-            'high': self.high,
-            'low': self.low,
-            'close': self.close,
-            'volume': self.volume
+            "open": self.open,
+            "high": self.high,
+            "low": self.low,
+            "close": self.close,
+            "volume": self.volume,
         }
 
     @property
     def price_columns(self) -> List[str]:
         """Get list of mapped price column names."""
-        return [
-            col for col in [self.open, self.high, self.low, self.close]
-            if col is not None
-        ]
+        return [col for col in [self.open, self.high, self.low, self.close] if col is not None]
 
     @property
     def all_columns(self) -> List[str]:
         """Get list of all mapped column names."""
         return [
-            col for col in [self.open, self.high, self.low, self.close, self.volume]
+            col
+            for col in [self.open, self.high, self.low, self.close, self.volume]
             if col is not None
         ]
 
@@ -68,19 +67,19 @@ class ColumnMapping:
 def build_column_mapping(df: pd.DataFrame) -> ColumnMapping:
     """
     Build a case-insensitive mapping from canonical column names to actual column names.
-    
+
     Supports various common column name formats:
     - lowercase: open, high, low, close, volume
     - uppercase: OPEN, HIGH, LOW, CLOSE, VOLUME
     - titlecase: Open, High, Low, Close, Volume
     - abbreviated: O, H, L, C, V (uppercase only)
-    
+
     Args:
         df: DataFrame to analyze
-        
+
     Returns:
         ColumnMapping with actual column names
-        
+
     Example:
         >>> df = pd.DataFrame({'Open': [1], 'HIGH': [2], 'low': [0.5], 'Close': [1.5], 'Vol': [100]})
         >>> mapping = build_column_mapping(df)
@@ -97,18 +96,3 @@ def build_column_mapping(df: pd.DataFrame) -> ColumnMapping:
                 break
 
     return ColumnMapping(**mapping)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

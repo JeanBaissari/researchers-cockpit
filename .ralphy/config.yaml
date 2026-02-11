@@ -1,0 +1,211 @@
+# Ralphy Configuration
+# https://github.com/michaelshimeles/ralphy
+# Version: v1.12.0 (NO WRAPPERS Architecture)
+
+project:
+  name: "v1_researchers_cockpit"
+  language: "Python"
+  framework: "Zipline-Reloaded"
+  description: "Algorithmic trading research environment using Zipline-Reloaded"
+
+commands:
+  test: "pytest tests/ -v"
+  lint: "ruff check lib/ scripts/ tests/ --max-line-length=120"
+  build: "pytest tests/ -v --maxfail=1"
+
+# Rules - instructions the AI MUST follow (injected into every prompt)
+rules:
+  # === CORE ARCHITECTURE (v1.12.0 NO WRAPPERS) ===
+  
+  - "CANONICAL LIB/ MODULE MAP: lib/metrics/ (performance metrics), lib/plots/ (visualizations), lib/validation/ (data quality checks), lib/bundles/ (data ingestion), lib/config/core.py (config loading), lib/report/ (report generation), lib/backtest/ (backtest execution), lib/data/ (data normalization/filtering), lib/calendars/ (custom trading calendars), lib/strategies/ (strategy utilities)"
+  
+  - "Each lib/ file must be < 350 lines (split into focused submodules if larger)"
+  - "Use lib.* imports exclusively - never relative imports across packages"
+  - "No hardcoded paths - use lib/paths.py (get_project_root) and lib/config/core.py (load_settings)"
+  - "Follow SOLID principles: Single Responsibility, Open/Closed, DRY"
+  - "Design for scalability: functions accept configurable parameters, not hardcoded values"
+  - "Prefer composition over inheritance for extensibility"
+  - "All refactorings MUST pass existing tests AND improve modularity/functionality"
+  
+  # === ZIPLINE-RELOADED (v3.0+) RULES ===
+  
+  - "ONLY use patterns from Zipline-Reloaded: https://github.com/stefan-jansen/zipline-reloaded"
+  - "DO NOT use patterns from legacy Quantopian zipline (deprecated/unmaintained)"
+  - "NO WRAPPERS - Use Zipline APIs directly: data.history(), data.current(), symbol(), schedule_function(), Pipeline, csvdir_equities()"
+  - "Research Zipline-Reloaded capabilities before implementing custom code - don't duplicate framework features"
+  - "Verify API compatibility with Zipline-Reloaded v3.0+ (not legacy Quantopian)"
+  
+  # === TRADING CALENDARS ===
+  
+  - "Use exchange_calendars package for built-in calendars (NYSE, NASDAQ, LSE) - equities need no custom calendar"
+  - "CRYPTO/FOREX: Store custom calendars in lib/calendars/ (CryptoCalendar 24/7, ForexCalendar 24/5 with Sunday open)"
+  - "Custom calendars MUST be registered via exchange_calendars.register_calendar() before bundle registration in extension.py"
+  - "Calendar name in bundle registration MUST match registered calendar name exactly"
+  - "Validate calendar compatibility with data source trading hours before ingestion"
+  
+  # === DATA BUNDLE INGESTION (v1.12.0 Direct APIs) ===
+  
+  - "Bundle registration in .zipline/extension.py via register(name, csvdir_equities(...), calendar_name, ...)"
+  - "Use Zipline's csvdir_equities() directly for CSV ingestion - NO custom ingest function wrappers"
+  - "Bundle naming: {symbol}_{timeframe} (e.g., btcusd_daily, eurusd_1m)"
+  - "Ingest functions return timezone-aware DatetimeIndex (UTC preferred) with tz_convert(None) before Zipline"
+  - "Always specify minutes_per_day for non-equity: Crypto/Forex = 1440 (24*60)"
+  - "Data sources configured in config/data_sources.yaml - never hardcode API keys/URLs"
+  - "For external APIs: handle rate limits, retries, partial failures gracefully"
+  - "For local CSV: validate format/columns before ingestion via lib/validation/"
+  - "Use lib/bundles/ modules for bundle management (list_bundles, load_bundle, etc.)"
+  - "Use lib/data/ modules for data processing: normalization (lib/data/normalization.py), FOREX handling (lib/data/forex.py), filtering (lib/data/filters.py)"
+  - "Data quality validation: lib/validation/ for OHLCV integrity, bundle verification, backtest result validation"
+  
+  # === LOCAL CSV INGESTION (Avoid Redundancy) ===
+  
+  - "ALWAYS assume local CSV data is already ingested unless explicitly told otherwise"
+  - "Before CSV ingestion: FIRST verify bundle exists via 'zipline bundles' command"
+  - "Only re-ingest CSV when: (1) task requires it, (2) testing, (3) bundle missing/corrupted"
+  - "If unsure whether bundle exists, ask user before ingestion"
+  
+  # === STRATEGY DEVELOPMENT ===
+  
+  - "All strategies load parameters from parameters.yaml - no hardcoded params in strategy.py"
+  - "Follow strategies/_template/ structure"
+  - "Use lib/config/strategy.py for parameter loading"
+  - "Workflow: Research (notebooks/) → Implement (strategies/{name}/) → Backtest (scripts/run_backtest.py) → Analyze (lib/metrics/, lib/plots/)"
+  
+  # === CONFIGURATION HIERARCHY ===
+  
+  - "Config precedence: function args > strategy parameters.yaml > config/settings.yaml > defaults"
+  - "Environment variables override file-based config for sensitive values"
+  - "Use lib/config/core.py (load_settings) for unified config access"
+  - "Never store secrets in config files - use environment variables or .env"
+  
+  # === BACKTEST EXECUTION ===
+  
+  - "Backtest params (capital, dates, frequency) from parameters.yaml"
+  - "Use zipline.run_algorithm() with initialize(), handle_data(), before_trading_start()"
+  - "Record portfolio metrics via record() for post-backtest analysis"
+  - "Transaction costs: set_slippage() and set_commission() in initialize() - must be realistic"
+  - "Results stored in results/{strategy_name}/{timestamp}/ - always capture perf DataFrame and recorded_vars"
+  
+  # === ANALYSIS & REPORTING ===
+  
+  - "Metrics: lib/metrics/ calculates Sharpe, Sortino, Max Drawdown, CAGR, Win Rate, Profit Factor"
+  - "Visualizations: lib/plots/ generates equity curves, drawdown charts, rolling metrics, trade analysis"
+  - "Reports: lib/report/ exports analysis to HTML/PDF"
+  - "All analysis functions operate on standardized perf DataFrame"
+  - "Support both Jupyter inline display and script file output for all visualizations"
+  
+  # === IMPORT & LOGGING ===
+  
+  - "Always use lib.* imports for project modules"
+  - "Import from specific submodules when needed (lib.metrics.core, lib.config.strategy)"
+  - "Use absolute imports from project root"
+  - "Handle optional dependencies with try/except"
+  - "Use lib/logging/config.py for logging setup"
+  - "Use specialized loggers: data_logger, strategy_logger, backtest_logger, metrics_logger"
+  - "Use LogContext for structured logging - never use basic logging module directly"
+  
+  # === ERROR HANDLING ===
+  
+  - "Use project-specific exceptions from lib/paths.py (ProjectRootNotFoundError)"
+  - "Log errors with exc_info=True"
+  - "Provide clear, actionable error messages"
+  - "Chain exceptions to preserve context (raise NewError from original_error)"
+  
+  # === TESTING ===
+  
+  - "All new code must have tests in tests/ directory"
+  - "Tests follow pytest conventions with conftest.py for shared fixtures"
+  - "Test edge cases and error conditions, not just happy paths"
+  - "New functionality requires unit tests before merging"
+  
+  # === DOCUMENTATION ===
+  
+  - "Update CLAUDE.md when adding major features"
+  - "Document API changes in docs/api/"
+  - "Update workflow.md if workflow changes"
+  - "Include docstrings with parameter descriptions and return types"
+  
+  # === API USAGE & VISUALIZATION ===
+  
+  - "Use numpy for numerical computations"
+  - "Use matplotlib for visualizations - design for both script and Jupyter notebook use"
+  - "Visualization functions accept configurable parameters (figsize, colors, styles)"
+  - "Metrics functions return structured data (dict/DataFrame) for downstream flexibility"
+  - "API functions have clear return types and raise descriptive exceptions"
+  
+  # === EXTENSION.PY (Open Source Project) ===
+  
+  - "extension.py modifications MUST include '# USER CONFIG:' comment blocks for user-customizable sections"
+  - "Add '# CLONE NOTE:' comments explaining what users should change when cloning"
+  - "Calendar imports from lib/calendars/ preferred over inline definitions"
+  
+  # === PRD COMMIT RULES ===
+  
+  - "No commits should reference PRD file names/numbers - use atomic goal descriptions instead"
+  
+  # === PRD MODIFICATION RULES ===
+  
+  - "Agents MAY modify prd/**/*.md files when updates align with project rules"
+  - "Modifications allowed after 5+ failed iterations OR when tasks need re-alignment"
+  - "All updates MUST follow architecture, testing, documentation rules"
+  - "MUST document reason for PRD updates"
+  - "Preserve original intent unless explicitly superseded"
+  - "Agents can add clarifications, fix ambiguities, improve task definitions"
+  
+  # === EXECUTION ENVIRONMENT ===
+  
+  - "Conda environment 'zipline-reloaded' is canonical execution environment"
+  - "Python 3.10+ required for Zipline-Reloaded v3.0+"
+  - "Dependencies managed via requirements.txt"
+  - "PYTHONPATH must include project root for lib.* imports"
+
+# Boundaries - files/folders agents should not modify
+boundaries:
+  never_touch:
+    # Core configuration (manual edits only)
+    - "config/settings.yaml"
+    - "config/data_sources.yaml"
+    - ".ralphy/config.yaml"
+    
+    # Agent system (read-only for agents)
+    - ".claude/agents/**"
+    - ".claude/skills/**"
+    - ".cursor/rules/**"
+    
+    # PRD templates (prevent template corruption)
+    - "prd/_templates/**"
+    
+    # Generated content (read-only)
+    - "results/**"
+    - "reports/**"
+    - "logs/**"
+    - "data/bundles/**"
+    
+    # Version control
+    - ".git/**"
+    - ".gitignore"
+    
+    # Core documentation (manual updates only)
+    - "CLAUDE.md"
+    - "workflow.md"
+    - "pipeline.md"
+  
+  modify_with_care:
+    - path: ".zipline/extension.py"
+      rules:
+        - "MUST include '# USER CONFIG:' blocks for customizable sections"
+        - "MUST include '# CLONE NOTE:' comments for open source users"
+        - "MUST preserve existing bundle registrations"
+        - "Custom calendar registrations MUST precede bundle registrations"
+    
+    - path: "lib/calendars/"
+      rules:
+        - "Custom calendars MUST extend exchange_calendars.ExchangeCalendar"
+        - "MUST define all required attributes (name, tz, open_times, close_times, weekmask, holidays)"
+        - "Include clear docstrings explaining trading hours"
+    
+    - path: "prd/**/*.md"
+      rules:
+        - "Modifications allowed after 5+ failed iterations or for re-alignment"
+        - "MUST document reason for update in commit message"
+        - "MUST preserve original intent unless explicitly superseded"

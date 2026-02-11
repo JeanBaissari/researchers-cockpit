@@ -1,7 +1,26 @@
 """
 Pre-ingestion validation functions.
 
-Validates data before ingesting into bundles:
+Validates data QUALITY before ingesting into bundles. This complements Zipline's
+format/structure validation that occurs during ingestion.
+
+**What We Validate (Quality Checks):**
+- Schema validation (required columns, data types)
+- Data quality (nulls, duplicates, negative values)
+- OHLC consistency (High >= Low, price relationships)
+- Outlier detection (price jumps, volume spikes)
+- Gap detection (missing trading sessions)
+- Asset-specific rules (equity splits, forex pip values, crypto continuity)
+
+**What Zipline Validates (Format Checks):**
+- Writer format (OHLCV column structure)
+- Data types (numeric validation)
+- Calendar alignment (session alignment)
+- Bar continuity (within calendar sessions)
+
+See docs/validation/validation_architecture.md for complete distinction.
+
+Functions:
 - validate_before_ingest(): Single DataFrame validation
 - validate_csv_files_pre_ingestion(): Batch CSV file validation
 """
@@ -15,7 +34,7 @@ import pandas as pd
 from ..core import ValidationResult
 from ..config import ValidationConfig
 
-logger = logging.getLogger('cockpit.validation')
+logger = logging.getLogger("cockpit.validation")
 
 
 def validate_before_ingest(
@@ -24,10 +43,10 @@ def validate_before_ingest(
     timeframe: Optional[str] = None,
     calendar: Optional[Any] = None,
     calendar_name: Optional[str] = None,
-    asset_type: Optional[Literal['equity', 'forex', 'crypto']] = None,
+    asset_type: Optional[Literal["equity", "forex", "crypto"]] = None,
     strict_mode: bool = False,
     suggest_fixes: bool = False,
-    config: Optional[ValidationConfig] = None
+    config: Optional[ValidationConfig] = None,
 ) -> ValidationResult:
     """
     Validate data before ingestion into a bundle.
@@ -62,7 +81,7 @@ def validate_before_ingest(
             strict_mode=strict_mode,
             asset_type=asset_type,
             calendar_name=calendar_name,
-            suggest_fixes=suggest_fixes
+            suggest_fixes=suggest_fixes,
         )
     else:
         # Update config with provided values if not already set
@@ -80,14 +99,12 @@ def validate_before_ingest(
         asset_name=asset_name,
         calendar_name=calendar_name,
         asset_type=asset_type,
-        suggest_fixes=suggest_fixes
+        suggest_fixes=suggest_fixes,
     )
 
 
 def validate_csv_files_pre_ingestion(
-    timeframe: str,
-    symbols: Optional[List[str]] = None,
-    data_dir: Optional[Path] = None
+    timeframe: str, symbols: Optional[List[str]] = None, data_dir: Optional[Path] = None
 ) -> ValidationResult:
     """
     Pre-ingestion hook that validates CSV files in data/processed/{timeframe}/.
@@ -107,20 +124,18 @@ def validate_csv_files_pre_ingestion(
     result = ValidationResult(passed=True)
 
     if data_dir is None:
-        data_dir = get_project_root() / 'data' / 'processed' / timeframe
+        data_dir = get_project_root() / "data" / "processed" / timeframe
 
     if not data_dir.exists():
         result.add_check(
-            name='directory_exists',
+            name="directory_exists",
             passed=False,
-            message=f"Data directory does not exist: {data_dir}"
+            message=f"Data directory does not exist: {data_dir}",
         )
         return result
 
     result.add_check(
-        name='directory_exists',
-        passed=True,
-        message=f"Data directory exists: {data_dir}"
+        name="directory_exists", passed=True, message=f"Data directory exists: {data_dir}"
     )
 
     # Find CSV files
@@ -131,20 +146,16 @@ def validate_csv_files_pre_ingestion(
         if missing:
             result.add_warning(f"Missing CSV files for symbols: {missing}")
     else:
-        csv_files = list(data_dir.glob('*.csv'))
+        csv_files = list(data_dir.glob("*.csv"))
 
     if not csv_files:
         result.add_check(
-            name='csv_files_found',
-            passed=False,
-            message=f"No CSV files found in {data_dir}"
+            name="csv_files_found", passed=False, message=f"No CSV files found in {data_dir}"
         )
         return result
 
     result.add_check(
-        name='csv_files_found',
-        passed=True,
-        message=f"Found {len(csv_files)} CSV file(s)"
+        name="csv_files_found", passed=True, message=f"Found {len(csv_files)} CSV file(s)"
     )
 
     # Validate each CSV file
@@ -158,9 +169,9 @@ def validate_csv_files_pre_ingestion(
             result = result.merge(file_result)
         except Exception as e:
             result.add_check(
-                name=f'csv_load_{symbol}',
+                name=f"csv_load_{symbol}",
                 passed=False,
-                message=f"Failed to load {csv_file.name}: {e}"
+                message=f"Failed to load {csv_file.name}: {e}",
             )
 
     return result

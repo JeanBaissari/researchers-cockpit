@@ -9,17 +9,17 @@ essential tracking without the buggy session indexing code.
 from zipline.finance import metrics
 
 
-@metrics.register('minimal-essential')
+@metrics.register("minimal-essential")
 def minimal_essential_metrics():
     """
     Minimal metrics set that tracks only essential performance data.
-    
+
     Avoids the daily_cumulative_returns bug by not using BenchmarkReturnsAndVolatility.
     Only tracks:
     - Returns (for lib/metrics calculation)
     - Portfolio value (for equity curve)
     - Cash flow (for transaction tracking)
-    
+
     Returns:
         Set of minimal metric objects
     """
@@ -27,7 +27,7 @@ def minimal_essential_metrics():
         ReturnsStatistic,
         CashFlow,
     )
-    
+
     return {
         ReturnsStatistic(),  # Tracks returns
         CashFlow(),  # Tracks cash flow

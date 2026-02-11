@@ -24,22 +24,21 @@ from lib.validation import (
 
 class TestBundleValidator:
     """Test BundleValidator."""
-    
+
     @pytest.mark.unit
     def test_bundle_validator_creation(self):
         """Test creating BundleValidator."""
         config = ValidationConfig()
         validator = BundleValidator(config=config)
         assert validator is not None
-    
+
     @pytest.mark.integration
     @pytest.mark.slow
     def test_bundle_validator_validate_nonexistent_bundle(self, temp_data_dir):
         """Test validating nonexistent bundle."""
         config = ValidationConfig()
         validator = BundleValidator(config=config)
-        result = validator.validate('nonexistent_bundle', bundle_path=temp_data_dir)
+        result = validator.validate("nonexistent_bundle", bundle_path=temp_data_dir)
         assert isinstance(result, ValidationResult)
         # Should fail for nonexistent bundle
         assert not result.passed
-

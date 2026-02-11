@@ -30,10 +30,14 @@ def execute_zipline_backtest(
     trading_calendar: Any,
     strategy_name: str,
     asset_class: Optional[str],
-    params: Optional[Dict[str, Any]] = None
+    params: Optional[Dict[str, Any]] = None,
 ) -> Tuple[pd.DataFrame, Any]:
     """
     Execute a Zipline backtest with the given configuration.
+
+    v1.12.0: SessionManager removed. FOREX calendar includes Sundays,
+    so no session alignment workarounds needed. Zipline handles sessions
+    automatically via trading_calendar parameter.
 
     Handles custom parameter injection for optimization by creating a
     temporary parameters file.
@@ -67,16 +71,19 @@ def execute_zipline_backtest(
         from zipline import run_algorithm
     except ImportError:
         raise ImportError(
-            "zipline-reloaded not installed. "
-            "Install with: pip install zipline-reloaded"
+            "zipline-reloaded not installed. Install with: pip install zipline-reloaded"
         )
 
     # Ensure dates are properly normalized (timezone-naive UTC)
     assert start_ts.tz is None, "Start date must be timezone-naive"
     assert end_ts.tz is None, "End date must be timezone-naive"
 
+    # v1.12.0: SessionManager removed - FOREX calendar includes Sundays
+    # Zipline handles session alignment automatically via trading_calendar
+    # No session workarounds needed
+
     # Create empty benchmark returns
-    benchmark_freq = 'min' if data_frequency == 'minute' else 'D'
+    benchmark_freq = "min" if data_frequency == "minute" else "D"
     empty_benchmark = pd.Series(dtype=float, index=pd.DatetimeIndex([], freq=benchmark_freq))
 
     # Handle custom parameter injection for optimization
@@ -86,15 +93,15 @@ def execute_zipline_backtest(
     if params:
         # Create temporary parameters file
         strategy_path = get_strategy_path(strategy_name, asset_class)
-        original_params_file = strategy_path / 'parameters.yaml'
+        original_params_file = strategy_path / "parameters.yaml"
 
         # Create temp file
-        fd, temp_params_file = tempfile.mkstemp(suffix='.yaml', prefix='params_')
-        with open(temp_params_file, 'w') as f:
+        fd, temp_params_file = tempfile.mkstemp(suffix=".yaml", prefix="params_")
+        with open(temp_params_file, "w") as f:
             yaml.dump(params, f, default_flow_style=False)
 
         # Backup original parameters
-        backup_params = strategy_path / 'parameters.yaml.backup'
+        backup_params = strategy_path / "parameters.yaml.backup"
         if original_params_file.exists():
             shutil.copy2(original_params_file, backup_params)
         shutil.copy2(temp_params_file, original_params_file)
@@ -104,10 +111,12 @@ def execute_zipline_backtest(
         # v1.11.0: For FOREX calendars, default to metrics_set='none' to avoid known bugs
         # For other asset classes, try default metrics first, fallback to 'none' if errors occur
         # We use lib/metrics for all metric calculations anyway, so Zipline metrics are redundant.
-        use_no_metrics = (asset_class == 'forex')  # FOREX has known metrics bugs
-        
+        use_no_metrics = asset_class == "forex"  # FOREX has known metrics bugs
+
         if use_no_metrics:
-            logger.info("Using metrics_set='none' for FOREX calendar to avoid known metrics tracker bugs.")
+            logger.info(
+                "Using metrics_set='none' for FOREX calendar to avoid known metrics tracker bugs."
+            )
             perf = run_algorithm(
                 start=start_ts,
                 end=end_ts,
@@ -120,7 +129,7 @@ def execute_zipline_backtest(
                 data_frequency=data_frequency,
                 trading_calendar=trading_calendar,
                 benchmark_returns=empty_benchmark,
-                metrics_set='none',  # Disable metrics for FOREX
+                metrics_set="none",  # Disable metrics for FOREX
             )
         else:
             # Try default metrics first for other asset classes
@@ -142,10 +151,17 @@ def execute_zipline_backtest(
             except (IndexError, KeyError, ValueError) as metrics_error:
                 # Check if it's a known metrics-related error
                 error_str = str(metrics_error)
-                if any(keyword in error_str.lower() for keyword in [
-                    'daily_cumulative_returns', 'session_ix', 'out of bounds',
-                    'broadcast', 'alpha_beta', 'empyrical'
-                ]):
+                if any(
+                    keyword in error_str.lower()
+                    for keyword in [
+                        "daily_cumulative_returns",
+                        "session_ix",
+                        "out of bounds",
+                        "broadcast",
+                        "alpha_beta",
+                        "empyrical",
+                    ]
+                ):
                     logger.warning(
                         f"Zipline metrics error encountered: {metrics_error}. "
                         f"Retrying with metrics_set='none'. Metrics will be calculated post-backtest using lib/metrics."
@@ -163,7 +179,7 @@ def execute_zipline_backtest(
                         data_frequency=data_frequency,
                         trading_calendar=trading_calendar,
                         benchmark_returns=empty_benchmark,
-                        metrics_set='none',  # Disable metrics to avoid bug
+                        metrics_set="none",  # Disable metrics to avoid bug
                     )
                 else:
                     # Re-raise if it's a different error
@@ -178,8 +194,9 @@ def execute_zipline_backtest(
         # Restore original parameters file
         if temp_params_file:
             import os
+
             strategy_path = get_strategy_path(strategy_name, asset_class)
-            original_params_file = strategy_path / 'parameters.yaml'
+            original_params_file = strategy_path / "parameters.yaml"
 
             if backup_params and backup_params.exists():
                 shutil.copy2(backup_params, original_params_file)
@@ -215,25 +232,37 @@ def get_trading_calendar(bundle: str, asset_class: Optional[str] = None):
         if custom_calendar_name:
             try:
                 from zipline.utils.calendar_utils import get_calendar
+
                 calendar = get_calendar(custom_calendar_name)
-                logger.info(f"Using custom trading calendar '{custom_calendar_name}' for asset class '{asset_class}'.")
+                logger.info(
+                    f"Using custom trading calendar '{custom_calendar_name}' for asset class '{asset_class}'."
+                )
                 return calendar
             except Exception as e:
-                logger.warning(f"Failed to retrieve custom calendar '{custom_calendar_name}': {e}. Falling back to bundle calendar.")
+                logger.warning(
+                    f"Failed to retrieve custom calendar '{custom_calendar_name}': {e}. Falling back to bundle calendar."
+                )
 
     # Fallback: Extract calendar from bundle
     try:
-        if hasattr(bundle_data, 'equity_daily_bar_reader') and bundle_data.equity_daily_bar_reader is not None:
+        if (
+            hasattr(bundle_data, "equity_daily_bar_reader")
+            and bundle_data.equity_daily_bar_reader is not None
+        ):
             calendar = bundle_data.equity_daily_bar_reader.trading_calendar
             return calendar
-        elif hasattr(bundle_data, 'trading_calendar') and bundle_data.trading_calendar is not None:
+        elif hasattr(bundle_data, "trading_calendar") and bundle_data.trading_calendar is not None:
             calendar = bundle_data.trading_calendar
             return calendar
         else:
-            raise ValueError(f"Could not extract trading calendar from bundle '{bundle}'. "
-                             f"Bundle structure: {type(bundle_data)}. "
-                             f"Available attributes: {dir(bundle_data)}")
+            raise ValueError(
+                f"Could not extract trading calendar from bundle '{bundle}'. "
+                f"Bundle structure: {type(bundle_data)}. "
+                f"Available attributes: {dir(bundle_data)}"
+            )
     except AttributeError:
-        raise ValueError(f"Could not extract trading calendar from bundle '{bundle}'. "
-                         f"Bundle structure: {type(bundle_data)}. "
-                         f"Available attributes: {dir(bundle_data)}")
+        raise ValueError(
+            f"Could not extract trading calendar from bundle '{bundle}'. "
+            f"Bundle structure: {type(bundle_data)}. "
+            f"Available attributes: {dir(bundle_data)}"
+        )

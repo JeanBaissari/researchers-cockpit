@@ -19,7 +19,7 @@ from ..core import ValidationResult, ValidationSeverity, CONTINUOUS_CALENDARS
 from ..column_mapping import ColumnMapping
 from ..utils import safe_divide, ensure_timezone
 
-logger = logging.getLogger('cockpit.validation.forex')
+logger = logging.getLogger("cockpit.validation.forex")
 
 
 class ForexValidator(BaseValidator):
@@ -47,10 +47,7 @@ class ForexValidator(BaseValidator):
         ]
 
     def validate(
-        self,
-        df: pd.DataFrame,
-        col_map: ColumnMapping,
-        asset_name: str = "unknown"
+        self, df: pd.DataFrame, col_map: ColumnMapping, asset_name: str = "unknown"
     ) -> ValidationResult:
         """
         Validate FOREX-specific characteristics.
@@ -64,11 +61,11 @@ class ForexValidator(BaseValidator):
             ValidationResult with FOREX-specific check outcomes
         """
         result = self._create_result()
-        result.add_metadata('asset_name', asset_name)
-        result.add_metadata('asset_type', 'forex')
+        result.add_metadata("asset_name", asset_name)
+        result.add_metadata("asset_type", "forex")
 
         if df.empty:
-            result.add_check('empty_data', False, f"DataFrame is empty for {asset_name}")
+            result.add_check("empty_data", False, f"DataFrame is empty for {asset_name}")
             return result
 
         # Run registered checks
@@ -79,11 +76,7 @@ class ForexValidator(BaseValidator):
         return result
 
     def _check_sunday_bars(
-        self,
-        result: ValidationResult,
-        df: pd.DataFrame,
-        col_map: ColumnMapping,
-        asset_name: str
+        self, result: ValidationResult, df: pd.DataFrame, col_map: ColumnMapping, asset_name: str
     ) -> ValidationResult:
         """Check for Sunday bars in FOREX/24/7 data."""
         # Only check for FOREX/24/7 calendars
@@ -106,23 +99,21 @@ class ForexValidator(BaseValidator):
                 f"lib.utils.consolidate_sunday_to_friday()"
             )
             result.add_check(
-                'sunday_bars', False, msg,
+                "sunday_bars",
+                False,
+                msg,
                 {
-                    'sunday_count': sunday_count,
-                    'sunday_dates': [str(d.date()) for d in sunday_dates[:10]]  # First 10
+                    "sunday_count": sunday_count,
+                    "sunday_dates": [str(d.date()) for d in sunday_dates[:10]],  # First 10
                 },
-                severity=ValidationSeverity.WARNING
+                severity=ValidationSeverity.WARNING,
             )
         else:
-            result.add_check('sunday_bars', True, "No Sunday bars detected")
+            result.add_check("sunday_bars", True, "No Sunday bars detected")
         return result
 
     def _check_weekend_gap_integrity(
-        self,
-        result: ValidationResult,
-        df: pd.DataFrame,
-        col_map: ColumnMapping,
-        asset_name: str
+        self, result: ValidationResult, df: pd.DataFrame, col_map: ColumnMapping, asset_name: str
     ) -> ValidationResult:
         """Validate FOREX weekend gap semantics (Friday-Sunday-Monday relationships)."""
         # Only check for FOREX data
@@ -148,9 +139,9 @@ class ForexValidator(BaseValidator):
 
         issues = []
         details = {
-            'friday_count': len(fridays),
-            'sunday_count': len(sundays),
-            'monday_count': len(mondays)
+            "friday_count": len(fridays),
+            "sunday_count": len(sundays),
+            "monday_count": len(mondays),
         }
 
         # Check for Friday-Sunday pairs (potential duplication)
@@ -167,15 +158,25 @@ class ForexValidator(BaseValidator):
             monday_date = sunday_date + pd.Timedelta(days=1)
             if monday_date in mondays:
                 sunday_data = df.loc[df_index_norm == sunday_date, close_col]
-                monday_data = df.loc[df_index_norm == monday_date, col_map.open] if col_map.open else pd.Series(dtype=float)
+                monday_data = (
+                    df.loc[df_index_norm == monday_date, col_map.open]
+                    if col_map.open
+                    else pd.Series(dtype=float)
+                )
 
                 if len(sunday_data) > 0 and len(monday_data) > 0:
                     sunday_close = sunday_data.iloc[0]
                     monday_open = monday_data.iloc[0]
 
                     if pd.notna(sunday_close) and pd.notna(monday_open):
-                        gap_pct = abs((monday_open - sunday_close) / sunday_close * 100) if sunday_close != 0 else 0
-                        if gap_pct < 0.01:  # Less than 0.01% gap might indicate missing weekend movement
+                        gap_pct = (
+                            abs((monday_open - sunday_close) / sunday_close * 100)
+                            if sunday_close != 0
+                            else 0
+                        )
+                        if (
+                            gap_pct < 0.01
+                        ):  # Less than 0.01% gap might indicate missing weekend movement
                             issues.append(
                                 f"Sunday {sunday_date.date()} to Monday {monday_date.date()} "
                                 f"gap is very small ({gap_pct:.4f}%), may indicate missing weekend data"
@@ -191,14 +192,22 @@ class ForexValidator(BaseValidator):
                     # This is expected if Sunday was consolidated into Friday
                     # Check if gap is reasonable
                     friday_data = df.loc[df_index_norm == friday_date, close_col]
-                    monday_data = df.loc[df_index_norm == monday_date, col_map.open] if col_map.open else pd.Series(dtype=float)
+                    monday_data = (
+                        df.loc[df_index_norm == monday_date, col_map.open]
+                        if col_map.open
+                        else pd.Series(dtype=float)
+                    )
 
                     if len(friday_data) > 0 and len(monday_data) > 0:
                         friday_close = friday_data.iloc[0]
                         monday_open = monday_data.iloc[0]
 
                         if pd.notna(friday_close) and pd.notna(monday_open):
-                            gap_pct = abs((monday_open - friday_close) / friday_close * 100) if friday_close != 0 else 0
+                            gap_pct = (
+                                abs((monday_open - friday_close) / friday_close * 100)
+                                if friday_close != 0
+                                else 0
+                            )
                             if gap_pct > 10:  # Large gap might indicate missing data
                                 issues.append(
                                     f"Large gap ({gap_pct:.2f}%) from Friday {friday_date.date()} "
@@ -210,16 +219,12 @@ class ForexValidator(BaseValidator):
                 f"Weekend gap integrity issues detected in {asset_name}: "
                 f"{len(issues)} issue(s) found"
             )
-            details['issues'] = issues[:5]  # First 5 issues
+            details["issues"] = issues[:5]  # First 5 issues
             result.add_check(
-                'weekend_gap_integrity', False, msg,
-                details,
-                severity=ValidationSeverity.WARNING
+                "weekend_gap_integrity", False, msg, details, severity=ValidationSeverity.WARNING
             )
         else:
             result.add_check(
-                'weekend_gap_integrity', True,
-                "Weekend gap semantics are valid",
-                details
+                "weekend_gap_integrity", True, "Weekend gap semantics are valid", details
             )
         return result

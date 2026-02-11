@@ -2,8 +2,39 @@
 
 Module for executing Zipline backtests and saving results in standardized format.
 
-**Location:** `lib/backtest/`  
+**Location:** `lib/backtest/`
 **CLI Equivalent:** `scripts/run_backtest.py`
+
+---
+
+## Overview
+
+The Backtest API provides a comprehensive interface for executing Zipline-Reloaded backtests with automatic pre-flight validation, result persistence, and data integrity verification. It handles the complete backtest lifecycle from strategy loading through result saving.
+
+**Key capabilities:**
+- Execute backtests with `run_backtest()` function
+- Automatic pre-flight validation (dates, calendar, bundle, symbols)
+- Standardized result persistence with timestamped directories
+- Performance metrics calculation and equity curve visualization
+- Post-backtest data integrity verification (optional)
+- Support for both daily and minute-frequency data
+
+---
+
+## Installation/Dependencies
+
+**Required:**
+- `zipline-reloaded` >= 3.1.0
+- `pandas` >= 1.3.0
+- `exchange-calendars` >= 4.0.0
+
+**Optional:**
+- `matplotlib` >= 3.3.0 (for equity curve plots)
+- `empyrical-reloaded` (for performance metrics)
+
+```bash
+pip install zipline-reloaded pandas exchange-calendars matplotlib empyrical-reloaded
+```
 
 ---
 
@@ -33,6 +64,27 @@ lib/backtest/
 - **results_persistence.py**: Creates directories, updates symlinks
 - **verification.py**: Post-backtest data integrity checks
 - **config.py**: BacktestConfig dataclass for configuration
+
+---
+
+## Main API
+
+The primary interface consists of two core functions and several supporting utilities.
+
+### Core Functions
+
+| Function | Purpose |
+|----------|---------|
+| `run_backtest()` | Execute Zipline backtest and return performance DataFrame |
+| `save_results()` | Save backtest results to timestamped directory |
+| `validate_strategy_symbols()` | Pre-flight validation that symbols exist in bundle |
+
+### Supporting Classes
+
+| Class | Purpose |
+|-------|---------|
+| `BacktestConfig` | Configuration dataclass for backtest parameters |
+| `StrategyModule` | Container for strategy functions (initialize, handle_data, etc.) |
 
 ---
 
@@ -73,6 +125,12 @@ def run_backtest(
 - `FileNotFoundError`: If strategy not found
 - `ImportError`: If strategy module can't be loaded
 - `ValueError`: If dates, bundle, or parameters invalid
+
+---
+
+## Examples
+
+### Basic Backtest Execution
 
 **Example:**
 ```python
@@ -466,3 +524,9 @@ This ensures all metrics are calculated correctly even when Zipline's metrics ar
 - `lib/backtest/results_serialization.py` - Result serialization
 - `lib/backtest/results_persistence.py` - Result persistence
 - `lib/calendars/sessions/` - Session alignment validation
+
+---
+
+**Last Updated:** 2026-02-09
+**Version:** v1.12.0
+**Status:** NO WRAPPERS Architecture

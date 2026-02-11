@@ -24,7 +24,10 @@ The Researcher's Cockpit provides a comprehensive library for algorithmic tradin
 | Module | Purpose | CLI Equivalent |
 |--------|---------|----------------|
 | [backtest](backtest.md) | Backtest execution, result saving | `scripts/run_backtest.py` |
+| [performance_dataframe_integration](performance_dataframe_integration.md) | Zipline Performance DataFrame (38+ columns) integration guide | - |
 | [metrics](metrics.md) | Performance metrics calculation | - |
+| [metrics_inventory](metrics_inventory.md) | Complete Zipline-Reloaded metrics system inventory & reference | - |
+| [metrics_provenance](metrics_provenance.md) | Metrics provenance: Zipline vs lib/metrics/ | - |
 | [optimize](optimize.md) | Grid/random search optimization | `scripts/run_optimization.py` |
 | [validate](validate.md) | Walk-forward, Monte Carlo validation | - |
 | [report](report.md) | Report generation | `scripts/generate_report.py` |
@@ -36,10 +39,14 @@ The Researcher's Cockpit provides a comprehensive library for algorithmic tradin
 | [paths](paths.md) | Path resolution, project root discovery | - |
 | [utils](utils.md) | File operations, YAML handling | - |
 | [pipeline_utils](pipeline_utils.md) | Zipline Pipeline helper utilities | - |
+| [pipeline_inventory](pipeline_inventory.md) | Complete Pipeline system inventory & reference | - |
+| [bundle_inventory](bundle_inventory.md) | Complete Bundle management system inventory & reference | - |
 | [position_sizing](position_sizing.md) | Position sizing algorithms | - |
 | [risk_management](risk_management.md) | Risk management utilities | - |
+| [transaction_costs](transaction_costs.md) | Zipline transaction costs (commission, slippage) | - |
 | [logging](logging.md) | Centralized logging system | - |
 | [plots](plots.md) | Visualization utilities (optional) | - |
+| [documentation_config](documentation_config.md) | Documentation standards & validation | - |
 
 ---
 
@@ -249,13 +256,28 @@ plot_all(
 - **pipeline_utils/** - Zipline Pipeline helper utilities
   - Pipeline setup and configuration
   - Factor construction helpers
+  - See [Pipeline Inventory](pipeline_inventory.md) for complete Pipeline system reference
+
+- **bundle_inventory/** - Zipline-Reloaded bundle management reference
+  - Complete bundle API documentation
+  - Registration, ingestion, and loading patterns
+  - Built-in bundle types (quandl, csvdir)
+  - Data writer and reader APIs
+  - See [Bundle Inventory](bundle_inventory.md) for complete bundle system reference
 
 - **position_sizing/** - Position sizing algorithms
   - Fixed, volatility-scaled, and Kelly Criterion sizing
+  - See [Position Sizing Decision Guide](../code_patterns/position_sizing_decision_guide.md) for when to use vs `order_target_percent()` directly
 
 - **risk_management/** - Risk management utilities
   - Stop loss, trailing stop, take profit
   - Exit condition checking
+
+- **transaction_costs/** - Zipline transaction costs integration
+  - Commission models (PerShare, PerTrade, PerDollar)
+  - Slippage models (VolumeShareSlippage, FixedSlippage, FixedBasisPointsSlippage)
+  - Asset-class-specific configurations
+  - Integration with parameters.yaml
 
 - **logging/** - Centralized logging system
   - Structured logging with context
@@ -363,6 +385,7 @@ from lib.position_sizing import compute_position_size
 from lib.risk_management import check_exit_conditions
 from lib.logging import configure_logging, LogContext
 from lib.plots import plot_all, plot_equity_curve
+from lib.config import load_documentation_config, validate_doc_structure
 ```
 
 ### ❌ Deprecated Imports (Do Not Use)

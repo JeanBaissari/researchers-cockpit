@@ -21,7 +21,7 @@ _registered_calendars: List[str] = []
 def populate_registry(calendars: Dict[str, Type[ExchangeCalendar]]) -> None:
     """
     Populate the calendar registry with calendar classes.
-    
+
     Args:
         calendars: Dictionary mapping calendar names to calendar classes
     """
@@ -32,7 +32,7 @@ def populate_registry(calendars: Dict[str, Type[ExchangeCalendar]]) -> None:
 def get_calendar_registry() -> Dict[str, Type[ExchangeCalendar]]:
     """
     Get the calendar registry.
-    
+
     Returns:
         Dictionary mapping calendar names to calendar classes
     """
@@ -44,7 +44,7 @@ def register_calendar_type(
     calendar_class: Type[ExchangeCalendar],
     start: Optional[str] = None,
     end: Optional[str] = None,
-    force: bool = True
+    force: bool = True,
 ) -> bool:
     """
     Register a custom calendar TYPE (factory) with Zipline.
@@ -84,9 +84,7 @@ def register_calendar_type(
         # Register the calendar TYPE (factory) instead of an instance
         # This allows Zipline to instantiate the calendar with appropriate date bounds
         global_calendar_dispatcher.register_calendar_type(
-            name=name,
-            calendar_type=calendar_class,
-            force=force
+            name=name, calendar_type=calendar_class, force=force
         )
 
         # Track registration
@@ -104,24 +102,24 @@ def register_custom_calendars(
     calendars: Optional[List[str]] = None,
     start: Optional[str] = None,
     end: Optional[str] = None,
-    force: bool = True
+    force: bool = True,
 ) -> Dict[str, bool]:
     """
     Register custom calendars with Zipline.
-    
+
     This function should be called explicitly from your entry points
     (e.g., lib/backtest.py's run_backtest function) rather than relying
     on auto-registration at import time.
-    
+
     Args:
         calendars: List of calendar names to register. If None, registers all available.
         start: Ignored parameter (not used, kept for API compatibility)
         end: Ignored parameter (not used, kept for API compatibility)
         force: If True, overwrite existing calendar registrations. Default True.
-    
+
     Returns:
         Dictionary mapping calendar names to registration success (True/False).
-    
+
     Example:
         >>> from lib.calendars import register_custom_calendars
         >>> results = register_custom_calendars(['CRYPTO'])
@@ -129,24 +127,22 @@ def register_custom_calendars(
     """
     if calendars is None:
         calendars = list(_CALENDAR_REGISTRY.keys())
-    
+
     results = {}
-    
+
     for name in calendars:
         if name not in _CALENDAR_REGISTRY:
-            logger.warning(f"Unknown calendar '{name}'. Available: {list(_CALENDAR_REGISTRY.keys())}")
+            logger.warning(
+                f"Unknown calendar '{name}'. Available: {list(_CALENDAR_REGISTRY.keys())}"
+            )
             results[name] = False
             continue
-        
+
         calendar_class = _CALENDAR_REGISTRY[name]
         results[name] = register_calendar_type(
-            name=name,
-            calendar_class=calendar_class,
-            start=start,
-            end=end,
-            force=force
+            name=name, calendar_class=calendar_class, start=start, end=end, force=force
         )
-    
+
     # Log summary
     successful = [k for k, v in results.items() if v]
     failed = [k for k, v in results.items() if not v]
@@ -155,14 +151,14 @@ def register_custom_calendars(
         logger.info(f"Registered calendars: {successful}")
     if failed:
         logger.warning(f"Failed to register calendars: {failed}")
-    
+
     return results
 
 
 def get_registered_calendars() -> List[str]:
     """
     Get list of calendars that have been registered with Zipline.
-    
+
     Returns:
         List of calendar names currently registered.
     """
@@ -170,24 +166,9 @@ def get_registered_calendars() -> List[str]:
 
 
 __all__ = [
-    'populate_registry',
-    'get_calendar_registry',
-    'register_calendar_type',
-    'register_custom_calendars',
-    'get_registered_calendars',
+    "populate_registry",
+    "get_calendar_registry",
+    "register_calendar_type",
+    "register_custom_calendars",
+    "get_registered_calendars",
 ]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

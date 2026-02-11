@@ -4,6 +4,22 @@
 
 ---
 
+## Important: Workflow Pipeline vs Zipline Pipeline API
+
+**This document is about workflow patterns** (the research pipeline/workflow), **NOT** about Zipline-Reloaded's Pipeline API.
+
+- **Workflow Pipeline** (this document): The sequence of steps in strategy research (hypothesis → backtest → analyze → optimize)
+- **Zipline Pipeline API**: Zipline-Reloaded's factor-based data processing system for multi-asset strategies
+
+For information about using Zipline-Reloaded's Pipeline API in strategies, see:
+- `docs/api/pipeline_inventory.md` — Complete Pipeline API reference
+- `strategies/_template/strategy.py` — Example Pipeline usage
+- `lib/pipeline_utils.py` — Pipeline setup utilities
+
+**Zipline-Reloaded Version:** This project uses [Zipline-Reloaded v3.0+](https://github.com/stefan-jansen/zipline-reloaded) (the actively maintained fork), not legacy Quantopian Zipline.
+
+---
+
 ## Pipeline Philosophy
 
 In Hybrid A, pipelines are **workflow patterns**, not separate configuration files. The system is designed for interactive research where you (or an AI agent) execute steps sequentially, making decisions between each step.
@@ -240,41 +256,56 @@ The agent chains these steps automatically but can pause for human input at deci
 ```
 External Data Source
         ↓
-API Client (Yahoo, Binance, OANDA)
+API Client (Yahoo, Binance, OANDA) or CSV Files
         ↓
 Raw Data (DataFrame)
         ↓
-Zipline Bundle Ingestion
+Zipline-Reloaded Bundle Ingestion
         ↓
-data/bundles/{bundle_name}/
+data/bundles/{bundle_name}/ (via Zipline-Reloaded bundle system)
         ↓
-Available for backtesting
+Available for backtesting (registered in ~/.zipline/extension.py)
 ```
 
 ### Ingestion Commands
 
 ```bash
-# Ingest crypto data from Yahoo
+# Ingest crypto data from Yahoo (uses Zipline-Reloaded bundle system)
 python scripts/ingest_data.py --source yahoo --assets crypto
 
-# Ingest forex data from OANDA
-python scripts/ingest_data.py --source oanda --assets forex
+# Ingest forex data from CSV files (uses csvdir_equities() directly)
+python scripts/ingest_data.py --source csv --assets forex --timeframe 1h
 
 # Ingest specific symbol
-python scripts/ingest_data.py --source binance --symbol BTC-USDT --timeframe 1h
+python scripts/ingest_data.py --source yahoo --symbol BTC-USDT --timeframe 1h
 ```
+
+**Zipline-Reloaded Integration:**
+- All ingestion uses Zipline-Reloaded's native bundle system
+- CSV sources use `csvdir_equities()` directly (no wrapper functions)
+- Bundle registration handled in `~/.zipline/extension.py`
+- See `lib/bundles/` for source-specific orchestration (Yahoo, CSV, etc.)
 
 ### Bundle Naming Convention
 
+**v1.12.0+** (Direct csvdir_equities()):
 ```
-{source}_{asset_class}_{timeframe}
+{symbol}_{timeframe}
 ```
 
 Examples:
-- `yahoo_crypto_daily`
-- `binance_btc_1h`
-- `oanda_forex_1h`
-- `yahoo_equities_daily`
+- `btcusd_daily`
+- `btcusdt_1h`
+- `eurusd_1h`
+- `aapl_daily`
+
+**Note:** Bundle registration now happens in `~/.zipline/extension.py` using direct `csvdir_equities()` from Zipline-Reloaded. See strategy template for migration examples.
+
+**Zipline-Reloaded Direct API Usage (v1.12.0+):**
+- All bundle operations use Zipline-Reloaded APIs directly (NO WRAPPERS)
+- CSV bundles: `from zipline.data.bundles.csvdir import csvdir_equities`
+- Bundle registration: `from zipline.data.bundles import register`
+- See `lib/bundles/` for orchestration utilities (not wrappers)
 
 ### Cache Management
 

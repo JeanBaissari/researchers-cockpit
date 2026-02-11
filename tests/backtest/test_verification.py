@@ -20,17 +20,16 @@ from lib.validation import validate_backtest_results, ValidationResult
 
 class TestBacktestValidation:
     """Test backtest validation."""
-    
+
     @pytest.mark.unit
     def test_validate_backtest_results(self, sample_backtest_results):
         """Test validating backtest results."""
         result = validate_backtest_results(
             sample_backtest_results,
-            returns=sample_backtest_results['returns'],
-            transactions=sample_backtest_results['transactions'],
-            positions=sample_backtest_results['positions']
+            returns=sample_backtest_results["returns"],
+            transactions=sample_backtest_results["transactions"],
+            positions=sample_backtest_results["positions"],
         )
-        
+
         assert result is not None
         assert isinstance(result, ValidationResult)
-

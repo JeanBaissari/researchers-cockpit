@@ -14,6 +14,7 @@ from ..data.sanitization import sanitize_value
 
 try:
     import empyrical as ep
+
     EMPYRICAL_AVAILABLE = True
 except ImportError:
     EMPYRICAL_AVAILABLE = False
@@ -33,7 +34,7 @@ def calculate_sharpe_ratio(
     risk_free_rate: float = 0.04,
     trading_days_per_year: int = 252,
     annual_return: Optional[float] = None,
-    annual_volatility: Optional[float] = None
+    annual_volatility: Optional[float] = None,
 ) -> float:
     """
     Calculate Sharpe ratio with proper edge case handling.
@@ -77,12 +78,11 @@ def calculate_sharpe_ratio(
     if EMPYRICAL_AVAILABLE:
         try:
             daily_rf = _get_daily_rf(risk_free_rate, trading_days_per_year)
-            sharpe = float(ep.sharpe_ratio(
-                returns,
-                risk_free=daily_rf,
-                period='daily',
-                annualization=trading_days_per_year
-            ))
+            sharpe = float(
+                ep.sharpe_ratio(
+                    returns, risk_free=daily_rf, period="daily", annualization=trading_days_per_year
+                )
+            )
             return sanitize_value(sharpe)
         except Exception:
             pass
@@ -97,7 +97,7 @@ def calculate_sortino_ratio(
     returns: pd.Series,
     risk_free_rate: float = 0.04,
     trading_days_per_year: int = 252,
-    annual_return: Optional[float] = None
+    annual_return: Optional[float] = None,
 ) -> float:
     """
     Calculate Sortino ratio with proper downside deviation.
@@ -132,7 +132,7 @@ def calculate_sortino_ratio(
     returns_std = float(returns.std())
     if returns_std < 1e-10:
         return 0.0
-    
+
     excess_returns = returns - daily_rf
     downside_returns = excess_returns[excess_returns < 0]
 
@@ -141,7 +141,7 @@ def calculate_sortino_ratio(
         return 0.0
 
     # Calculate downside std for validation
-    downside_std = float(np.sqrt(np.mean(downside_returns ** 2)))
+    downside_std = float(np.sqrt(np.mean(downside_returns**2)))
     annualized_downside_std = downside_std * np.sqrt(trading_days_per_year)
 
     # Zero downside volatility check (DRY: single check, used by both paths)
@@ -151,12 +151,14 @@ def calculate_sortino_ratio(
     # Try empyrical if available (now safe - we've validated edge cases)
     if EMPYRICAL_AVAILABLE:
         try:
-            sortino = float(ep.sortino_ratio(
-                returns,
-                required_return=daily_rf,
-                period='daily',
-                annualization=trading_days_per_year
-            ))
+            sortino = float(
+                ep.sortino_ratio(
+                    returns,
+                    required_return=daily_rf,
+                    period="daily",
+                    annualization=trading_days_per_year,
+                )
+            )
             # ✅ FIX: Validate empyrical output (defensive programming)
             sanitized = sanitize_value(sortino)
             # Additional check: empyrical might return inf/nan even after our checks

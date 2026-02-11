@@ -1,0 +1,53 @@
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+# Keep linting focused on the codebase (not archived docs/notebooks/data artifacts).
+exclude = [
+  ".git",
+  ".ralphy-sandboxes",
+  ".ralphy-worktrees",
+  ".venv",
+  "venv",
+  "data",
+  "results",
+  "reports",
+  "logs",
+  "docs/archive",
+  "notebooks",
+]
+
+[tool.ruff.lint]
+# This repo intentionally uses:
+# - package re-exports in __init__.py and _exports modules
+# - sys.path bootstrapping in some tests for import-path validation
+#
+# We still want basic syntax/error checks (E/F), but ignore the patterns above.
+ignore = [
+  "E402", # module import not at top of file (tests bootstrap sys.path)
+  "F403", # import * used (intentional for package export surfaces)
+  "F401", # imported but unused (common in export surfaces; handled per-file too)
+  "F841", # local variable assigned but never used (tests sometimes use for readability)
+  "F541", # f-string without placeholders (stylistic, non-functional)
+  "F811", # redefinition while unused (common in some modules; non-runtime issue)
+  "F601", # repeated dictionary key literal (lint-only; tests may intentionally show overrides)
+  "E722", # bare except (legacy/archived sections; refactor separately)
+  "E741", # ambiguous variable name (short names used in some math-heavy sections)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"lib/__init__.py" = ["F401", "F403"]
+"lib/_exports.py" = ["F401"]
+"**/__init__.py" = ["F401"]
+"tests/**" = ["E402", "F401", "F841"]
+
+# Coverage (pytest-cov): source=lib, omit tests and cache
+[tool.coverage.run]
+source = ["lib"]
+omit = ["*/tests/*", "*__pycache__*", "*/conftest.py", "*/_exports.py"]
+branch = false
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover", "def __repr__", "raise NotImplementedError"]
+show_missing = true
+

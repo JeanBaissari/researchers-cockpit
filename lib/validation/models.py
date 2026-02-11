@@ -18,11 +18,13 @@ from typing import List, Optional, Dict, Any
 # Enums
 # =============================================================================
 
+
 class ValidationSeverity(str, Enum):
     """Enumeration of validation severity levels."""
-    ERROR = 'error'
-    WARNING = 'warning'
-    INFO = 'info'
+
+    ERROR = "error"
+    WARNING = "warning"
+    INFO = "info"
 
     def __str__(self) -> str:
         return self.value
@@ -35,9 +37,10 @@ class ValidationSeverity(str, Enum):
 
 class ValidationStatus(str, Enum):
     """Enumeration of validation statuses."""
-    PASSED = 'passed'
-    FAILED = 'failed'
-    SKIPPED = 'skipped'
+
+    PASSED = "passed"
+    FAILED = "failed"
+    SKIPPED = "skipped"
 
     def __str__(self) -> str:
         return self.value
@@ -47,6 +50,7 @@ class ValidationStatus(str, Enum):
 # Data Classes
 # =============================================================================
 
+
 @dataclass
 class ValidationCheck:
     """
@@ -55,6 +59,7 @@ class ValidationCheck:
     Encapsulates the outcome of a single validation check including
     pass/fail status, severity, message, and additional details.
     """
+
     name: str
     passed: bool
     severity: ValidationSeverity = ValidationSeverity.ERROR
@@ -80,13 +85,13 @@ class ValidationCheck:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
-            'name': self.name,
-            'passed': self.passed,
-            'status': str(self.status),
-            'severity': str(self.severity),
-            'message': self.message,
-            'details': self.details,
-            'timestamp': self.timestamp.isoformat() + 'Z'
+            "name": self.name,
+            "passed": self.passed,
+            "status": str(self.status),
+            "severity": str(self.severity),
+            "message": self.message,
+            "details": self.details,
+            "timestamp": self.timestamp.isoformat() + "Z",
         }
 
 
@@ -108,6 +113,7 @@ class ValidationResult:
         >>> result.add_warning('Minor issue detected')
         >>> print(result.summary())
     """
+
     passed: bool = True
     checks: List[ValidationCheck] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
@@ -122,8 +128,8 @@ class ValidationResult:
         passed: bool,
         message: str = "",
         details: Optional[Dict[str, Any]] = None,
-        severity: ValidationSeverity = ValidationSeverity.ERROR
-    ) -> 'ValidationResult':
+        severity: ValidationSeverity = ValidationSeverity.ERROR,
+    ) -> "ValidationResult":
         """
         Add a validation check result.
 
@@ -138,11 +144,7 @@ class ValidationResult:
             Self for method chaining
         """
         check = ValidationCheck(
-            name=name,
-            passed=passed,
-            message=message,
-            details=details or {},
-            severity=severity
+            name=name, passed=passed, message=message, details=details or {}, severity=severity
         )
         self.checks.append(check)
 
@@ -158,28 +160,28 @@ class ValidationResult:
 
         return self
 
-    def add_warning(self, message: str) -> 'ValidationResult':
+    def add_warning(self, message: str) -> "ValidationResult":
         """Add a warning message (non-fatal)."""
         self.warnings.append(message)
         return self
 
-    def add_info(self, message: str) -> 'ValidationResult':
+    def add_info(self, message: str) -> "ValidationResult":
         """Add an informational message."""
         self.info.append(message)
         return self
 
-    def add_error(self, message: str) -> 'ValidationResult':
+    def add_error(self, message: str) -> "ValidationResult":
         """Add an error message and mark validation as failed."""
         self.errors.append(message)
         self.passed = False
         return self
 
-    def add_metadata(self, key: str, value: Any) -> 'ValidationResult':
+    def add_metadata(self, key: str, value: Any) -> "ValidationResult":
         """Add metadata to the result."""
         self.metadata[key] = value
         return self
 
-    def merge(self, other: 'ValidationResult') -> 'ValidationResult':
+    def merge(self, other: "ValidationResult") -> "ValidationResult":
         """
         Merge another ValidationResult into this one.
 
@@ -293,23 +295,23 @@ class ValidationResult:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
-            'passed': self.passed,
-            'status': str(ValidationStatus.PASSED if self.passed else ValidationStatus.FAILED),
-            'checks': [c.to_dict() for c in self.checks],
-            'warnings': self.warnings,
-            'errors': self.errors,
-            'info': self.info,
-            'metadata': self.metadata,
-            'summary': {
-                'total_checks': len(self.checks),
-                'passed_checks': len(self.passed_checks),
-                'failed_checks': len(self.failed_checks),
-                'error_count': len(self.errors),
-                'warning_count': len(self.warnings),
-                'pass_rate': self.pass_rate,
-                'duration_ms': self.duration_ms
+            "passed": self.passed,
+            "status": str(ValidationStatus.PASSED if self.passed else ValidationStatus.FAILED),
+            "checks": [c.to_dict() for c in self.checks],
+            "warnings": self.warnings,
+            "errors": self.errors,
+            "info": self.info,
+            "metadata": self.metadata,
+            "summary": {
+                "total_checks": len(self.checks),
+                "passed_checks": len(self.passed_checks),
+                "failed_checks": len(self.failed_checks),
+                "error_count": len(self.errors),
+                "warning_count": len(self.warnings),
+                "pass_rate": self.pass_rate,
+                "duration_ms": self.duration_ms,
             },
-            'validated_at': datetime.utcnow().isoformat() + 'Z'
+            "validated_at": datetime.utcnow().isoformat() + "Z",
         }
 
     def __bool__(self) -> bool:

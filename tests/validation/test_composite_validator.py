@@ -26,26 +26,25 @@ from lib.validation import (
 
 class TestCompositeValidator:
     """Test CompositeValidator."""
-    
+
     @pytest.mark.unit
     def test_composite_validator_creation(self):
         """Test creating CompositeValidator."""
-        config = ValidationConfig(timeframe='1d')
+        config = ValidationConfig(timeframe="1d")
         validators = [
             DataValidator(config=config),
             SchemaValidator(),
         ]
         composite = CompositeValidator(validators)
         assert composite is not None
-    
+
     @pytest.mark.unit
     def test_composite_validator_validate(self, valid_ohlcv_data):
         """Test CompositeValidator validation."""
-        config = ValidationConfig(timeframe='1d')
+        config = ValidationConfig(timeframe="1d")
         validators = [
             DataValidator(config=config),
         ]
         composite = CompositeValidator(validators)
-        result = composite.validate(valid_ohlcv_data, asset_name='TEST')
+        result = composite.validate(valid_ohlcv_data, asset_name="TEST")
         assert isinstance(result, ValidationResult)
-

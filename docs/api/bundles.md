@@ -2,22 +2,26 @@
 
 Module for data bundle ingestion, management, and access in The Researcher's Cockpit.
 
-**Location:** `lib/bundles/`  
-**CLI Equivalent:** `scripts/ingest_data.py`  
-**Version:** v1.11.0
+**Location:** `lib/bundles/`
+**CLI Equivalent:** `scripts/ingest_data.py`
+**Version:** v1.12.0
 
 ---
 
 ## Overview
 
-The bundles module provides a unified interface for ingesting market data from multiple sources (Yahoo Finance, CSV files, Binance, OANDA) into Zipline data bundles. Bundles serve as the primary data source for both `handle_data()` and the Zipline Pipeline API.
+The bundles module provides a unified interface for ingesting market data from multiple sources (Yahoo Finance, Binance, OANDA) into Zipline data bundles. Bundles serve as the primary data source for both `handle_data()` and the Zipline Pipeline API.
+
+**v1.12.0 Changes:**
+- **CSV bundles** now use direct `csvdir_equities()` registration in `~/.zipline/extension.py`
+- **Bundle registry** removed → Use Zipline's native `bundles` dictionary
+- **SessionManager** removed → Use direct `get_calendar()` for calendar access
 
 **Key Features:**
 - Multi-timeframe support (1m, 5m, 15m, 30m, 1h, daily)
-- Multiple data sources (Yahoo Finance, CSV, Binance, OANDA)
+- Multiple data sources (Yahoo Finance, Binance, OANDA)
 - Automatic calendar registration (CRYPTO, FOREX, XNYS)
-- Bundle registry for metadata persistence
-- Session management integration for calendar alignment
+- Direct Zipline API usage (NO wrappers, AD-001)
 
 ---
 
@@ -56,6 +60,27 @@ bundles = list_bundles()
 print(f"Available bundles: {bundles}")
 ```
 
+## Main API
+
+### Core Functions
+
+| Function | Purpose |
+|----------|---------|
+| `ingest_bundle()` | Ingest market data into Zipline bundle |
+| `list_bundles()` | List all available bundles |
+| `load_bundle()` | Load and verify bundle exists |
+| `get_bundle_symbols()` | Get symbols available in bundle |
+
+### Bundle Management
+
+| Function | Purpose |
+|----------|---------|
+| `register_csv_bundle()` | Register CSV bundle (v1.12.0+: use csvdir_equities) |
+| `unregister_bundle()` | Unregister a bundle |
+| `get_bundle_metadata()` | Get bundle metadata (dates, symbols) |
+
+---
+
 ### Load and Use a Bundle
 
 ```python
@@ -69,21 +94,26 @@ symbols = get_bundle_symbols('yahoo_equities_daily')
 print(f"Symbols: {symbols}")  # ['SPY', 'AAPL', 'MSFT']
 ```
 
-### CSV Bundle Ingestion
+### CSV Bundle Registration (v1.12.0+)
+
+**Note:** CSV bundles are now registered directly in `~/.zipline/extension.py` using Zipline's native `csvdir_equities()`.
 
 ```python
-from lib.bundles import ingest_bundle
+# In ~/.zipline/extension.py:
+from zipline.data.bundles import register
+from zipline.data.bundles.csvdir import csvdir_equities
 
-# Ingest from local CSV files
-bundle_name = ingest_bundle(
-    source='csv',
-    assets=['forex'],
-    symbols=['EURUSD', 'GBPUSD'],  # CSV filenames or paths
-    timeframe='1h',
-    start_date='2020-01-01',
-    end_date='2024-01-01'
+register(
+    'eurusd_1h',
+    csvdir_equities(
+        ['EURUSD'],
+        csvdir='/path/to/csvdir'
+    ),
+    calendar_name='FOREX'
 )
 ```
+
+See strategy template for complete examples.
 
 ---
 
@@ -231,102 +261,25 @@ print(symbols)  # ['SPY', 'AAPL', 'MSFT']
 
 ---
 
-### Registry Functions
+### Registry Functions (v1.12.0 - Removed)
 
-#### `list_bundles()`
+**Note:** Bundle registry functions have been removed in v1.12.0. Use Zipline's native `bundles` dictionary directly:
 
-List all available Zipline bundles.
-
-**Signature:**
 ```python
-def list_bundles() -> List[str]
+from zipline.data.bundles import bundles, unregister
+
+# List all bundles
+bundle_names = list(bundles.keys())
+
+# Check if bundle exists
+if 'btcusd_daily' in bundles:
+    print("Bundle registered")
+
+# Unregister a bundle
+unregister('btcusd_daily')
 ```
 
-**Returns:**
-- `List[str]`: List of bundle names
-
-**Example:**
-```python
-from lib.bundles import list_bundles
-
-bundles = list_bundles()
-print(bundles)  # ['yahoo_equities_daily', 'yahoo_crypto_1h', 'csv_forex_1h']
-```
-
----
-
-#### `register_bundle_metadata()`
-
-Persist bundle metadata to registry file.
-
-**Signature:**
-```python
-def register_bundle_metadata(
-    bundle_name: str,
-    symbols: List[str],
-    calendar_name: str,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    data_frequency: str = 'daily',
-    timeframe: str = 'daily'
-) -> None
-```
-
-**Parameters:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `bundle_name` | str | required | Name of the bundle |
-| `symbols` | List[str] | required | List of symbols in the bundle |
-| `calendar_name` | str | required | Trading calendar name |
-| `start_date` | str | None | Start date for data (`YYYY-MM-DD` format, validated) |
-| `end_date` | str | None | End date for data (`YYYY-MM-DD` format, validated) |
-| `data_frequency` | str | `'daily'` | Zipline data frequency (`'daily'` or `'minute'`) |
-| `timeframe` | str | `'daily'` | Actual data timeframe (`'1m'`, `'5m'`, `'1h'`, `'daily'`, etc.) |
-
-**Note:** Dates are validated before storage to prevent registry corruption. Invalid dates are stored as `None` rather than corrupted values.
-
----
-
-#### `get_bundle_path()`
-
-Get the path where a bundle should be stored.
-
-**Signature:**
-```python
-def get_bundle_path(bundle_name: str) -> Path
-```
-
-**Parameters:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `bundle_name` | str | required | Name of the bundle |
-
-**Returns:**
-- `Path`: Path to bundle directory
-
----
-
-#### `unregister_bundle()`
-
-Unregister a bundle from Zipline's registry.
-
-**Signature:**
-```python
-def unregister_bundle(bundle_name: str) -> bool
-```
-
-**Parameters:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `bundle_name` | str | required | Name of the bundle to unregister |
-
-**Returns:**
-- `bool`: `True` if bundle was unregistered, `False` if it wasn't registered
-
-**Note:** This removes the bundle registration from Zipline's in-memory registry, allowing it to be re-registered with new parameters. Does not delete the bundle data from disk.
+Bundle metadata is now tracked by Zipline natively. No persistent registry file is maintained.
 
 ---
 
@@ -480,69 +433,35 @@ Maps timeframes to Zipline data frequency.
 
 ---
 
-### CSV Bundle Functions
+### CSV Bundle Functions (v1.12.0 - Removed)
 
-#### `register_csv_bundle()`
+**Note:** CSV bundle wrapper functions have been removed in v1.12.0. Use Zipline's native `csvdir_equities()` directly in `~/.zipline/extension.py`:
 
-Register a CSV bundle for ingestion.
-
-**Signature:**
 ```python
-def register_csv_bundle(
-    bundle_name: str,
-    symbols: List[str],
-    calendar_name: str,
-    timeframe: str,
-    asset_class: str,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    force: bool = False
-) -> None
+# In ~/.zipline/extension.py:
+from zipline.data.bundles import register
+from zipline.data.bundles.csvdir import csvdir_equities
+
+register(
+    'eurusd_1m',
+    csvdir_equities(
+        ['EURUSD'],  # Symbol list
+        csvdir='/path/to/data/csvdir'  # Directory containing EURUSD/ folder
+    ),
+    calendar_name='FOREX'
+)
 ```
 
-**Parameters:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `bundle_name` | str | required | Name of the bundle |
-| `symbols` | List[str] | required | List of CSV filenames or paths |
-| `calendar_name` | str | required | Trading calendar name |
-| `timeframe` | str | required | Data timeframe |
-| `asset_class` | str | required | Asset class (`'equities'`, `'crypto'`, `'forex'`) |
-| `start_date` | str | None | Start date (`YYYY-MM-DD`) |
-| `end_date` | str | None | End date (`YYYY-MM-DD`) |
-| `force` | bool | False | Force re-registration if bundle exists |
-
-**Note:** CSV files should be in `data/csv/` directory or provide full paths. Column names are automatically normalized.
-
----
-
-#### `normalize_csv_columns()`
-
-Normalize CSV column names to standard format.
-
-**Signature:**
-```python
-def normalize_csv_columns(df: pd.DataFrame) -> pd.DataFrame
+**CSV Directory Structure:**
+```
+data/csvdir/
+├── EURUSD/
+│   └── EURUSD.csv  # Contains: date, open, high, low, close, volume
+└── GBPUSD/
+    └── GBPUSD.csv
 ```
 
-**Parameters:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `df` | pd.DataFrame | required | DataFrame with potentially non-standard column names |
-
-**Returns:**
-- `pd.DataFrame`: DataFrame with normalized column names (`open`, `high`, `low`, `close`, `volume`)
-
-**Example:**
-```python
-from lib.bundles.csv import normalize_csv_columns
-
-# Normalize column names
-df_normalized = normalize_csv_columns(df)
-# Converts: 'Open', 'HIGH', 'Low', 'Close', 'Volume' -> 'open', 'high', 'low', 'close', 'volume'
-```
+Column names should be: `date`, `open`, `high`, `low`, `close`, `volume` (lowercase).
 
 ---
 
@@ -581,7 +500,7 @@ def register_yahoo_bundle(
 
 ---
 
-## Module Structure
+## Module Structure (v1.12.0)
 
 The bundles package is organized into focused submodules:
 
@@ -590,19 +509,18 @@ lib/bundles/
 ├── api.py                    # Main public API (thin interface)
 ├── management.py             # Bundle ingestion orchestration
 ├── access.py                 # Bundle loading and querying
-├── registry.py               # Bundle metadata registry
 ├── timeframes.py             # Timeframe configuration
 ├── utils.py                  # Bundle utilities
-├── csv/                      # CSV bundle support
-│   ├── parser.py             # CSV parsing and column normalization
-│   ├── ingestion.py          # CSV data loading and processing
-│   ├── writer.py             # Zipline writer interface
-│   └── registration.py       # Bundle registration orchestration
+├── initialization.py         # Calendar registration
 └── yahoo/                    # Yahoo Finance support
     ├── fetcher.py            # Data fetching from Yahoo Finance
     ├── processor.py          # Data processing and aggregation
     └── registration.py       # Bundle registration orchestration
 ```
+
+**v1.12.0 Removals:**
+- ~~csv/~~ — Deleted (use csvdir_equities() directly)
+- ~~registry.py~~ — Deleted (use Zipline's bundles dict)
 
 ---
 
@@ -693,15 +611,24 @@ register_bundle_metadata(
 
 ### Bundle Naming Convention
 
-Bundles are automatically named using the pattern:
+**v1.12.0+** (Direct API usage):
 ```
-{source}_{asset_class}_{timeframe}
+{symbol}_{timeframe}
 ```
 
 **Examples:**
-- `yahoo_equities_daily` - Yahoo Finance, equities, daily
-- `yahoo_crypto_1h` - Yahoo Finance, crypto, hourly
-- `csv_forex_1h` - CSV source, forex, hourly
+- `btcusd_daily` - Bitcoin, daily
+- `btcusd_1h` - Bitcoin, hourly
+- `eurusd_1m` - Euro/Dollar, 1-minute
+- `aapl_daily` - Apple stock, daily
+
+**Legacy (v1.11.1 and earlier):**
+```
+{source}_{asset_class}_{timeframe}
+```
+- `yahoo_equities_daily`
+- `yahoo_crypto_1h`
+- `csv_forex_1h`
 
 ### Timeframe Data Limits
 
@@ -834,7 +761,14 @@ bundle_data = load_bundle(bundle)
 
 ## Version History
 
+- **v1.12.0**: NO WRAPPERS refactoring - Removed CSV bundle wrappers (use csvdir_equities()), removed registry (use Zipline's bundles dict), bundle naming changed to {symbol}_{timeframe}
 - **v1.11.0**: Modular refactoring (management/access split, CSV/Yahoo subpackages)
 - **v1.1.0**: Session management integration for calendar alignment
 - **v1.0.6**: Multi-timeframe support with data limits
 - **v1.0.5**: Bundle registry for metadata persistence
+
+---
+
+**Last Updated:** 2026-02-09
+**Version:** v1.12.0
+**Status:** NO WRAPPERS Architecture

@@ -19,7 +19,7 @@ from ..core import ValidationResult, ValidationSeverity
 from ..column_mapping import ColumnMapping
 from ..utils import safe_divide, calculate_z_scores, ensure_timezone
 
-logger = logging.getLogger('cockpit.validation.crypto')
+logger = logging.getLogger("cockpit.validation.crypto")
 
 
 class CryptoValidator(BaseValidator):
@@ -47,10 +47,7 @@ class CryptoValidator(BaseValidator):
         ]
 
     def validate(
-        self,
-        df: pd.DataFrame,
-        col_map: ColumnMapping,
-        asset_name: str = "unknown"
+        self, df: pd.DataFrame, col_map: ColumnMapping, asset_name: str = "unknown"
     ) -> ValidationResult:
         """
         Validate crypto-specific characteristics.
@@ -64,11 +61,11 @@ class CryptoValidator(BaseValidator):
             ValidationResult with crypto-specific check outcomes
         """
         result = self._create_result()
-        result.add_metadata('asset_name', asset_name)
-        result.add_metadata('asset_type', 'crypto')
+        result.add_metadata("asset_name", asset_name)
+        result.add_metadata("asset_type", "crypto")
 
         if df.empty:
-            result.add_check('empty_data', False, f"DataFrame is empty for {asset_name}")
+            result.add_check("empty_data", False, f"DataFrame is empty for {asset_name}")
             return result
 
         # Run registered checks
@@ -79,11 +76,7 @@ class CryptoValidator(BaseValidator):
         return result
 
     def _check_extreme_volatility(
-        self,
-        result: ValidationResult,
-        df: pd.DataFrame,
-        col_map: ColumnMapping,
-        asset_name: str
+        self, result: ValidationResult, df: pd.DataFrame, col_map: ColumnMapping, asset_name: str
     ) -> ValidationResult:
         """Check for extreme volatility in crypto markets."""
         close_col = col_map.close
@@ -94,8 +87,9 @@ class CryptoValidator(BaseValidator):
         # Edge case: Single-row DataFrame
         if len(df) < 2:
             result.add_check(
-                'extreme_volatility', True,
-                "Insufficient data for volatility check (need at least 2 rows)"
+                "extreme_volatility",
+                True,
+                "Insufficient data for volatility check (need at least 2 rows)",
             )
             return result
 
@@ -104,8 +98,7 @@ class CryptoValidator(BaseValidator):
 
         if len(returns) < 2:
             result.add_check(
-                'extreme_volatility', True,
-                "Insufficient returns for volatility check"
+                "extreme_volatility", True, "Insufficient returns for volatility check"
             )
             return result
 
@@ -116,37 +109,39 @@ class CryptoValidator(BaseValidator):
         if extreme_moves > 0:
             extreme_pct = safe_divide(extreme_moves, len(returns)) * 100
             extreme_dates = returns[returns.abs() > crypto_extreme_threshold].index[:5]
-            extreme_values = [f"{r*100:.2f}%" for r in returns[returns.abs() > crypto_extreme_threshold][:5].values]
+            extreme_values = [
+                f"{r * 100:.2f}%"
+                for r in returns[returns.abs() > crypto_extreme_threshold][:5].values
+            ]
 
             msg = (
-                f"Found {extreme_moves} extreme volatility events (>{crypto_extreme_threshold*100}%) in {asset_name}. "
+                f"Found {extreme_moves} extreme volatility events (>{crypto_extreme_threshold * 100}%) in {asset_name}. "
                 f"While high volatility is common in crypto, review these dates for potential data errors or flash crashes."
             )
 
             result.add_check(
-                'extreme_volatility', False, msg,
+                "extreme_volatility",
+                False,
+                msg,
                 {
-                    'extreme_count': extreme_moves,
-                    'extreme_pct': extreme_pct,
-                    'extreme_dates': [str(d) for d in extreme_dates],
-                    'extreme_values': extreme_values,
-                    'max_return': float(returns.abs().max())
+                    "extreme_count": extreme_moves,
+                    "extreme_pct": extreme_pct,
+                    "extreme_dates": [str(d) for d in extreme_dates],
+                    "extreme_values": extreme_values,
+                    "max_return": float(returns.abs().max()),
                 },
-                severity=ValidationSeverity.WARNING
+                severity=ValidationSeverity.WARNING,
             )
         else:
             result.add_check(
-                'extreme_volatility', True,
-                f"No extreme volatility events (>{crypto_extreme_threshold*100}%) detected"
+                "extreme_volatility",
+                True,
+                f"No extreme volatility events (>{crypto_extreme_threshold * 100}%) detected",
             )
         return result
 
     def _check_flash_crashes(
-        self,
-        result: ValidationResult,
-        df: pd.DataFrame,
-        col_map: ColumnMapping,
-        asset_name: str
+        self, result: ValidationResult, df: pd.DataFrame, col_map: ColumnMapping, asset_name: str
     ) -> ValidationResult:
         """
         Detect flash crashes: rapid price drop followed by recovery.
@@ -165,8 +160,9 @@ class CryptoValidator(BaseValidator):
         # Need at least 5 bars to detect flash crash pattern
         if len(df) < 5:
             result.add_check(
-                'flash_crashes', True,
-                "Insufficient data for flash crash detection (need at least 5 rows)"
+                "flash_crashes",
+                True,
+                "Insufficient data for flash crash detection (need at least 5 rows)",
             )
             return result
 
@@ -188,21 +184,27 @@ class CryptoValidator(BaseValidator):
 
             if intrabar_drop > flash_crash_threshold:
                 # Check if price recovered in next few bars
-                next_3_bars = df.iloc[i+1:i+4]
+                next_3_bars = df.iloc[i + 1 : i + 4]
                 if len(next_3_bars) > 0:
                     max_recovery = next_3_bars[high_col].max()
-                    recovery_pct = (max_recovery - bar_low) / (bar_high - bar_low) if (bar_high - bar_low) > 0 else 0
+                    recovery_pct = (
+                        (max_recovery - bar_low) / (bar_high - bar_low)
+                        if (bar_high - bar_low) > 0
+                        else 0
+                    )
 
                     # Flash crash if recovery > 50%
                     if recovery_pct > 0.5:
-                        flash_crashes.append({
-                            'date': str(df.index[i]),
-                            'drop_pct': float(intrabar_drop * 100),
-                            'recovery_pct': float(recovery_pct * 100),
-                            'high': float(bar_high),
-                            'low': float(bar_low),
-                            'close': float(bar_close)
-                        })
+                        flash_crashes.append(
+                            {
+                                "date": str(df.index[i]),
+                                "drop_pct": float(intrabar_drop * 100),
+                                "recovery_pct": float(recovery_pct * 100),
+                                "high": float(bar_high),
+                                "low": float(bar_low),
+                                "close": float(bar_close),
+                            }
+                        )
 
         if flash_crashes:
             msg = (
@@ -212,13 +214,15 @@ class CryptoValidator(BaseValidator):
             )
 
             result.add_check(
-                'flash_crashes', False, msg,
+                "flash_crashes",
+                False,
+                msg,
                 {
-                    'flash_crash_count': len(flash_crashes),
-                    'flash_crashes': flash_crashes[:5]  # First 5
+                    "flash_crash_count": len(flash_crashes),
+                    "flash_crashes": flash_crashes[:5],  # First 5
                 },
-                severity=ValidationSeverity.WARNING
+                severity=ValidationSeverity.WARNING,
             )
         else:
-            result.add_check('flash_crashes', True, "No flash crashes detected")
+            result.add_check("flash_crashes", True, "No flash crashes detected")
         return result

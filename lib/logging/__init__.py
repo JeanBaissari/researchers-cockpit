@@ -6,14 +6,14 @@ Supports both console output (human-readable) and file output (structured JSON).
 
 Usage:
     from lib.logging import configure_logging, get_logger, LogContext
-    
+
     # Configure logging
     configure_logging(level="INFO", console=True, file=True)
-    
+
     # Get a logger
     logger = get_logger('my_module')
     logger.info("Operation completed")
-    
+
     # Use context for enhanced logging
     with LogContext(phase="backtest", strategy="my_strategy"):
         logger.info("Running backtest...")  # Includes context info
@@ -55,6 +55,8 @@ from .utils import (
     log_with_context,
     log_exception,
     log_validation_result,
+    integrate_zipline_loggers,
+    get_zipline_loggers,
 )
 
 # Pre-configured loggers
@@ -96,6 +98,8 @@ __all__ = [
     "log_with_context",
     "log_exception",
     "log_validation_result",
+    "integrate_zipline_loggers",
+    "get_zipline_loggers",
     # Pre-configured loggers
     "data_logger",
     "strategy_logger",
@@ -107,18 +111,3 @@ __all__ = [
     "pipeline_logger",
     "ingestion_logger",
 ]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

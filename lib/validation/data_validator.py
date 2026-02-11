@@ -35,7 +35,7 @@ from .validators import (
     add_fix_suggestions_to_result,
 )
 
-logger = logging.getLogger('cockpit.validation')
+logger = logging.getLogger("cockpit.validation")
 
 
 class DataValidator(BaseValidator):
@@ -85,9 +85,9 @@ class DataValidator(BaseValidator):
         """Get or create asset-specific validator."""
         if asset_type not in self._asset_validators:
             validators = {
-                'equity': EquityValidator,
-                'forex': ForexValidator,
-                'crypto': CryptoValidator,
+                "equity": EquityValidator,
+                "forex": ForexValidator,
+                "crypto": CryptoValidator,
             }
             validator_class = validators.get(asset_type)
             if validator_class:
@@ -100,8 +100,8 @@ class DataValidator(BaseValidator):
         calendar: Optional[Any] = None,
         asset_name: str = "unknown",
         calendar_name: Optional[str] = None,
-        asset_type: Optional[Literal['equity', 'forex', 'crypto']] = None,
-        suggest_fixes: Optional[bool] = None
+        asset_type: Optional[Literal["equity", "forex", "crypto"]] = None,
+        suggest_fixes: Optional[bool] = None,
     ) -> ValidationResult:
         """
         Validate OHLCV DataFrame with common and asset-specific checks.
@@ -128,30 +128,30 @@ class DataValidator(BaseValidator):
         result = self._create_result()
 
         # Add metadata
-        result.add_metadata('asset_name', asset_name)
-        result.add_metadata('timeframe', self.config.timeframe)
-        result.add_metadata('calendar_name', self.config.calendar_name)
-        result.add_metadata('asset_type', self.config.asset_type)
-        result.add_metadata('row_count', len(df))
+        result.add_metadata("asset_name", asset_name)
+        result.add_metadata("timeframe", self.config.timeframe)
+        result.add_metadata("calendar_name", self.config.calendar_name)
+        result.add_metadata("asset_type", self.config.asset_type)
+        result.add_metadata("row_count", len(df))
 
         # Handle empty DataFrame
         if df.empty:
-            result.add_check('empty_data', False, f"DataFrame is empty for {asset_name}")
+            result.add_check("empty_data", False, f"DataFrame is empty for {asset_name}")
             return result
 
         # Normalize index
         try:
             df = normalize_dataframe_index(df)
         except ValueError as e:
-            result.add_check('valid_index', False, str(e))
+            result.add_check("valid_index", False, str(e))
             return result
 
-        result.add_check('valid_index', True, "Index is valid DatetimeIndex")
+        result.add_check("valid_index", True, "Index is valid DatetimeIndex")
 
         # Add date range metadata
-        result.add_metadata('date_range_start', str(df.index.min()))
-        result.add_metadata('date_range_end', str(df.index.max()))
-        result.add_metadata('data_hash', compute_dataframe_hash(df))
+        result.add_metadata("date_range_start", str(df.index.min()))
+        result.add_metadata("date_range_end", str(df.index.max()))
+        result.add_metadata("data_hash", compute_dataframe_hash(df))
 
         # Build column mapping
         col_map = build_column_mapping(df)
@@ -160,7 +160,11 @@ class DataValidator(BaseValidator):
         result = self._run_common_checks(df, col_map, asset_name, result)
 
         # Run gap/continuity checks if calendar provided
-        if self.config.check_gaps and not result.get_check('required_columns') or result.get_check('required_columns').passed:
+        if (
+            self.config.check_gaps
+            and not result.get_check("required_columns")
+            or result.get_check("required_columns").passed
+        ):
             result = self._run_continuity_checks(df, calendar, result, asset_name, calendar_name)
 
         # Run asset-specific validation
@@ -177,11 +181,7 @@ class DataValidator(BaseValidator):
         return result
 
     def _run_common_checks(
-        self,
-        df: pd.DataFrame,
-        col_map: ColumnMapping,
-        asset_name: str,
-        result: ValidationResult
+        self, df: pd.DataFrame, col_map: ColumnMapping, asset_name: str, result: ValidationResult
     ) -> ValidationResult:
         """Run all common (non-asset-specific) validation checks."""
         # Run required columns check first (blocking if fails)
@@ -201,38 +201,30 @@ class DataValidator(BaseValidator):
     # =========================================================================
 
     def _check_required_columns(
-        self,
-        result: ValidationResult,
-        df: pd.DataFrame,
-        col_map: ColumnMapping,
-        asset_name: str
+        self, result: ValidationResult, df: pd.DataFrame, col_map: ColumnMapping, asset_name: str
     ) -> ValidationResult:
         """Check that required OHLCV columns exist (case-insensitive)."""
         missing = col_map.missing_columns()
 
         if missing:
             result.add_check(
-                'required_columns',
+                "required_columns",
                 False,
                 f"Missing required columns: {missing}. "
                 f"Expected columns (case-insensitive): {list(REQUIRED_OHLCV_COLUMNS)}",
-                {'missing_columns': missing}
+                {"missing_columns": missing},
             )
         else:
             result.add_check(
-                'required_columns',
+                "required_columns",
                 True,
                 "All required columns present",
-                {'column_mapping': col_map.to_dict()}
+                {"column_mapping": col_map.to_dict()},
             )
         return result
 
     def _check_no_nulls(
-        self,
-        result: ValidationResult,
-        df: pd.DataFrame,
-        col_map: ColumnMapping,
-        asset_name: str
+        self, result: ValidationResult, df: pd.DataFrame, col_map: ColumnMapping, asset_name: str
     ) -> ValidationResult:
         """Check for null values in OHLCV columns."""
         actual_cols = col_map.all_columns
@@ -249,11 +241,7 @@ class DataValidator(BaseValidator):
         total_nulls = null_counts.sum()
 
         if total_nulls > 0:
-            null_details = {
-                col: int(count)
-                for col, count in null_counts.items()
-                if count > 0
-            }
+            null_details = {col: int(count) for col, count in null_counts.items() if count > 0}
             null_pct = safe_divide(total_nulls, len(df) * len(actual_cols)) * 100
 
             # Find sample dates with null values
@@ -272,23 +260,17 @@ class DataValidator(BaseValidator):
                 f"or df.dropna() to remove rows with nulls."
             )
             result.add_check(
-                'no_nulls', False, msg,
-                {
-                    'null_counts': null_details,
-                    'null_pct': null_pct,
-                    'sample_dates': null_dates[:3]
-                }
+                "no_nulls",
+                False,
+                msg,
+                {"null_counts": null_details, "null_pct": null_pct, "sample_dates": null_dates[:3]},
             )
         else:
-            result.add_check('no_nulls', True, "No null values found")
+            result.add_check("no_nulls", True, "No null values found")
         return result
 
     def _check_ohlc_consistency(
-        self,
-        result: ValidationResult,
-        df: pd.DataFrame,
-        col_map: ColumnMapping,
-        asset_name: str
+        self, result: ValidationResult, df: pd.DataFrame, col_map: ColumnMapping, asset_name: str
     ) -> ValidationResult:
         """Check OHLC price relationships are valid."""
         o, h, l, c = col_map.open, col_map.high, col_map.low, col_map.close
@@ -297,7 +279,7 @@ class DataValidator(BaseValidator):
             return result
 
         # Check for non-numeric OHLCV values
-        for col_name, col_key in [('open', o), ('high', h), ('low', l), ('close', c)]:
+        for col_name, col_key in [("open", o), ("high", h), ("low", l), ("close", c)]:
             if col_key and not pd.api.types.is_numeric_dtype(df[col_key]):
                 result.add_error(
                     f"Column '{col_key}' ({col_name}) in {asset_name} is not numeric. "
@@ -313,7 +295,13 @@ class DataValidator(BaseValidator):
 
         if total_violations > 0:
             violation_pct = safe_divide(total_violations, len(df)) * 100
-            violation_mask = (df[h] < df[l]) | (df[h] < df[o]) | (df[h] < df[c]) | (df[l] > df[o]) | (df[l] > df[c])
+            violation_mask = (
+                (df[h] < df[l])
+                | (df[h] < df[o])
+                | (df[h] < df[c])
+                | (df[l] > df[o])
+                | (df[l] > df[c])
+            )
             violation_dates = df.index[violation_mask][:3].tolist()
 
             msg = (
@@ -322,26 +310,24 @@ class DataValidator(BaseValidator):
                 f"Review data source for errors or use df.clip() to constrain values."
             )
             result.add_check(
-                'ohlc_consistency', False, msg,
+                "ohlc_consistency",
+                False,
+                msg,
                 {
-                    'high_low_violations': high_low_violations,
-                    'high_violations': high_violations,
-                    'low_violations': low_violations,
-                    'total_violations': total_violations,
-                    'violation_pct': violation_pct,
-                    'sample_dates': [str(d) for d in violation_dates]
-                }
+                    "high_low_violations": high_low_violations,
+                    "high_violations": high_violations,
+                    "low_violations": low_violations,
+                    "total_violations": total_violations,
+                    "violation_pct": violation_pct,
+                    "sample_dates": [str(d) for d in violation_dates],
+                },
             )
         else:
-            result.add_check('ohlc_consistency', True, "OHLC prices are consistent")
+            result.add_check("ohlc_consistency", True, "OHLC prices are consistent")
         return result
 
     def _check_no_negative_values(
-        self,
-        result: ValidationResult,
-        df: pd.DataFrame,
-        col_map: ColumnMapping,
-        asset_name: str
+        self, result: ValidationResult, df: pd.DataFrame, col_map: ColumnMapping, asset_name: str
     ) -> ValidationResult:
         """Check for negative prices or volumes."""
         price_cols = col_map.price_columns
@@ -370,26 +356,24 @@ class DataValidator(BaseValidator):
                 f"df.clip(lower=0) to fix negative values."
             )
             result.add_check(
-                'no_negative_values', False, msg,
+                "no_negative_values",
+                False,
+                msg,
                 {
-                    'negative_prices': negative_prices,
-                    'negative_volumes': negative_volumes,
-                    'sample_dates': negative_dates[:3]
-                }
+                    "negative_prices": negative_prices,
+                    "negative_volumes": negative_volumes,
+                    "sample_dates": negative_dates[:3],
+                },
             )
         else:
-            result.add_check('no_negative_values', True, "No negative values found")
+            result.add_check("no_negative_values", True, "No negative values found")
         return result
 
     def _check_no_future_dates(
-        self,
-        result: ValidationResult,
-        df: pd.DataFrame,
-        col_map: ColumnMapping,
-        asset_name: str
+        self, result: ValidationResult, df: pd.DataFrame, col_map: ColumnMapping, asset_name: str
     ) -> ValidationResult:
         """Check for dates in the future."""
-        today = pd.Timestamp.now(tz='UTC').normalize()
+        today = pd.Timestamp.now(tz="UTC").normalize()
         index = ensure_timezone(pd.DatetimeIndex(df.index))
         future_dates = int((index > today).sum())
 
@@ -401,22 +385,20 @@ class DataValidator(BaseValidator):
                 f"Use df[df.index <= pd.Timestamp.now(tz='UTC')] to filter out future dates."
             )
             result.add_check(
-                'no_future_dates', False, msg,
+                "no_future_dates",
+                False,
+                msg,
                 {
-                    'future_date_count': future_dates,
-                    'sample_dates': [str(d.date()) for d in future_date_list]
-                }
+                    "future_date_count": future_dates,
+                    "sample_dates": [str(d.date()) for d in future_date_list],
+                },
             )
         else:
-            result.add_check('no_future_dates', True, "No future dates found")
+            result.add_check("no_future_dates", True, "No future dates found")
         return result
 
     def _check_no_duplicate_dates(
-        self,
-        result: ValidationResult,
-        df: pd.DataFrame,
-        col_map: ColumnMapping,
-        asset_name: str
+        self, result: ValidationResult, df: pd.DataFrame, col_map: ColumnMapping, asset_name: str
     ) -> ValidationResult:
         """Check for duplicate dates in index."""
         duplicates = int(df.index.duplicated().sum())
@@ -432,23 +414,21 @@ class DataValidator(BaseValidator):
                 f"to keep first occurrence, or df.groupby(df.index).last() to aggregate duplicates."
             )
             result.add_check(
-                'no_duplicate_dates', False, msg,
+                "no_duplicate_dates",
+                False,
+                msg,
                 {
-                    'duplicate_count': duplicates,
-                    'duplicate_pct': dup_pct,
-                    'sample_dates': [str(d) for d in dup_dates]
-                }
+                    "duplicate_count": duplicates,
+                    "duplicate_pct": dup_pct,
+                    "sample_dates": [str(d) for d in dup_dates],
+                },
             )
         else:
-            result.add_check('no_duplicate_dates', True, "No duplicate dates found")
+            result.add_check("no_duplicate_dates", True, "No duplicate dates found")
         return result
 
     def _check_sorted_index(
-        self,
-        result: ValidationResult,
-        df: pd.DataFrame,
-        col_map: ColumnMapping,
-        asset_name: str
+        self, result: ValidationResult, df: pd.DataFrame, col_map: ColumnMapping, asset_name: str
     ) -> ValidationResult:
         """Check that index is sorted in ascending order."""
         is_ascending = df.index.is_monotonic_increasing
@@ -467,24 +447,22 @@ class DataValidator(BaseValidator):
                 msg = f"Index is not sorted for {asset_name}. Use df.sort_index() to sort in ascending order."
 
             result.add_check(
-                'sorted_index', False, msg,
+                "sorted_index",
+                False,
+                msg,
                 {
-                    'is_ascending': is_ascending,
-                    'is_descending': is_descending,
-                    'sample_issues': sample_issues
+                    "is_ascending": is_ascending,
+                    "is_descending": is_descending,
+                    "sample_issues": sample_issues,
                 },
-                severity=self.config.get_severity()
+                severity=self.config.get_severity(),
             )
         else:
-            result.add_check('sorted_index', True, "Index is sorted ascending")
+            result.add_check("sorted_index", True, "Index is sorted ascending")
         return result
 
     def _check_zero_volume(
-        self,
-        result: ValidationResult,
-        df: pd.DataFrame,
-        col_map: ColumnMapping,
-        asset_name: str
+        self, result: ValidationResult, df: pd.DataFrame, col_map: ColumnMapping, asset_name: str
     ) -> ValidationResult:
         """Check for excessive zero volume bars."""
         volume_col = col_map.volume
@@ -505,28 +483,27 @@ class DataValidator(BaseValidator):
                 f"Review data source or filter using df[df['{volume_col}'] > 0]."
             )
             result.add_check(
-                'zero_volume', False, msg,
+                "zero_volume",
+                False,
+                msg,
                 {
-                    'zero_volume_count': zero_count,
-                    'zero_volume_pct': zero_pct,
-                    'sample_dates': [str(d) for d in zero_vol_dates]
+                    "zero_volume_count": zero_count,
+                    "zero_volume_pct": zero_pct,
+                    "sample_dates": [str(d) for d in zero_vol_dates],
                 },
-                severity=self.config.get_severity()
+                severity=self.config.get_severity(),
             )
         else:
             result.add_check(
-                'zero_volume', True,
+                "zero_volume",
+                True,
                 f"Zero volume bars within tolerance ({zero_pct:.1f}%)",
-                {'zero_volume_count': zero_count, 'zero_volume_pct': zero_pct}
+                {"zero_volume_count": zero_count, "zero_volume_pct": zero_pct},
             )
         return result
 
     def _check_stale_data(
-        self,
-        result: ValidationResult,
-        df: pd.DataFrame,
-        col_map: ColumnMapping,
-        asset_name: str
+        self, result: ValidationResult, df: pd.DataFrame, col_map: ColumnMapping, asset_name: str
     ) -> ValidationResult:
         """Check if data is stale (too old)."""
         if len(df) == 0:
@@ -534,7 +511,7 @@ class DataValidator(BaseValidator):
 
         df_index = ensure_timezone(pd.DatetimeIndex(df.index))
         last_date = df_index.max()
-        now = pd.Timestamp.now(tz='UTC')
+        now = pd.Timestamp.now(tz="UTC")
         days_since = (now - last_date).days
 
         if days_since > self.config.stale_threshold_days:
@@ -543,28 +520,27 @@ class DataValidator(BaseValidator):
                 f"Data may be stale. Update data source or check if data feed is still active."
             )
             result.add_check(
-                'stale_data', False, msg,
+                "stale_data",
+                False,
+                msg,
                 {
-                    'days_since_last': days_since,
-                    'last_date': str(last_date.date()),
-                    'threshold_days': self.config.stale_threshold_days
+                    "days_since_last": days_since,
+                    "last_date": str(last_date.date()),
+                    "threshold_days": self.config.stale_threshold_days,
                 },
-                severity=ValidationSeverity.WARNING
+                severity=ValidationSeverity.WARNING,
             )
         else:
             result.add_check(
-                'stale_data', True,
+                "stale_data",
+                True,
                 f"Data is current (last: {last_date.date()})",
-                {'days_since_last': days_since}
+                {"days_since_last": days_since},
             )
         return result
 
     def _check_data_sufficiency(
-        self,
-        result: ValidationResult,
-        df: pd.DataFrame,
-        col_map: ColumnMapping,
-        asset_name: str
+        self, result: ValidationResult, df: pd.DataFrame, col_map: ColumnMapping, asset_name: str
     ) -> ValidationResult:
         """Check that there's sufficient data for meaningful analysis."""
         min_required = self.config.min_rows
@@ -577,28 +553,27 @@ class DataValidator(BaseValidator):
                 f"adjust min_rows_daily/min_rows_intraday in ValidationConfig if appropriate."
             )
             result.add_check(
-                'data_sufficiency', False, msg,
+                "data_sufficiency",
+                False,
+                msg,
                 {
-                    'row_count': row_count,
-                    'minimum_required': min_required,
-                    'timeframe': self.config.timeframe
+                    "row_count": row_count,
+                    "minimum_required": min_required,
+                    "timeframe": self.config.timeframe,
                 },
-                severity=ValidationSeverity.WARNING
+                severity=ValidationSeverity.WARNING,
             )
         else:
             result.add_check(
-                'data_sufficiency', True,
+                "data_sufficiency",
+                True,
                 f"Sufficient data ({row_count} rows)",
-                {'row_count': row_count, 'minimum_required': min_required}
+                {"row_count": row_count, "minimum_required": min_required},
             )
         return result
 
     def _check_price_outliers(
-        self,
-        result: ValidationResult,
-        df: pd.DataFrame,
-        col_map: ColumnMapping,
-        asset_name: str
+        self, result: ValidationResult, df: pd.DataFrame, col_map: ColumnMapping, asset_name: str
     ) -> ValidationResult:
         """Check for price outliers using z-score analysis."""
         close_col = col_map.close
@@ -629,27 +604,30 @@ class DataValidator(BaseValidator):
 
             if self.config.strict_mode:
                 result.add_check(
-                    'price_outliers', False, msg,
+                    "price_outliers",
+                    False,
+                    msg,
                     {
-                        'outlier_count': outliers,
-                        'outlier_pct': outlier_pct,
-                        'sample_dates': [str(d) for d in outlier_dates],
-                        'sample_z_scores': outlier_z_values
-                    }
+                        "outlier_count": outliers,
+                        "outlier_pct": outlier_pct,
+                        "sample_dates": [str(d) for d in outlier_dates],
+                        "sample_z_scores": outlier_z_values,
+                    },
                 )
             else:
                 result.add_warning(msg)
                 result.add_check(
-                    'price_outliers', True,
+                    "price_outliers",
+                    True,
                     "Outliers found but within tolerance",
                     {
-                        'outlier_count': outliers,
-                        'outlier_pct': outlier_pct,
-                        'sample_dates': [str(d) for d in outlier_dates]
-                    }
+                        "outlier_count": outliers,
+                        "outlier_pct": outlier_pct,
+                        "sample_dates": [str(d) for d in outlier_dates],
+                    },
                 )
         else:
-            result.add_check('price_outliers', True, "No significant price outliers")
+            result.add_check("price_outliers", True, "No significant price outliers")
         return result
 
     def _run_continuity_checks(
@@ -658,47 +636,39 @@ class DataValidator(BaseValidator):
         calendar: Optional[Any],
         result: ValidationResult,
         asset_name: str,
-        calendar_name: Optional[str]
+        calendar_name: Optional[str],
     ) -> ValidationResult:
         """Run date/bar continuity checks based on available calendar."""
         if calendar is not None:
             return self._run_check(
-                result,
-                self._check_date_continuity,
-                df, calendar, asset_name, calendar_name
+                result, self._check_date_continuity, df, calendar, asset_name, calendar_name
             )
         elif self.config.is_intraday:
-            return self._run_check(
-                result,
-                self._check_intraday_continuity,
-                df, asset_name
-            )
+            return self._run_check(result, self._check_intraday_continuity, df, asset_name)
         return result
 
     def _is_continuous_calendar(
-        self,
-        calendar: Optional[Any],
-        calendar_name: Optional[str]
+        self, calendar: Optional[Any], calendar_name: Optional[str]
     ) -> bool:
         """Detect 24/7 calendars using calendar properties or name matching."""
         # Check calendar object properties
         if calendar is not None:
-            if hasattr(calendar, 'weekmask'):
+            if hasattr(calendar, "weekmask"):
                 weekmask = calendar.weekmask
                 if isinstance(weekmask, str):
-                    all_days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+                    all_days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
                     if all(day in weekmask for day in all_days):
                         return True
 
-            if hasattr(calendar, 'name'):
+            if hasattr(calendar, "name"):
                 cal_name = str(calendar.name).upper()
                 if cal_name in CONTINUOUS_CALENDARS:
                     return True
 
-            if hasattr(calendar, 'session_length'):
+            if hasattr(calendar, "session_length"):
                 try:
                     session_length = calendar.session_length
-                    if hasattr(session_length, 'total_seconds'):
+                    if hasattr(session_length, "total_seconds"):
                         hours = session_length.total_seconds() / 3600
                         if hours >= 23.0:
                             return True
@@ -717,7 +687,7 @@ class DataValidator(BaseValidator):
         df: pd.DataFrame,
         calendar: Any,
         asset_name: str,
-        calendar_name: Optional[str] = None
+        calendar_name: Optional[str] = None,
     ) -> ValidationResult:
         """Check for missing dates according to trading calendar."""
         try:
@@ -736,9 +706,10 @@ class DataValidator(BaseValidator):
 
             if len(sessions) == 0:
                 result.add_check(
-                    'date_continuity', True,
+                    "date_continuity",
+                    True,
                     "No sessions in date range",
-                    severity=ValidationSeverity.INFO
+                    severity=ValidationSeverity.INFO,
                 )
                 return result
 
@@ -761,32 +732,36 @@ class DataValidator(BaseValidator):
 
                     if self.config.strict_mode:
                         result.add_check(
-                            'date_continuity', False, msg_with_guidance,
+                            "date_continuity",
+                            False,
+                            msg_with_guidance,
                             {
-                                'missing_count': missing_count,
-                                'missing_pct': missing_pct,
-                                'sample_missing_dates': [str(d.date()) for d in missing_dates_list]
-                            }
+                                "missing_count": missing_count,
+                                "missing_pct": missing_pct,
+                                "sample_missing_dates": [str(d.date()) for d in missing_dates_list],
+                            },
                         )
                     else:
                         result.add_warning(msg_with_guidance)
                         result.add_check(
-                            'date_continuity', True,
+                            "date_continuity",
+                            True,
                             "Gaps within tolerance",
                             {
-                                'missing_count': missing_count,
-                                'missing_pct': missing_pct,
-                                'sample_missing_dates': [str(d.date()) for d in missing_dates_list]
-                            }
+                                "missing_count": missing_count,
+                                "missing_pct": missing_pct,
+                                "sample_missing_dates": [str(d.date()) for d in missing_dates_list],
+                            },
                         )
                 else:
                     result.add_check(
-                        'date_continuity', True,
+                        "date_continuity",
+                        True,
                         f"Minor gaps ({missing_count} days)",
-                        {'missing_count': missing_count}
+                        {"missing_count": missing_count},
                     )
             else:
-                result.add_check('date_continuity', True, "No missing calendar dates")
+                result.add_check("date_continuity", True, "No missing calendar dates")
 
         except Exception as e:
             result.add_warning(f"Could not check date continuity: {e}")
@@ -799,7 +774,7 @@ class DataValidator(BaseValidator):
         df: pd.DataFrame,
         calendar: Any,
         asset_name: str,
-        calendar_name: Optional[str] = None
+        calendar_name: Optional[str] = None,
     ) -> ValidationResult:
         """Check intraday data continuity with calendar awareness."""
         try:
@@ -807,13 +782,10 @@ class DataValidator(BaseValidator):
             start_date = df_index.min()
             end_date = df_index.max()
 
-            sessions = calendar.sessions_in_range(
-                start_date.normalize(),
-                end_date.normalize()
-            )
+            sessions = calendar.sessions_in_range(start_date.normalize(), end_date.normalize())
 
             if len(sessions) == 0:
-                result.add_check('date_continuity', True, "No sessions in range")
+                result.add_check("date_continuity", True, "No sessions in range")
                 return result
 
             # For 24/7 calendars, skip session-based checks
@@ -839,25 +811,29 @@ class DataValidator(BaseValidator):
 
                 if self.config.strict_mode:
                     result.add_check(
-                        'date_continuity', False, msg,
+                        "date_continuity",
+                        False,
+                        msg,
                         {
-                            'sessions_missing': sessions_missing,
-                            'sessions_with_data': sessions_with_data,
-                            'coverage_pct': coverage_pct
-                        }
+                            "sessions_missing": sessions_missing,
+                            "sessions_with_data": sessions_with_data,
+                            "coverage_pct": coverage_pct,
+                        },
                     )
                 else:
                     result.add_warning(msg)
                     result.add_check(
-                        'date_continuity', True,
+                        "date_continuity",
+                        True,
                         "Session gaps within tolerance",
-                        {'sessions_missing': sessions_missing, 'coverage_pct': coverage_pct}
+                        {"sessions_missing": sessions_missing, "coverage_pct": coverage_pct},
                     )
             else:
                 result.add_check(
-                    'date_continuity', True,
+                    "date_continuity",
+                    True,
                     f"Data present for {sessions_with_data} sessions",
-                    {'sessions_with_data': sessions_with_data}
+                    {"sessions_with_data": sessions_with_data},
                 )
 
         except Exception as e:
@@ -866,16 +842,14 @@ class DataValidator(BaseValidator):
         return result
 
     def _check_intraday_continuity(
-        self,
-        result: ValidationResult,
-        df: pd.DataFrame,
-        asset_name: str
+        self, result: ValidationResult, df: pd.DataFrame, asset_name: str
     ) -> ValidationResult:
         """Check intraday data for excessive gaps between bars."""
         if len(df) < 2:
             result.add_check(
-                'intraday_continuity', True,
-                "Insufficient data for continuity check (need at least 2 rows)"
+                "intraday_continuity",
+                True,
+                "Insufficient data for continuity check (need at least 2 rows)",
             )
             return result
 
@@ -902,21 +876,25 @@ class DataValidator(BaseValidator):
 
                 if self.config.strict_mode:
                     result.add_check(
-                        'intraday_continuity', False, msg,
-                        {'large_gaps': large_gaps, 'gap_pct': gap_pct}
+                        "intraday_continuity",
+                        False,
+                        msg,
+                        {"large_gaps": large_gaps, "gap_pct": gap_pct},
                     )
                 else:
                     result.add_warning(msg)
                     result.add_check(
-                        'intraday_continuity', True,
+                        "intraday_continuity",
+                        True,
                         "Gaps within tolerance",
-                        {'large_gaps': large_gaps, 'gap_pct': gap_pct}
+                        {"large_gaps": large_gaps, "gap_pct": gap_pct},
                     )
             else:
                 result.add_check(
-                    'intraday_continuity', True,
+                    "intraday_continuity",
+                    True,
                     f"Intraday continuity OK ({large_gaps} gaps)",
-                    {'large_gaps': large_gaps}
+                    {"large_gaps": large_gaps},
                 )
 
         except Exception as e:

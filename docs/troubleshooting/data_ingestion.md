@@ -130,18 +130,24 @@ python scripts/ingest_data.py --source yahoo --assets equities \
 
 ### Re-Ingest Multiple Bundles
 
+⚠️ **Note:** The `reingest_all.py` script has been archived as of v1.12.0 (NO WRAPPERS architecture).
+
+**Current approach:**
 ```bash
-# Preview what will be re-ingested
-python scripts/reingest_all.py --dry-run
+# List existing bundles
+zipline bundles
 
-# Re-ingest all hourly bundles
-python scripts/reingest_all.py --timeframe 1h
+# Re-ingest individual bundles as needed
+python scripts/ingest_data.py --source yahoo --assets equities --symbols SPY QQQ --timeframe 1h
+python scripts/ingest_data.py --source yahoo --assets crypto --symbols BTCUSD ETHUSD --timeframe 5m
+```
 
-# Re-ingest all crypto bundles
-python scripts/reingest_all.py --assets crypto
-
-# Re-ingest specific bundles
-python scripts/reingest_all.py --bundles yahoo_equities_1h,yahoo_crypto_5m
+**For batch re-ingestion:** Create a shell script with multiple `ingest_data.py` calls or use a loop:
+```bash
+# Example: Re-ingest multiple symbols
+for symbol in SPY QQQ IWM; do
+    python scripts/ingest_data.py --source yahoo --assets equities --symbols $symbol --timeframe daily
+done
 ```
 
 ---

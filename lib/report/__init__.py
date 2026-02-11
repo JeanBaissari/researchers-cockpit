@@ -17,22 +17,7 @@ from .weekly import generate_weekly_summary
 
 __all__ = [
     # Main functions
-    'generate_report',
-    'update_catalog',
-    'generate_weekly_summary',
+    "generate_report",
+    "update_catalog",
+    "generate_weekly_summary",
 ]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

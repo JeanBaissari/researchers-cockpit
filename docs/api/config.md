@@ -251,6 +251,68 @@ validate_risk_section(params.get('risk'), errors)
 
 ---
 
+## Zipline `SimulationParameters` Integration
+
+Zipline-Reloaded constructs a `SimulationParameters` object internally when you call `zipline.run_algorithm()`.
+In this project, `lib/config/` **does not wrap** Zipline — instead it provides a clear, testable mapping from:
+
+- **YAML config** (`strategies/*/parameters.yaml`)
+- **function overrides** (script/notebook arguments)
+
+into the **direct** `run_algorithm()` parameters that Zipline uses to build `SimulationParameters`.
+
+### Where the mapping lives
+
+- **Canonical mapping module**: `lib/config/zipline_params.py`
+- **Public API**: `lib.config.extract_zipline_params()` and `lib.config.ZiplineRunParams`
+
+### What gets mapped
+
+`lib/config/zipline_params.py` extracts these `run_algorithm()` inputs (which drive `SimulationParameters`):
+
+- `start` / `end` (`pd.Timestamp`, timezone-naive)
+- `capital_base` (`float`)
+- `bundle` (`str`)
+- `data_frequency` (`'daily'` or `'minute'`)
+- `trading_calendar` (must be provided by the caller; typically from `zipline.utils.calendar_utils.get_calendar()`)
+
+Optional pass-through fields:
+- `benchmark_returns` (`pd.Series`)
+- `metrics_set` (`str`)
+
+### Precedence rules
+
+Resolution order (highest → lowest):
+
+1. **Function arguments** (explicit overrides)
+2. **Strategy** `parameters.yaml` (`backtest.*`)
+3. **Defaults** (module defaults when not present)
+
+### Example
+
+```python
+import pandas as pd
+from zipline.utils.calendar_utils import get_calendar
+
+from lib.config import extract_zipline_params
+
+calendar = get_calendar("XNYS")
+run_params = extract_zipline_params(
+    strategy_name="spy_sma_cross",
+    start_date="2020-01-01",
+    end_date="2020-12-31",
+    capital_base=100_000.0,
+    bundle="yahoo_equities_daily",
+    data_frequency="daily",
+    trading_calendar=calendar,
+)
+
+# Use run_params.to_dict() for run_algorithm kwargs (trading_calendar passed separately)
+kwargs = run_params.to_dict()
+```
+
+---
+
 ## get_warmup_days()
 
 Get required warmup days for a strategy.

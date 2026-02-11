@@ -26,21 +26,21 @@ from ..strategies import (
 logger = logging.getLogger(__name__)
 
 
-def create_results_directory(strategy_name: str, result_type: str = 'backtest') -> Path:
+def create_results_directory(strategy_name: str, result_type: str = "backtest") -> Path:
     """
     Create timestamped results directory for a strategy.
-    
+
     Args:
         strategy_name: Name of strategy
         result_type: Type of result ('backtest', 'optimization', etc.)
-        
+
     Returns:
         Path: Path to created results directory
     """
     root = get_project_root()
-    results_base = root / 'results' / strategy_name
+    results_base = root / "results" / strategy_name
     ensure_dir(results_base)
-    
+
     # Create timestamped directory
     result_dir = timestamp_dir(results_base, result_type)
     return result_dir
@@ -49,24 +49,24 @@ def create_results_directory(strategy_name: str, result_type: str = 'backtest') 
 def update_latest_symlink(result_dir: Path, strategy_name: str) -> None:
     """
     Update the 'latest' symlink to point to the most recent results directory.
-    
+
     Args:
         result_dir: Path to the results directory
         strategy_name: Name of strategy
     """
     root = get_project_root()
-    results_base = root / 'results' / strategy_name
-    latest_link = results_base / 'latest'
+    results_base = root / "results" / strategy_name
+    latest_link = results_base / "latest"
     update_symlink(result_dir, latest_link)
 
 
 def check_and_fix_strategy_symlinks(strategy_name: str) -> list[Path]:
     """
     Check and fix broken symlinks for a strategy.
-    
+
     Args:
         strategy_name: Name of strategy
-        
+
     Returns:
         List of paths to fixed symlinks
     """
@@ -75,11 +75,11 @@ def check_and_fix_strategy_symlinks(strategy_name: str) -> list[Path]:
         try:
             strategy_path = get_strategy_path(strategy_name)
             asset_class = strategy_path.parent.name
-            if asset_class not in ['crypto', 'forex', 'equities']:
+            if asset_class not in ["crypto", "forex", "equities"]:
                 asset_class = None
         except FileNotFoundError:
             pass
-        
+
         fixed_links = check_and_fix_symlinks(strategy_name, asset_class)
         if fixed_links:
             logger.info(f"Fixed {len(fixed_links)} broken symlink(s): {fixed_links}")

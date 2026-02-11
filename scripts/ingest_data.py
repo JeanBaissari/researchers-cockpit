@@ -31,7 +31,7 @@ from lib.bundles import ingest_bundle, VALID_TIMEFRAMES, TIMEFRAME_DATA_LIMITS
 from lib.logging import configure_logging, get_logger, LogContext
 
 # Configure logging (console=False since we use click.echo for user output)
-configure_logging(level='INFO', console=False, file=False)
+configure_logging(level="INFO", console=False, file=False)
 logger = get_logger(__name__)
 
 
@@ -51,47 +51,94 @@ def generate_bundle_name(source: str, assets: str, timeframe: str, custom_name: 
     """
     Generate a consistent bundle name that always includes the timeframe.
 
+    v1.12.0+ convention: {symbol}_{timeframe} (when custom_name is provided)
+    Legacy convention: {source}_{assets}_{timeframe} (when custom_name is None)
+
     Args:
-        source: Data source (e.g., 'yahoo')
-        assets: Asset class (e.g., 'equities')
+        source: Data source (e.g., 'yahoo') - used for legacy naming only
+        assets: Asset class (e.g., 'equities') - used for legacy naming only
         timeframe: Data timeframe (e.g., 'daily', '1h', '5m')
-        custom_name: Optional custom base name
+        custom_name: Optional custom base name (typically symbol for v1.12.0+)
 
     Returns:
-        Bundle name in format: {base}_{timeframe} or {source}_{assets}_{timeframe}
+        Bundle name in format:
+        - v1.12.0+: {custom_name}_{timeframe} (e.g., 'spy_daily')
+        - Legacy: {source}_{assets}_{timeframe} (e.g., 'yahoo_equities_daily')
 
     Note:
         If custom_name already ends with the timeframe, it won't be duplicated.
     """
     if custom_name:
+        # v1.12.0+ convention: {symbol}_{timeframe}
         # Avoid duplicating timeframe if already present in custom name
         if custom_name.endswith(f"_{timeframe}"):
             return custom_name
         return f"{custom_name}_{timeframe}"
+    # Legacy convention: {source}_{assets}_{timeframe}
+    # Note: This is maintained for backward compatibility but v1.12.0+ prefers custom_name
     return f"{source}_{assets}_{timeframe}"
 
 
 @click.command()
-@click.option('--source', default=None, type=click.Choice(['yahoo', 'binance', 'oanda', 'csv']),
-              help='Data source name (e.g., yahoo, binance, oanda, local_csv)')
-@click.option('--assets', default=None, type=click.Choice(['crypto', 'forex', 'equities']),
-              help='Asset class')
-@click.option('--symbols', default=None, help='Comma-separated list of symbols (e.g., SPY,AAPL)')
-@click.option('--bundle-name', default=None,
-              help='Bundle name base. Timeframe will be appended (e.g., mydata -> mydata_daily)')
-@click.option('--start-date', default=None,
-              help='Start date (YYYY-MM-DD). Auto-adjusted for limited timeframes.')
-@click.option('--end-date', default=None, help='End date (YYYY-MM-DD)')
-@click.option('--calendar', default=None,
-              help='Trading calendar name (e.g., XNYS, CRYPTO, FOREX). Auto-detected from asset class if not provided.')
-@click.option('--timeframe', '-t', default='daily',
-              type=click.Choice(VALID_TIMEFRAMES, case_sensitive=False),
-              help='Data timeframe. Use --list-timeframes to see options with limits.')
-@click.option('--ingest-daily', is_flag=True, help='Ingest daily data bundle')
-@click.option('--ingest-intraday', is_flag=True, help='Ingest intraday data bundle (uses --timeframe for granularity)')
-@click.option('--force', is_flag=True, help='Force re-ingestion of the bundle, even if already registered')
-@click.option('--list-timeframes', is_flag=True, help='Show available timeframes and their data limits')
-def main(source, assets, symbols, bundle_name, start_date, end_date, calendar, timeframe, force, list_timeframes, ingest_daily, ingest_intraday):
+@click.option(
+    "--source",
+    default=None,
+    type=click.Choice(["yahoo", "binance", "oanda", "csv"]),
+    help="Data source name (e.g., yahoo, binance, oanda, local_csv)",
+)
+@click.option(
+    "--assets", default=None, type=click.Choice(["crypto", "forex", "equities"]), help="Asset class"
+)
+@click.option("--symbols", default=None, help="Comma-separated list of symbols (e.g., SPY,AAPL)")
+@click.option(
+    "--bundle-name",
+    default=None,
+    help="Bundle name base. Timeframe will be appended (e.g., mydata -> mydata_daily)",
+)
+@click.option(
+    "--start-date",
+    default=None,
+    help="Start date (YYYY-MM-DD). Auto-adjusted for limited timeframes.",
+)
+@click.option("--end-date", default=None, help="End date (YYYY-MM-DD)")
+@click.option(
+    "--calendar",
+    default=None,
+    help="Trading calendar name (e.g., XNYS, CRYPTO, FOREX). Auto-detected from asset class if not provided.",
+)
+@click.option(
+    "--timeframe",
+    "-t",
+    default="daily",
+    type=click.Choice(VALID_TIMEFRAMES, case_sensitive=False),
+    help="Data timeframe. Use --list-timeframes to see options with limits.",
+)
+@click.option("--ingest-daily", is_flag=True, help="Ingest daily data bundle")
+@click.option(
+    "--ingest-intraday",
+    is_flag=True,
+    help="Ingest intraday data bundle (uses --timeframe for granularity)",
+)
+@click.option(
+    "--force", is_flag=True, help="Force re-ingestion of the bundle, even if already registered"
+)
+@click.option(
+    "--list-timeframes", is_flag=True, help="Show available timeframes and their data limits"
+)
+def main(
+    source,
+    assets,
+    symbols,
+    bundle_name,
+    start_date,
+    end_date,
+    calendar,
+    timeframe,
+    force,
+    list_timeframes,
+    ingest_daily,
+    ingest_intraday,
+):
     """
     Ingest market data into a Zipline bundle.
 
@@ -108,7 +155,7 @@ def main(source, assets, symbols, bundle_name, start_date, end_date, calendar, t
 
         # 5-minute forex data
         python scripts/ingest_data.py --source yahoo --assets forex --symbols EURUSD=X -t 5m
-        
+
         # Both daily and hourly data
         python scripts/ingest_data.py --source yahoo --assets equities --symbols SPY -t 1h --ingest-daily --ingest-intraday
     """
@@ -121,7 +168,9 @@ def main(source, assets, symbols, bundle_name, start_date, end_date, calendar, t
     if source is None:
         logger.error("Missing required option: --source")
         click.echo("✗ Error: --source is required for ingestion.", err=True)
-        click.echo("  Use --list-timeframes to see available timeframes without other options.", err=True)
+        click.echo(
+            "  Use --list-timeframes to see available timeframes without other options.", err=True
+        )
         sys.exit(1)
     if assets is None:
         logger.error("Missing required option: --assets")
@@ -135,17 +184,20 @@ def main(source, assets, symbols, bundle_name, start_date, end_date, calendar, t
         sys.exit(1)
 
     # Parse symbols
-    symbol_list = [s.strip() for s in symbols.split(',')]
+    symbol_list = [s.strip() for s in symbols.split(",")]
 
     # Build list of bundles to ingest
     bundles_to_ingest = []
     if ingest_daily:
-        bundles_to_ingest.append('daily')
+        bundles_to_ingest.append("daily")
     if ingest_intraday:
         # Use the provided timeframe for intraday data
         intraday_tf = timeframe.lower()
-        if intraday_tf == 'daily':
-            click.echo("Warning: --ingest-intraday with --timeframe daily is redundant. Use --ingest-daily instead.", err=True)
+        if intraday_tf == "daily":
+            click.echo(
+                "Warning: --ingest-intraday with --timeframe daily is redundant. Use --ingest-daily instead.",
+                err=True,
+            )
         else:
             bundles_to_ingest.append(intraday_tf)
 
@@ -154,32 +206,33 @@ def main(source, assets, symbols, bundle_name, start_date, end_date, calendar, t
         bundles_to_ingest.append(timeframe.lower())
 
     # Use LogContext for structured logging
-    with LogContext(phase='data_ingestion', asset_type=assets, timeframe=timeframe):
+    with LogContext(phase="data_ingestion", asset_type=assets, timeframe=timeframe):
         logger.info(f"Starting data ingestion from {source} for {len(symbol_list)} symbols")
-        
+
         ingested_bundles = []
         for current_timeframe in bundles_to_ingest:
             # Generate consistent bundle name that always includes timeframe
             current_bundle_name = generate_bundle_name(
-                source=source,
-                assets=assets,
-                timeframe=current_timeframe,
-                custom_name=bundle_name
+                source=source, assets=assets, timeframe=current_timeframe, custom_name=bundle_name
             )
-            
+
             # Get data limit info for the current timeframe (for display purposes)
             # Only show limits for API-based sources (Yahoo), not local CSV
-            if source != 'csv':
+            if source != "csv":
                 limit = TIMEFRAME_DATA_LIMITS.get(current_timeframe)
                 limit_info = f" ({limit} days max)" if limit else " (unlimited)"
             else:
                 limit_info = ""  # CSV has no limits - uses full available data
 
-            click.echo(f"Ingesting {current_timeframe} data from {source} for {len(symbol_list)} symbols{limit_info}...")
+            click.echo(
+                f"Ingesting {current_timeframe} data from {source} for {len(symbol_list)} symbols{limit_info}..."
+            )
             click.echo(f"Symbols: {', '.join(symbol_list)}")
-            
+
             try:
-                logger.info(f"Ingesting bundle: {current_bundle_name} with {len(symbol_list)} symbols")
+                logger.info(
+                    f"Ingesting bundle: {current_bundle_name} with {len(symbol_list)} symbols"
+                )
                 bundle = ingest_bundle(
                     source=source,
                     assets=[assets],
@@ -189,15 +242,21 @@ def main(source, assets, symbols, bundle_name, start_date, end_date, calendar, t
                     end_date=end_date,
                     calendar_name=calendar,
                     timeframe=current_timeframe,
-                    force=force
+                    force=force,
                 )
                 ingested_bundles.append(bundle)
                 logger.info(f"Successfully ingested bundle: {bundle}")
                 click.echo(f"✓ Successfully ingested bundle: {bundle}")
             except Exception as e:
                 logger.error(f"Failed to ingest bundle {current_bundle_name}: {e}", exc_info=True)
-                click.echo(f"✗ Error ingesting {current_timeframe} bundle {current_bundle_name}: {e}", err=True)
-                click.echo(f"  Check bundle registry: python scripts/validate_bundles.py --bundle {current_bundle_name}", err=True)
+                click.echo(
+                    f"✗ Error ingesting {current_timeframe} bundle {current_bundle_name}: {e}",
+                    err=True,
+                )
+                click.echo(
+                    f"  Check bundle registry: python scripts/validate_bundles.py --bundle {current_bundle_name}",
+                    err=True,
+                )
                 sys.exit(1)
 
     click.echo(f"\nAll specified bundles successfully ingested:")
@@ -208,9 +267,13 @@ def main(source, assets, symbols, bundle_name, start_date, end_date, calendar, t
     # Show helpful next steps
     click.echo(f"\nNext steps:")
     for b in ingested_bundles:
-        click.echo(f"  1. Run backtest: python scripts/run_backtest.py --strategy <name> --bundle {b}")
-    click.echo(f"  2. Check bundle registry: cat ~/.zipline/bundle_registry.json | python -m json.tool")
+        click.echo(
+            f"  1. Run backtest: python scripts/run_backtest.py --strategy <name> --bundle {b}"
+        )
+    click.echo(
+        f"  2. Check bundle registry: cat ~/.zipline/bundle_registry.json | python -m json.tool"
+    )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

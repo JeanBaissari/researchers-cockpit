@@ -14,14 +14,14 @@ from typing import Union
 
 from ..core import ValidationResult, ValidationCheck, ValidationSeverity
 
-logger = logging.getLogger('cockpit.validation')
+logger = logging.getLogger("cockpit.validation")
 
 
 def save_validation_report(
     result: ValidationResult,
     output_path: Union[str, Path],
     include_summary: bool = True,
-    pretty_print: bool = True
+    pretty_print: bool = True,
 ) -> None:
     """
     Save validation report to JSON file.
@@ -38,11 +38,11 @@ def save_validation_report(
     report = result.to_dict()
 
     if include_summary:
-        report['human_summary'] = result.summary()
+        report["human_summary"] = result.summary()
 
     indent = 2 if pretty_print else None
 
-    with open(output_path, 'w') as f:
+    with open(output_path, "w") as f:
         json.dump(report, f, indent=indent, default=str)
 
     logger.info(f"Saved validation report to {output_path}")
@@ -69,7 +69,7 @@ def load_validation_report(report_path: Union[str, Path]) -> ValidationResult:
         raise FileNotFoundError(f"Validation report not found: {report_path}")
 
     try:
-        with open(report_path, 'r') as f:
+        with open(report_path, "r") as f:
             report_data = json.load(f)
     except json.JSONDecodeError as e:
         raise json.JSONDecodeError(f"Invalid JSON in validation report: {e}", e.doc, e.pos) from e
@@ -78,32 +78,34 @@ def load_validation_report(report_path: Union[str, Path]) -> ValidationResult:
 
     # Reconstruct ValidationResult
     result = ValidationResult()
-    result.passed = report_data.get('passed', True)
+    result.passed = report_data.get("passed", True)
 
     # Reconstruct checks
-    checks_data = report_data.get('checks', [])
+    checks_data = report_data.get("checks", [])
     for check_data in checks_data:
         check = ValidationCheck(
-            name=check_data.get('name', 'unknown'),
-            passed=check_data.get('passed', False),
-            severity=ValidationSeverity(check_data.get('severity', 'error')),
-            message=check_data.get('message', ''),
-            details=check_data.get('details', {}),
-            timestamp=datetime.fromisoformat(check_data.get('timestamp', datetime.utcnow().isoformat()).replace('Z', '+00:00'))
+            name=check_data.get("name", "unknown"),
+            passed=check_data.get("passed", False),
+            severity=ValidationSeverity(check_data.get("severity", "error")),
+            message=check_data.get("message", ""),
+            details=check_data.get("details", {}),
+            timestamp=datetime.fromisoformat(
+                check_data.get("timestamp", datetime.utcnow().isoformat()).replace("Z", "+00:00")
+            ),
         )
         result.checks.append(check)
 
     # Reconstruct lists
-    result.warnings = report_data.get('warnings', [])
-    result.errors = report_data.get('errors', [])
-    result.info = report_data.get('info', [])
-    result.metadata = report_data.get('metadata', {})
+    result.warnings = report_data.get("warnings", [])
+    result.errors = report_data.get("errors", [])
+    result.info = report_data.get("info", [])
+    result.metadata = report_data.get("metadata", {})
 
     # Restore start time if available (for duration calculation)
-    validated_at = report_data.get('validated_at')
+    validated_at = report_data.get("validated_at")
     if validated_at:
         try:
-            result._start_time = datetime.fromisoformat(validated_at.replace('Z', '+00:00'))
+            result._start_time = datetime.fromisoformat(validated_at.replace("Z", "+00:00"))
         except (ValueError, AttributeError):
             # If we can't parse it, use current time (duration will be inaccurate)
             pass

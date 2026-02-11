@@ -1,11 +1,19 @@
 """
 Data validation package for The Researcher's Cockpit.
 
-Provides multi-layer validation for OHLCV data:
-- Pre-ingestion source validation
-- Ingestion-time bundle creation checks
-- Pre-backtest bundle verification
-- Post-backtest results validation
+Provides multi-layer validation for OHLCV data that COMPLEMENTS Zipline-Reloaded's
+built-in validation:
+
+**Our Validation (Pre/Post-Ingestion, Post-Backtest):**
+- Pre-ingestion: Data quality, schema, outliers, asset-specific rules
+- Post-ingestion: Bundle integrity, date coverage, symbol availability
+- Post-backtest: Metrics consistency, results verification
+
+**Zipline's Validation (During Ingestion, During Backtest):**
+- During ingestion: Format/structure validation, calendar alignment
+- During backtest: Data availability, symbol resolution, session continuity
+
+See docs/validation/validation_architecture.md for complete distinction.
 
 Architecture:
     - ValidationSeverity: Enum for validation severity levels
@@ -24,6 +32,7 @@ Design Principles:
     - Open/Closed: Easy to extend with new checks
     - Dependency Inversion: Validators depend on abstractions
     - DRY: Common logic in base class and utilities
+    - Complement, Don't Duplicate: Focus on quality checks Zipline doesn't do
 
 Usage:
     >>> from lib.validation import DataValidator, ValidationConfig, ValidationResult
@@ -119,68 +128,68 @@ from .api import (
 
 __all__ = [
     # Constants
-    'INTRADAY_TIMEFRAMES',
-    'DAILY_TIMEFRAMES',
-    'ALL_TIMEFRAMES',
-    'REQUIRED_OHLCV_COLUMNS',
-    'OPTIONAL_OHLCV_COLUMNS',
-    'DEFAULT_GAP_TOLERANCE_DAYS',
-    'DEFAULT_GAP_TOLERANCE_BARS',
-    'DEFAULT_OUTLIER_THRESHOLD_SIGMA',
-    'DEFAULT_STALE_THRESHOLD_DAYS',
-    'DEFAULT_ZERO_VOLUME_THRESHOLD_PCT',
-    'DEFAULT_PRICE_JUMP_THRESHOLD_PCT',
-    'DEFAULT_VOLUME_SPIKE_THRESHOLD_SIGMA',
-    'DEFAULT_MIN_ROWS_DAILY',
-    'DEFAULT_MIN_ROWS_INTRADAY',
-    'CONTINUOUS_CALENDARS',
-    'TIMEFRAME_INTERVALS',
-    'COLUMN_ALIASES',
+    "INTRADAY_TIMEFRAMES",
+    "DAILY_TIMEFRAMES",
+    "ALL_TIMEFRAMES",
+    "REQUIRED_OHLCV_COLUMNS",
+    "OPTIONAL_OHLCV_COLUMNS",
+    "DEFAULT_GAP_TOLERANCE_DAYS",
+    "DEFAULT_GAP_TOLERANCE_BARS",
+    "DEFAULT_OUTLIER_THRESHOLD_SIGMA",
+    "DEFAULT_STALE_THRESHOLD_DAYS",
+    "DEFAULT_ZERO_VOLUME_THRESHOLD_PCT",
+    "DEFAULT_PRICE_JUMP_THRESHOLD_PCT",
+    "DEFAULT_VOLUME_SPIKE_THRESHOLD_SIGMA",
+    "DEFAULT_MIN_ROWS_DAILY",
+    "DEFAULT_MIN_ROWS_INTRADAY",
+    "CONTINUOUS_CALENDARS",
+    "TIMEFRAME_INTERVALS",
+    "COLUMN_ALIASES",
     # Enums
-    'ValidationSeverity',
-    'ValidationStatus',
+    "ValidationSeverity",
+    "ValidationStatus",
     # Data classes
-    'ValidationCheck',
-    'ValidationResult',
+    "ValidationCheck",
+    "ValidationResult",
     # Configuration
-    'ValidationConfig',
+    "ValidationConfig",
     # Column mapping
-    'ColumnMapping',
-    'build_column_mapping',
+    "ColumnMapping",
+    "build_column_mapping",
     # Base validator
-    'BaseValidator',
+    "BaseValidator",
     # Core validators
-    'DataValidator',
-    'BundleValidator',
-    'BacktestValidator',
-    'SchemaValidator',
-    'CompositeValidator',
+    "DataValidator",
+    "BundleValidator",
+    "BacktestValidator",
+    "SchemaValidator",
+    "CompositeValidator",
     # Asset-specific validators
-    'EquityValidator',
-    'ForexValidator',
-    'CryptoValidator',
-    'format_validation_report',
-    'generate_fix_suggestions',
-    'add_fix_suggestions_to_result',
+    "EquityValidator",
+    "ForexValidator",
+    "CryptoValidator",
+    "format_validation_report",
+    "generate_fix_suggestions",
+    "add_fix_suggestions_to_result",
     # Utility functions
-    'normalize_dataframe_index',
-    'ensure_timezone',
-    'compute_dataframe_hash',
-    'parse_timeframe',
-    'is_intraday_timeframe',
-    'safe_divide',
-    'calculate_z_scores',
+    "normalize_dataframe_index",
+    "ensure_timezone",
+    "compute_dataframe_hash",
+    "parse_timeframe",
+    "is_intraday_timeframe",
+    "safe_divide",
+    "calculate_z_scores",
     # Convenience functions
-    'validate_before_ingest',
-    'validate_bundle',
-    'validate_backtest_results',
-    'verify_metrics_calculation',
-    'verify_returns_calculation',
-    'verify_positions_match_transactions',
+    "validate_before_ingest",
+    "validate_bundle",
+    "validate_backtest_results",
+    "verify_metrics_calculation",
+    "verify_returns_calculation",
+    "verify_positions_match_transactions",
     # Data integrity functions
-    'verify_bundle_dates',
-    'validate_csv_files_pre_ingestion',
+    "verify_bundle_dates",
+    "validate_csv_files_pre_ingestion",
     # Report I/O
-    'save_validation_report',
-    'load_validation_report',
+    "save_validation_report",
+    "load_validation_report",
 ]

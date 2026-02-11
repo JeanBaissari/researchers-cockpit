@@ -56,33 +56,18 @@ from .comparison import (
 
 __all__ = [
     # Main public API
-    'calculate_metrics',
-    'calculate_trade_metrics',
-    'calculate_rolling_metrics',
-    'compare_strategies',
+    "calculate_metrics",
+    "calculate_trade_metrics",
+    "calculate_rolling_metrics",
+    "compare_strategies",
     # Constants
-    'EMPYRICAL_AVAILABLE',
-    'MAX_PROFIT_FACTOR',
-    'PERCENTAGE_METRICS',
+    "EMPYRICAL_AVAILABLE",
+    "MAX_PROFIT_FACTOR",
+    "PERCENTAGE_METRICS",
     # Helper functions (exposed for advanced use)
-    '_extract_trades',
-    '_get_daily_rf',
-    '_convert_to_percentages',
-    '_empty_metrics',
-    '_calculate_max_consecutive_losses',
+    "_extract_trades",
+    "_get_daily_rf",
+    "_convert_to_percentages",
+    "_empty_metrics",
+    "_calculate_max_consecutive_losses",
 ]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

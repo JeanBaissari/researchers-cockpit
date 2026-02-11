@@ -6,6 +6,36 @@ Comprehensive performance metrics calculation using empyrical-reloaded library.
 
 ---
 
+## Overview
+
+The Metrics API provides a comprehensive suite of performance, risk, and trade-level metrics for analyzing strategy backtests. Built on the empyrical-reloaded library, it offers both high-level orchestration via `calculate_metrics()` and direct access to specialized metric modules.
+
+**Key capabilities:**
+- Comprehensive performance metrics (Sharpe, Sortino, Calmar, returns, volatility)
+- Risk analysis (drawdown, alpha/beta, VaR, CVaR, tail ratios)
+- Trade-level statistics (win rate, profit factor, trade duration)
+- Rolling window metrics for time-series analysis
+- Multi-strategy comparison utilities
+- Modular architecture for direct module access
+
+---
+
+## Installation/Dependencies
+
+**Required:**
+- `empyrical-reloaded` >= 0.2.0
+- `pandas` >= 1.3.0
+- `numpy` >= 1.20.0
+
+**Optional:**
+- `scipy` (for advanced statistical calculations)
+
+```bash
+pip install empyrical-reloaded pandas numpy scipy
+```
+
+---
+
 ## Module Structure
 
 The metrics package is organized into focused modules (v1.11.0 modular architecture):
@@ -27,6 +57,28 @@ lib/metrics/
 - **trade.py**: Trade-level analysis (win rate, profit factor, trade statistics)
 - **rolling.py**: Rolling window metrics over time
 - **comparison.py**: Multi-strategy comparison utilities
+
+---
+
+## Main API
+
+The primary interface consists of one main orchestrator and several specialized modules.
+
+### Core Function
+
+| Function | Purpose |
+|----------|---------|
+| `calculate_metrics()` | Calculate comprehensive performance metrics (orchestrator) |
+
+### Specialized Modules
+
+| Module | Functions |
+|--------|-----------|
+| `performance.py` | Sharpe, Sortino, Calmar, returns, volatility calculations |
+| `risk.py` | Drawdown, alpha/beta, VaR, CVaR, tail ratios |
+| `trade.py` | Win rate, profit factor, trade statistics |
+| `rolling.py` | Rolling window metrics over time |
+| `comparison.py` | Multi-strategy comparison utilities |
 
 ---
 
@@ -83,6 +135,12 @@ The `calculate_metrics()` function orchestrates calls to specialized modules:
 
 - **Trade Metrics** (`lib/metrics/trade.py`):
   - `calculate_trade_metrics()` - Trade-level analysis (if transactions provided)
+
+---
+
+## Examples
+
+### Basic Usage
 
 **Example:**
 ```python
@@ -539,3 +597,9 @@ from lib.metrics.trade import calculate_trade_metrics
 - `lib/metrics/trade.py` - Trade-level analysis
 - `lib/metrics/rolling.py` - Rolling window metrics
 - `lib/metrics/comparison.py` - Strategy comparison
+
+---
+
+**Last Updated:** 2026-02-09
+**Version:** v1.12.0
+**Status:** NO WRAPPERS Architecture

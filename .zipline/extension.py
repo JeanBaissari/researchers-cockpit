@@ -19,12 +19,12 @@ from lib.calendars import (
 )
 
 __all__ = [
-    'CryptoCalendar',
-    'ForexCalendar',
-    'register_custom_calendars',
-    'register_calendar_type',
-    'get_calendar_for_asset_class',
-    'get_available_calendars',
-    'get_registered_calendars',
-    'resolve_calendar_name',
+    "CryptoCalendar",
+    "ForexCalendar",
+    "register_custom_calendars",
+    "register_calendar_type",
+    "get_calendar_for_asset_class",
+    "get_available_calendars",
+    "get_registered_calendars",
+    "resolve_calendar_name",
 ]

@@ -50,6 +50,8 @@ data/bundles/*
 !data/bundles/.gitkeep
 data/cache/*
 !data/cache/.gitkeep
+data/csvdir/*
+!data/csvdir/.gitkeep
 data/exports/*
 !data/exports/.gitkeep
 data/processed/*
@@ -90,7 +92,21 @@ htmlcov/
 *.bak
 *.swp
 
+# ralphy tasks
 tasks/
+.ralphy-sandboxes/
+.ralphy-worktrees/
+prd/
+prd/_templates/
+prd/features/
+prd/cleanup/
+prd/refactoring/
+prd/testing/
+prd/documentation/
+prd/performance/
+prd/security/
+prd/scalability/
+prd/edge_cases/
 
 # AI Agent Configuration (LOCAL ONLY)
 .agent/
@@ -98,8 +114,16 @@ tasks/
 
 # Cursor IDE (LOCAL ONLY)
 .cursor/
+*.code-workspace
 
 # Documentation (local only, not for GitHub)
 docs/github_description.md
 docs/v1.0.8_refactoring_summary.md
 docs/v1.0.9_release_summary.md
+
+# Edge Cases
+tests/docs/test_value_add_modules_doc.py
+scripts/sync_ralphy_tasks.py
+docs/VALUE_ADD_MODULES.md
+docs/troubleshooting/ralphy.md
+

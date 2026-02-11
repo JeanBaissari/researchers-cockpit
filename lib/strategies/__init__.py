@@ -12,8 +12,8 @@ from .manager import (
 )
 
 __all__ = [
-    'get_strategy_path',
-    'create_strategy',
-    'create_strategy_from_template',
-    'check_and_fix_symlinks',
+    "get_strategy_path",
+    "create_strategy",
+    "create_strategy_from_template",
+    "check_and_fix_symlinks",
 ]

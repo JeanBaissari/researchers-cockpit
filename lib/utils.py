@@ -28,7 +28,7 @@ def timestamp_dir(base_path: Path, prefix: str) -> Path:
     Returns:
         Path to the created directory (e.g., 'results/spy_sma/backtest_20241220_143022')
     """
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     dir_path = base_path / f"{prefix}_{timestamp}"
     ensure_dir(dir_path)
     return dir_path
@@ -54,7 +54,7 @@ def load_yaml(path: Path) -> dict:
     if not path.exists():
         raise FileNotFoundError(f"YAML file not found: {path}")
     try:
-        with open(path, 'r') as f:
+        with open(path, "r") as f:
             return yaml.safe_load(f) or {}
     except yaml.YAMLError as e:
         raise yaml.YAMLError(f"Invalid YAML in {path}: {e}")
@@ -63,16 +63,16 @@ def load_yaml(path: Path) -> dict:
 def save_yaml(data: dict, path: Path) -> None:
     """Save data to a YAML file with formatting."""
     ensure_dir(path.parent)
-    with open(path, 'w') as f:
+    with open(path, "w") as f:
         yaml.dump(data, f, default_flow_style=False, sort_keys=False, indent=2)
 
 
 __all__ = [
     # Core utilities
-    'get_project_root',
-    'ensure_dir',
-    'timestamp_dir',
-    'update_symlink',
-    'load_yaml',
-    'save_yaml',
+    "get_project_root",
+    "ensure_dir",
+    "timestamp_dir",
+    "update_symlink",
+    "load_yaml",
+    "save_yaml",
 ]

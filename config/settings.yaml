@@ -139,6 +139,54 @@ data:
     default_crypto: yahoo_crypto_daily
     default_forex: yahoo_forex_daily
 
+# Documentation Configuration
+# ==============================================================================
+# Documentation standards enforced by the docs-maintainer agent.
+# These standards ensure docs remain organized, discoverable, and aligned
+# with the current codebase architecture (v1.12.0+ NO WRAPPERS).
+#
+# See: .claude/agents/docs_maintainer.md
+# ==============================================================================
+documentation:
+  # Organization standards
+  organization:
+    prefer_granular: true                # Small, focused files over mega-docs
+    require_indexing: true               # Every doc must be reachable from an index
+    enforce_architecture_alignment: true # Docs must match v1.12.0+ (direct Zipline/pandas)
+    prevent_stale_references: true       # Never reference non-existent files/modules
+
+  # Doc zones (section-specific directories)
+  zones:
+    api: docs/api/                       # Public library usage docs (stable interfaces)
+    code_patterns: docs/code_patterns/   # Patterns and recipes (example-heavy)
+    troubleshooting: docs/troubleshooting/ # Symptom → cause → fix guides
+    verification: docs/verification/     # Proofs and audit trails
+    archive: docs/archive/               # Deprecated/outdated docs with replacement links
+
+  # Required sections for new documentation
+  required_sections:
+    - purpose                            # 1-3 sentence summary
+    - scope                              # What it covers / does not cover
+    - repo_paths                         # Where to look in the repo
+    - examples                           # At least one runnable example
+    - related_docs                       # Links to related documentation
+
+  # Indexing requirements
+  indexing:
+    global_index: docs/README.md         # Main documentation index
+    section_indexes:
+      - docs/api/README.md
+      - docs/code_patterns/README.md
+      - docs/troubleshooting/README.md
+      - docs/verification/README.md
+      - docs/archive/README.md
+
+  # Cleanup and refactoring rules
+  cleanup:
+    archive_instead_of_delete: true      # Move to archive/ rather than deleting
+    mark_archived_docs: true             # Add "Archived because..." note
+    link_to_canonical: true              # Include link to replacement doc
+
 # Data Validation Configuration
 # ==============================================================================
 # Data validation is handled by lib/validation/ package (v1.11.0+).

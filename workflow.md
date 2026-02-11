@@ -2,6 +2,8 @@
 
 > This document describes how work flows through the system, from initial hypothesis to validated strategy.
 
+**Zipline-Reloaded Version:** This project uses [Zipline-Reloaded v3.0+](https://github.com/stefan-jansen/zipline-reloaded) (the actively maintained fork), not legacy Quantopian Zipline.
+
 ---
 
 ## The Core Loop
@@ -65,7 +67,7 @@ When an agent receives a hypothesis (plain English description), it:
 ## Phase 2: Strategy Creation
 
 ### What Happens
-The hypothesis is translated into executable Zipline code.
+The hypothesis is translated into executable Zipline-Reloaded strategy code.
 
 ### Where It Lives
 `strategies/{asset_class}/{strategy_name}/strategy.py`
@@ -82,10 +84,11 @@ strategies/_template/
 ```
 
 The template provides:
-- Standard imports
+- Standard imports (Zipline-Reloaded APIs)
 - `initialize()` skeleton with parameter loading
-- `handle_data()` with common patterns
+- `schedule_function()` for scheduled trading logic (preferred over `handle_data()`)
 - `analyze()` with standard metrics calculation
+- Direct Zipline-Reloaded API usage (v1.12.0+ NO WRAPPERS architecture)
 - Logging hooks
 
 ### Parameter Externalization
@@ -112,7 +115,7 @@ The strategy loads these at initialization:
 
 ```python
 def initialize(context):
-    params = load_params()  # Uses lib/config.load_strategy_params() internally
+    params = load_params()  # Uses lib/config/strategy.py load_strategy_params() internally
     context.fast = params['strategy']['fast_period']
     context.slow = params['strategy']['slow_period']
 ```
@@ -157,9 +160,11 @@ python scripts/run_backtest.py --strategy btc_sma_cross
 
 **Method C: Library (Programmatic)**
 ```python
-from lib.backtest import run_backtest
+from lib.backtest.runner import run_backtest
 results = run_backtest("btc_sma_cross")
 ```
+
+**Note:** All backtests use Zipline-Reloaded's `run_algorithm()` API directly. The `lib.backtest` package provides orchestration and result management, not wrapper functions around Zipline APIs.
 
 ### Output Structure
 
@@ -177,7 +182,7 @@ results/{strategy}/backtest_{timestamp}/
 
 ### Metrics Calculated
 
-Standard metrics (via Empyrical):
+Standard metrics (custom implementations with optional Empyrical fallback):
 - Sharpe Ratio (annualized)
 - Sortino Ratio
 - Maximum Drawdown
@@ -192,6 +197,8 @@ Custom metrics:
 - Trades Per Month
 - Max Consecutive Losses
 - Recovery Time from Max DD
+
+**Note:** Metrics are calculated using custom implementations in `lib/metrics/` that optionally use Empyrical as a fallback when available. The system works without Empyrical installed.
 
 ### AI Agent Behavior
 When running a backtest, the agent:
@@ -460,7 +467,7 @@ strategies/{name}/strategy.py ← strategies/_template/
         ↓
 strategies/{name}/parameters.yaml
         ↓
-lib/backtest/ (Zipline execution)
+lib/backtest/ (Zipline-Reloaded execution via run_algorithm())
         ↓
 results/{name}/backtest_{timestamp}/
         ↓
@@ -468,7 +475,7 @@ lib/metrics/ + lib/plots/
         ↓
 results/{name}/optimization_{timestamp}/ (if optimizing)
         ↓
-lib/validate/
+lib/strategy_validation/ (walk-forward, Monte Carlo)
         ↓
 results/{name}/walkforward_{timestamp}/ (validation)
         ↓

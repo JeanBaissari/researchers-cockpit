@@ -12,6 +12,13 @@ Provides functions to check exit conditions based on risk parameters: fixed stop
 
 The `lib/risk_management` module provides risk management utilities for checking exit conditions during backtest execution. It follows the Single Responsibility Principle by focusing solely on risk management logic, making it reusable across all strategies.
 
+> **📖 New to risk management?** See [Risk Management Guide](../code_patterns/risk_management_guide.md) for when to use Zipline's built-in controls vs `lib/risk_management.py` utilities.
+
+### Zipline-Reloaded controls vs `lib/risk_management.py` (what each is for)
+
+- **Zipline-Reloaded trading controls (engine-level)**: guardrails that *prevent* invalid/unsafe orders and positions (e.g., leverage/position/order limits). These are configured in `initialize()` via Zipline APIs like `set_max_position_size()`, `set_max_order_size()`, `set_max_leverage()`, `set_long_only()`, `set_max_order_count()`, `set_do_not_order_list()`.
+- **`lib/risk_management.py` (strategy-level exits)**: price-triggered exit logic that *decides* when to close a position (fixed stop, trailing stop, take profit). These checks run in scheduled functions / `handle_data()` and return an exit type that your strategy must act on (e.g., `order_target_percent(asset, 0)`).
+
 **Key Features:**
 - Fixed stop loss (percentage-based from entry price)
 - Trailing stop loss (tracks highest price since entry)
@@ -31,7 +38,7 @@ The `lib/risk_management` module provides risk management utilities for checking
 
 **Required:**
 - `zipline-reloaded` - For Context and DataPortal types
-- Python standard library (`logging`, `typing`)
+- Python standard library (`typing`)
 
 ---
 
@@ -147,7 +154,9 @@ def check_stop_loss(context, data):
         context.highest_price = 0.0
         
         # Log exit (optional)
-        print(f"Exit triggered: {exit_type}")
+        # Prefer project logging (configured at script/notebook entrypoints).
+        from lib.logging.config import get_logger
+        get_logger(__name__).info("Exit triggered: %s", exit_type)
 ```
 
 **Fixed Stop Loss Example:**
@@ -262,6 +271,7 @@ The `lib/risk_management` module contains:
 **Public Functions:**
 - `check_exit_conditions()` - Main orchestrator for exit condition checking
 - `get_exit_type_code()` - Exit type to numeric code conversion
+- `configure_zipline_controls()` - Optional helper to apply Zipline-Reloaded trading controls from YAML
 
 **Internal Functions (not part of public API):**
 - `_check_take_profit()` - Take profit condition evaluation
@@ -484,6 +494,7 @@ The module uses defensive programming and does not raise exceptions. Invalid con
 
 ## See Also
 
+- [Risk Management Guide](../code_patterns/risk_management_guide.md) - **Zipline-Reloaded risk controls vs strategy exit logic**
 - [Position Sizing API](position_sizing.md) - Position sizing algorithms
 - [Backtest API](backtest.md) - Backtest execution
 - [Strategy Template](../templates/strategies/) - Complete strategy examples

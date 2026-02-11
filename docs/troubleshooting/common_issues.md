@@ -21,11 +21,13 @@ The `ingest_bundle()` function now automatically generates **both minute AND dai
 
 ### Best Practice
 - Always use v1.0.6+ for intraday data ingestion
-- If you have old bundles, re-ingest them:
+- If you have old bundles, re-ingest them using `scripts/ingest_data.py`:
 
 ```bash
-python scripts/reingest_all.py --timeframe 1h
+python scripts/ingest_data.py --source yahoo --assets {asset_type} --symbols {SYMBOLS} --timeframe 1h
 ```
+
+⚠️ **Note:** The `reingest_all.py` script has been archived as of v1.12.0. Use `scripts/ingest_data.py` for re-ingestion.
 
 ---
 
@@ -176,9 +178,12 @@ python scripts/bundle_info.py yahoo_equities_1h --verbose
 # Validate all bundles
 python scripts/validate_bundles.py
 
-# Re-ingest problematic bundles
-python scripts/reingest_all.py --dry-run  # Preview first
-python scripts/reingest_all.py            # Then execute
+# Re-ingest problematic bundles (v1.12.0+)
+# List bundles first
+zipline bundles
+
+# Re-ingest specific bundles as needed
+python scripts/ingest_data.py --source yahoo --assets equities --symbols SPY --timeframe 1h
 
 # Run tests to verify system health
 python -m pytest tests/test_multi_timeframe.py -v
